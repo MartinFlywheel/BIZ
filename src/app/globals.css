@@ -1,0 +1,190 @@
+@import "tailwindcss";
+
+/* =====================================================
+   BIZ CRM — Design System
+   "Raycast" OLED look: pure black, warm red ambient glow,
+   ultra-thin borders, clean sans typography, mono metrics.
+
+   Helper utilities (use directly):
+   - .glass-panel       → subtle dark surface (Raycast card)
+   - .glass-interactive → surface + smooth hover
+   - .raycast-glow      → warm radial glow for page background
+   ===================================================== */
+
+@theme inline {
+  /* Backgrounds — OLED pure black base */
+  --color-background: #000000;
+  --color-surface: rgba(255, 255, 255, 0.02);
+  --color-surface-hover: rgba(255, 255, 255, 0.04);
+
+  /* Borders — ultra-thin */
+  --color-subtle: rgba(255, 255, 255, 0.06);
+  --color-subtle-hover: rgba(255, 255, 255, 0.1);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+
+  /* Text */
+  --color-primary: rgba(255, 255, 255, 0.92);
+  --color-secondary: #a1a1aa;
+  --color-muted: #52525b;
+  --color-foreground: rgba(255, 255, 255, 0.92);
+
+  /* Accent — Raycast warm red */
+  --color-accent: #ff453a;
+  --color-accent-hover: #ff6961;
+  --color-accent-muted: rgba(255, 69, 58, 0.15);
+
+  /* Status colors */
+  --color-success: #34d399;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #60a5fa;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Radius scale */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Smooth, minimal scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+@layer utilities {
+
+  /* Raycast surface — barely-there dark card with a fine border */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  /* Interactive surface — adds smooth hover */
+  .glass-interactive {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    transition: all 0.3s ease;
+  }
+
+  .glass-interactive:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Raycast warm glow — radial red light bleeding up from behind */
+  .raycast-glow {
+    position: absolute;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%,
+        rgba(255, 69, 58, 0.18) 0%,
+        rgba(255, 69, 58, 0.06) 35%,
+        transparent 70%);
+  }
+}
+
+/* =====================================================
+   Motion — smooth page transitions & staggered fade-in
+   ===================================================== */
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+
+  /* Whole-page wrapper animation on route change */
+  .page-enter {
+    animation: page-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Each direct child fades/rises in with a small stagger */
+  .stagger-children>* {
+    animation: fade-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .stagger-children>*:nth-child(1) {
+    animation-delay: 0.04s;
+  }
+
+  .stagger-children>*:nth-child(2) {
+    animation-delay: 0.1s;
+  }
+
+  .stagger-children>*:nth-child(3) {
+    animation-delay: 0.16s;
+  }
+
+  .stagger-children>*:nth-child(4) {
+    animation-delay: 0.22s;
+  }
+
+  .stagger-children>*:nth-child(5) {
+    animation-delay: 0.28s;
+  }
+
+  .stagger-children>*:nth-child(6) {
+    animation-delay: 0.34s;
+  }
+
+  .stagger-children>*:nth-child(7) {
+    animation-delay: 0.4s;
+  }
+
+  .stagger-children>*:nth-child(8) {
+    animation-delay: 0.46s;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+  .page-enter,
+  .stagger-children>* {
+    animation: none !important;
+  }
+}
