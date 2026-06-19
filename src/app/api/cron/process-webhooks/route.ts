@@ -94,7 +94,7 @@ export async function GET(request: Request) {
               status: 'unread',
               client_id: client?.id || null,
               webhook_log_id: log.id,
-              received_at: new Date(event.timestamp * 1000).toISOString(),
+              received_at: new Date(event.timestamp).toISOString(),
             }, {
               onConflict: 'message_mid',
               ignoreDuplicates: true,
