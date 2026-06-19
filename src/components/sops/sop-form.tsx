@@ -32,8 +32,9 @@ export function SopForm({ sop, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 overflow-y-auto py-8">
-      <div className="w-full max-w-2xl rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:items-center sm:py-8">
+      <div className="my-auto w-full max-w-2xl rounded-xl border border-zinc-800 bg-zinc-900 p-6">
+
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-zinc-50">
             {sop ? 'Editar SOP' : 'Nuevo SOP'}
