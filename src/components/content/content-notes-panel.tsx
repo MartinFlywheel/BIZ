@@ -5,7 +5,9 @@ import { getContentNotes, createNoteAction, deleteNoteAction } from '@/lib/actio
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Modal } from '@/components/ui/modal'
 import { X, Trash2, MessageSquare } from 'lucide-react'
+
 import { formatRelativeTime } from '@/lib/utils'
 
 interface Props {
@@ -42,9 +44,10 @@ export function ContentNotesPanel({ contentId, contentCaption, onClose }: Props)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/60">
-      <div className="w-full max-w-md border-l border-zinc-800 bg-zinc-950 flex flex-col">
+    <Modal onClose={onClose} closeOnBackdrop className="!max-w-md !p-0">
+      <div className="flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+
           <div>
             <h2 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
               <MessageSquare className="h-4 w-4" /> Notas
@@ -106,6 +109,7 @@ export function ContentNotesPanel({ contentId, contentCaption, onClose }: Props)
           <Button type="submit" className="w-full" size="sm">Agregar Nota</Button>
         </form>
       </div>
-    </div>
+    </Modal>
   )
 }
+
