@@ -1,3 +1,6 @@
+export const SOP_TAGS = ['Ventas', 'Marketing', 'Setting', 'Closing', 'Historias'] as const
+export type SopTag = typeof SOP_TAGS[number]
+
 export type UserType = 'agency' | 'client'
 
 export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'editor' | 'client_owner'

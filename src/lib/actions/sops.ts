@@ -3,14 +3,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
-export async function getSops() {
+export async function getSops(filterTag?: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('sops')
     .select('*')
-    .order('category')
+    .eq('is_active', true)
     .order('title')
 
+  if (filterTag) {
+    query = query.contains('tags', [filterTag])
+  }
+
+  const { data, error } = await query
   if (error) throw error
   return data
 }
@@ -30,10 +35,14 @@ export async function getSop(id: string) {
 export async function createSopAction(formData: FormData) {
   const supabase = await createClient()
 
+  const tagsRaw = formData.get('tags') as string
+  const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+
   const { error } = await supabase.from('sops').insert({
     title: formData.get('title') as string,
     content: (formData.get('content') as string) || '',
     category: (formData.get('category') as string) || null,
+    tags,
   })
 
   if (error) throw error
@@ -43,12 +52,16 @@ export async function createSopAction(formData: FormData) {
 export async function updateSopAction(id: string, formData: FormData) {
   const supabase = await createClient()
 
+  const tagsRaw = formData.get('tags') as string
+  const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+
   const { error } = await supabase
     .from('sops')
     .update({
       title: formData.get('title') as string,
       content: (formData.get('content') as string) || '',
       category: (formData.get('category') as string) || null,
+      tags,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
