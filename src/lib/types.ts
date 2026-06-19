@@ -358,6 +358,29 @@ export interface OnboardingTemplate {
   updated_at: string
 }
 
+// =====================================================
+// Content-Level Metrics (per-piece attribution)
+// =====================================================
+
+export interface ContentMetrics {
+  id: string
+  content_id: string
+  client_id: string
+  views: number
+  chats_nuevos: number
+  conversaciones_nuevas: number
+  agendas: number
+  shows: number
+  cierres: number
+  ticket: number
+  aov: number
+  cash_collected: number
+  manychat_label: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other'
 
 

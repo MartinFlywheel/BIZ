@@ -6,9 +6,6 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
   Users,
-  Film,
-  Target,
-  Phone,
   FileText,
   Settings,
   Bell,
@@ -26,16 +23,12 @@ interface NavItem {
 const agencyNav: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Clientes', href: '/clients', icon: Users },
-  { label: 'Contenido', href: '/content', icon: Film },
-  { label: 'Leads', href: '/leads', icon: Target },
-  { label: 'Llamadas', href: '/calls', icon: Phone },
   { label: 'SOPs', href: '/sops', icon: FileText },
   { label: 'Configuración', href: '/settings', icon: Settings },
 ]
 
 const portalNav: NavItem[] = [
   { label: 'Dashboard', href: '/portal/dashboard', icon: LayoutDashboard },
-  { label: 'Contenido', href: '/portal/content', icon: Film },
 ]
 
 interface SidebarProps {
