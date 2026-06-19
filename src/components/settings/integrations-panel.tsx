@@ -1,43 +1,39 @@
 'use client'
 
-import { useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardTitle } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
-import { Link2, Unlink, ExternalLink, CheckCircle, AlertCircle } from 'lucide-react'
+import { ShieldCheck, ExternalLink } from 'lucide-react'
 import type { Integration } from '@/lib/types'
 
 interface PlatformConfig {
   name: string
   platformKey: string
-  authUrl: string | null
   description: string
+  /** Si true, la integración se gestiona vía System Token en el backend (sin OAuth manual). */
+  systemManaged?: boolean
 }
 
 const PLATFORMS: PlatformConfig[] = [
   {
     name: 'Instagram (Meta)',
     platformKey: 'instagram',
-    authUrl: 'https://www.instagram.com/oauth/authorize?force_reauth=true&client_id=1415004663999348&redirect_uri=https://holding-chi.vercel.app/settings&response_type=code&scope=instagram_business_basic%2Cinstagram_business_manage_messages%2Cinstagram_business_manage_comments%2Cinstagram_business_content_publish%2Cinstagram_business_manage_insights',
     description: 'Reels, Stories, métricas y mensajes directos',
+    systemManaged: true,
   },
   {
     name: 'Manychat',
     platformKey: 'manychat',
-    authUrl: null,
     description: 'Automatización de chats y bots',
   },
   {
     name: 'GoHighLevel',
     platformKey: 'gohighlevel',
-    authUrl: null,
     description: 'CRM y pipelines externos',
   },
   {
     name: 'Fathom',
     platformKey: 'fathom',
-    authUrl: null,
     description: 'Transcripciones y análisis de llamadas',
   },
 ]
@@ -54,55 +50,13 @@ interface Props {
 }
 
 export function IntegrationsPanel({ integrations }: Props) {
-  const searchParams = useSearchParams()
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
-
-  useEffect(() => {
-    if (searchParams.get('meta_connected') === 'true') {
-      setToast({ type: 'success', message: 'Instagram (Meta) conectado exitosamente' })
-    }
-    const metaError = searchParams.get('meta_error')
-    if (metaError) {
-      setToast({ type: 'error', message: decodeURIComponent(metaError) })
-    }
-  }, [searchParams])
-
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), 5000)
-    return () => clearTimeout(timer)
-  }, [toast])
-
   function getIntegration(platformKey: string): Integration | undefined {
     return integrations.find((i) => i.platform === platformKey)
-  }
-
-  function handleConnect(authUrl: string) {
-    window.location.href = authUrl
-  }
-
-  function handleDisconnect(platformKey: string) {
-    // TODO: Call API to revoke token and update integration status
-    console.log('Disconnect:', platformKey)
   }
 
   return (
     <Card>
       <CardTitle>Integraciones</CardTitle>
-
-      {toast && (
-        <div className={`mt-3 flex items-center gap-2 rounded-xl border px-4 py-3 text-sm ${
-          toast.type === 'success'
-            ? 'border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-300'
-            : 'border-red-500/20 bg-red-500/[0.06] text-red-300'
-        }`}>
-          {toast.type === 'success'
-            ? <CheckCircle className="h-4 w-4 shrink-0" />
-            : <AlertCircle className="h-4 w-4 shrink-0" />
-          }
-          {toast.message}
-        </div>
-      )}
 
       <div className="mt-4 space-y-3">
         {PLATFORMS.map((platform) => {
@@ -114,13 +68,12 @@ export function IntegrationsPanel({ integrations }: Props) {
           return (
             <div
               key={platform.platformKey}
-              className={`flex items-center justify-between rounded-2xl border px-4 py-4 transition-all duration-300 ${
-                isConnected
+              className={`flex items-center justify-between rounded-2xl border px-4 py-4 transition-all duration-300 ${isConnected
                   ? 'border-emerald-500/20 bg-emerald-500/[0.03]'
                   : hasError
                     ? 'border-red-500/20 bg-red-500/[0.03]'
                     : 'border-white/[0.05] bg-white/[0.02] hover:border-white/[0.08] hover:bg-white/[0.04]'
-              }`}
+                }`}
             >
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -139,22 +92,11 @@ export function IntegrationsPanel({ integrations }: Props) {
               </div>
 
               <div>
-                {isConnected ? (
-                  <button
-                    onClick={() => handleDisconnect(platform.platformKey)}
-                    className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-zinc-400 transition-all duration-300 hover:border-red-500/30 hover:bg-red-500/[0.06] hover:text-red-300"
-                  >
-                    <Unlink className="h-3 w-3" />
-                    Desconectar
-                  </button>
-                ) : platform.authUrl ? (
-                  <button
-                    onClick={() => handleConnect(platform.authUrl!)}
-                    className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-white/90 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.1]"
-                  >
-                    <Link2 className="h-3 w-3" />
-                    Conectar
-                  </button>
+                {platform.systemManaged ? (
+                  <span className="flex items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-1.5 text-xs font-medium text-emerald-300">
+                    <ShieldCheck className="h-3 w-3" />
+                    System Token
+                  </span>
                 ) : (
                   <span className="flex items-center gap-1.5 rounded-xl border border-dashed border-white/[0.05] px-3 py-1.5 text-xs text-zinc-600">
                     <ExternalLink className="h-3 w-3" />
@@ -166,6 +108,11 @@ export function IntegrationsPanel({ integrations }: Props) {
           )
         })}
       </div>
+
+      <p className="mt-4 text-xs text-zinc-600">
+        Instagram se sincroniza automáticamente con el System User Token. Vincula cada cuenta desde el
+        hub de su cliente (Instagram Account ID).
+      </p>
     </Card>
   )
 }

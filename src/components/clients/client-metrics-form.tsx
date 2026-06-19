@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import { upsertClientMetrics } from '@/lib/actions/funnel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Modal } from '@/components/ui/modal'
+
 import { X } from 'lucide-react'
 
 import type { ClientMetrics } from '@/lib/types'
@@ -109,7 +111,15 @@ export function ClientMetricsForm({ clientId, metric, onClose }: Props) {
                     </div>
                 </div>
 
-                <Input id="notes" name="notes" label="Notas (opcional)" defaultValue={metric?.notes || ''} placeholder="Observaciones de la semana..." />
+                <Textarea
+                    id="notes"
+                    name="notes"
+                    label="Notas Estratégicas / Ángulos de Contenido"
+                    defaultValue={metric?.notes || ''}
+                    rows={4}
+                    placeholder="Ángulos que funcionaron, hipótesis para la próxima semana, observaciones del funnel..."
+                />
+
 
                 {error && <p className="text-sm text-red-400">{error}</p>}
 

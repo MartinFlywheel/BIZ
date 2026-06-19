@@ -1,8 +1,6 @@
 import { getClient } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces } from '@/lib/actions/content'
-import { getInteractions } from '@/lib/actions/interactions'
-import { getTeamAssignments, getAgencyUsers } from '@/lib/actions/team'
 import { getClientMetrics } from '@/lib/actions/funnel'
 import { ClientDetail } from '@/components/clients/client-detail'
 import { notFound } from 'next/navigation'
@@ -16,30 +14,23 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params
 
-  try {
-    const [client, campaigns, contentPieces, interactions, teamAssignments, agencyUsers, metrics] = await Promise.all([
-      getClient(id),
-      getCampaigns(id),
-      getContentPieces(id),
-      getInteractions(id),
-      getTeamAssignments(id),
-      getAgencyUsers(),
-      getClientMetrics(id, 'weekly'),
-    ])
+  const data = await Promise.all([
+    getClient(id),
+    getCampaigns(id),
+    getContentPieces(id),
+    getClientMetrics(id, 'weekly'),
+  ]).catch(() => null)
 
-    return (
-      <ClientDetail
-        client={client}
-        campaigns={campaigns}
-        contentPieces={contentPieces}
-        interactions={interactions}
-        teamAssignments={teamAssignments as any}
-        agencyUsers={agencyUsers}
-        metrics={(metrics ?? []) as ClientMetrics[]}
-      />
-    )
+  if (!data) notFound()
 
-  } catch {
-    notFound()
-  }
+  const [client, campaigns, contentPieces, metrics] = data
+
+  return (
+    <ClientDetail
+      client={client}
+      campaigns={campaigns}
+      contentPieces={contentPieces}
+      metrics={(metrics ?? []) as ClientMetrics[]}
+    />
+  )
 }
