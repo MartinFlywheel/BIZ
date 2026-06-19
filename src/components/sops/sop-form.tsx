@@ -4,12 +4,16 @@ import { useState } from 'react'
 import { createSopAction, updateSopAction } from '@/lib/actions/sops'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { SOP_TAGS } from '@/lib/types'
+import type { Sop } from '@/lib/types'
 import { X } from 'lucide-react'
 
+
 interface Props {
-  sop?: any
+  sop?: Sop
   onClose: () => void
 }
+
 
 export function SopForm({ sop, onClose }: Props) {
   const [loading, setLoading] = useState(false)
@@ -47,13 +51,23 @@ export function SopForm({ sop, onClose }: Props) {
             defaultValue={sop?.title}
             required
           />
-          <Input
-            id="category"
-            name="category"
-            label="Categoría"
-            placeholder="ventas, onboarding, contenido"
-            defaultValue={sop?.category || ''}
-          />
+          <div className="space-y-1.5">
+            <label htmlFor="category" className="block text-sm font-medium text-zinc-400">
+              Categoría
+            </label>
+            <select
+              id="category"
+              name="category"
+              defaultValue={sop?.category || ''}
+              className="flex h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 [&>option]:bg-zinc-900"
+            >
+              <option value="">Sin categoría</option>
+              {SOP_TAGS.map((tag) => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-zinc-400">Contenido (Markdown)</label>
             <textarea

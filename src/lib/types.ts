@@ -333,7 +333,33 @@ export interface ClientMetrics {
   updated_at: string
 }
 
+export interface Sop {
+  id: string
+  title: string
+  content: string
+  category: string | null
+  tags: string[]
+  version: number
+  created_at: string
+  updated_at: string
+}
+
+export interface OnboardingStep {
+  title: string
+  description?: string
+  sop_id?: string | null
+}
+
+export interface OnboardingTemplate {
+  id: string
+  name: string
+  steps: OnboardingStep[]
+  created_at: string
+  updated_at: string
+}
+
 export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other'
+
 
 
 export type MessageStatus = 'unread' | 'read' | 'promoted' | 'archived'

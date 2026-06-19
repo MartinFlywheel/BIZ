@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
+
 import { Tabs } from '@/components/ui/tabs'
 import { ClientForm } from './client-form'
 import { CampaignForm } from '@/components/campaigns/campaign-form'
@@ -342,6 +343,8 @@ export function ClientDetail({ client, campaigns, contentPieces, interactions, t
       {showContentForm && <ContentForm clientId={client.id} campaigns={campaigns} onClose={() => { setShowContentForm(false); router.refresh() }} />}
       {showInteractionForm && <InteractionForm clientId={client.id} campaigns={campaigns} contentPieces={contentPieces} onClose={() => { setShowInteractionForm(false); router.refresh() }} />}
       {showTeamForm && <TeamAssignmentForm clientId={client.id} users={agencyUsers} onClose={() => { setShowTeamForm(false); router.refresh() }} />}
+      {showMetricsForm && <ClientMetricsForm clientId={client.id} onClose={() => { setShowMetricsForm(false); router.refresh() }} />}
     </div>
+
   )
 }
