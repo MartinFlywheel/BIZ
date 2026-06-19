@@ -261,3 +261,25 @@ export interface BenchmarkAlert {
   diagnosis_message: string | null
   responsible_area: Responsibility | null
 }
+
+export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other'
+
+export type MessageStatus = 'unread' | 'read' | 'promoted' | 'archived'
+
+export interface IncomingMessage {
+  id: string
+  sender_ig_id: string
+  sender_ig_username: string | null
+  recipient_ig_id: string | null
+  message_text: string | null
+  message_mid: string | null
+  media_url: string | null
+  message_type: MessageType
+  status: MessageStatus
+  client_id: string | null
+  webhook_log_id: string | null
+  promoted_to_interaction_id: string | null
+  received_at: string
+  read_at: string | null
+  created_at: string
+}
