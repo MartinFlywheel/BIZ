@@ -265,7 +265,76 @@ export interface BenchmarkAlert {
   responsible_area: Responsibility | null
 }
 
+// =====================================================
+// Funnel Engine (computed by lib/actions/funnel.ts)
+// =====================================================
+
+export interface FunnelStage {
+  id: string
+  label: string
+  value: number           // raw count
+  rate: number            // % retention from previous stage
+  benchmark_min: number   // below this = critical
+  benchmark_max: number   // ideal upper range
+  status: 'healthy' | 'warning' | 'critical'
+  is_bottleneck: boolean  // true only for the single worst drop
+}
+
+export interface FunnelResult {
+  stages: FunnelStage[]
+  bottleneck: string | null           // stage id with worst drop
+  bottleneck_drop: number             // % points lost at bottleneck
+  period: { start: string; end: string; type: string }
+  raw: {
+    views_reels: number
+    views_historias: number
+    chats_abiertos: number
+    conversaciones: number
+    agendas: number
+    shows: number
+    cierres: number
+    facturacion: number
+    cash_collected: number
+  }
+}
+
+export interface ClientHealthAlert {
+  client_id: string
+  client_name: string
+  ig_handle: string
+  alerts: Array<{
+    stage_id: string
+    stage_label: string
+    current_rate: number
+    benchmark_min: number
+    deficit: number
+  }>
+  worst_stage: string | null
+  status: 'healthy' | 'critical'
+}
+
+export interface ClientMetrics {
+  id: string
+  client_id: string
+  period_start: string
+  period_end: string
+  period_type: 'daily' | 'weekly' | 'monthly'
+  views_reels: number
+  views_historias: number
+  chats_abiertos: number
+  conversaciones: number
+  agendas: number
+  shows: number
+  cierres: number
+  facturacion: number
+  cash_collected: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other'
+
 
 export type MessageStatus = 'unread' | 'read' | 'promoted' | 'archived'
 

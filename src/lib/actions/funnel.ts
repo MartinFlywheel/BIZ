@@ -1,42 +1,18 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
+
 
 // =====================================================
 // Funnel stage definition — order matters
+// Types live in lib/types.ts ('use server' files can only export async fns)
 // =====================================================
-
-export interface FunnelStage {
-  id: string
-  label: string
-  value: number           // raw count
-  rate: number            // % retention from previous stage
-  benchmark_min: number   // below this = critical
-  benchmark_max: number   // ideal upper range
-  status: 'healthy' | 'warning' | 'critical'
-  is_bottleneck: boolean  // true only for the single worst drop
-}
-
-export interface FunnelResult {
-  stages: FunnelStage[]
-  bottleneck: string | null           // stage id with worst drop
-  bottleneck_drop: number             // % points lost at bottleneck
-  period: { start: string; end: string; type: string }
-  raw: {
-    views_reels: number
-    views_historias: number
-    chats_abiertos: number
-    conversaciones: number
-    agendas: number
-    shows: number
-    cierres: number
-    facturacion: number
-    cash_collected: number
-  }
-}
 
 function safeRate(numerator: number, denominator: number): number {
   if (denominator <= 0) return 0
+
   return (numerator / denominator) * 100
 }
 
@@ -92,13 +68,13 @@ export async function calculateFunnel(
     min: number
     max: number
   }> = [
-    { id: 'respuesta_reel', label: 'Respuesta Reel', value: views_reels, rate: rates.respuesta_reel, min: 1, max: 3 },
-    { id: 'respuesta_historia', label: 'Respuesta Historia', value: views_historias, rate: rates.respuesta_historia, min: 1, max: 5 },
-    { id: 'conversion', label: 'Conversión', value: chats_abiertos, rate: rates.conversion, min: 70, max: 100 },
-    { id: 'agendamiento', label: 'Agendamiento', value: conversaciones, rate: rates.agendamiento, min: 8, max: 12 },
-    { id: 'show_up', label: 'Show-up', value: agendas, rate: rates.show_up, min: 70, max: 100 },
-    { id: 'cierre', label: 'Cierre', value: shows, rate: rates.cierre, min: 30, max: 60 },
-  ]
+      { id: 'respuesta_reel', label: 'Respuesta Reel', value: views_reels, rate: rates.respuesta_reel, min: 1, max: 3 },
+      { id: 'respuesta_historia', label: 'Respuesta Historia', value: views_historias, rate: rates.respuesta_historia, min: 1, max: 5 },
+      { id: 'conversion', label: 'Conversión', value: chats_abiertos, rate: rates.conversion, min: 70, max: 100 },
+      { id: 'agendamiento', label: 'Agendamiento', value: conversaciones, rate: rates.agendamiento, min: 8, max: 12 },
+      { id: 'show_up', label: 'Show-up', value: agendas, rate: rates.show_up, min: 70, max: 100 },
+      { id: 'cierre', label: 'Cierre', value: shows, rate: rates.cierre, min: 30, max: 60 },
+    ]
 
   // Find bottleneck: stage with the biggest shortfall below benchmark
   let worstDrop = 0
@@ -152,25 +128,11 @@ export async function calculateFunnel(
 // Health Alerts — scans ALL active clients
 // =====================================================
 
-export interface ClientHealthAlert {
-  client_id: string
-  client_name: string
-  ig_handle: string
-  alerts: Array<{
-    stage_id: string
-    stage_label: string
-    current_rate: number
-    benchmark_min: number
-    deficit: number
-  }>
-  worst_stage: string | null
-  status: 'healthy' | 'critical'
-}
-
 export async function checkHealthAlerts(
   periodType: 'daily' | 'weekly' | 'monthly' = 'weekly'
 ): Promise<ClientHealthAlert[]> {
   const supabase = await createClient()
+
 
   const { data: clients } = await supabase
     .from('clients')
@@ -268,4 +230,9 @@ export async function upsertClientMetrics(formData: FormData) {
     })
 
   if (error) throw error
+
+  const clientId = formData.get('client_id') as string
+  revalidatePath(`/clients/${clientId}`)
+  revalidatePath('/dashboard')
 }
+
