@@ -83,12 +83,11 @@ export async function POST(request: NextRequest) {
               : messageText ? 'text'
               : 'other'
 
-            // Match client by recipient IG account ID
             const { data: client } = await supabase
               .from('clients')
               .select('id')
               .eq('ig_account_id', event.recipient.id)
-              .single()
+              .maybeSingle()
 
             const { error: msgError } = await supabase
               .from('incoming_messages')

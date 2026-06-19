@@ -80,7 +80,7 @@ export async function GET(request: Request) {
             .from('clients')
             .select('id')
             .eq('ig_account_id', event.recipient.id)
-            .single()
+            .maybeSingle()
 
           await supabase
             .from('incoming_messages')
