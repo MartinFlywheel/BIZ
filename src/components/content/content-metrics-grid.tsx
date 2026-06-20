@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
-import { deleteContentAction, quickAddLatestReels } from '@/lib/actions/content'
+import { deleteContentAction } from '@/lib/actions/content'
+import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
@@ -166,8 +167,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
         setQuickAddToast(null)
         try {
             const result = await quickAddLatestReels(clientId, 10)
-            if (result.error) {
-                setQuickAddToast({ type: 'error', message: result.error })
+            if (result.status === 'error') {
+                setQuickAddToast({ type: 'error', message: result.message })
             } else {
                 const msg = result.added === 0
                     ? `Sin nuevos reels (${result.skipped} ya existían)`

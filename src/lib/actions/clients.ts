@@ -33,6 +33,7 @@ export async function createClientAction(formData: FormData) {
   const { error } = await supabase.from('clients').insert({
     name: formData.get('name') as string,
     ig_handle: formData.get('ig_handle') as string,
+    ig_account_id: (formData.get('ig_account_id') as string) || null,
     industry: (formData.get('industry') as string) || null,
     status: (formData.get('status') as ClientStatus) || 'prospect',
     monthly_fee: formData.get('monthly_fee')
@@ -52,6 +53,7 @@ export async function updateClientAction(id: string, formData: FormData) {
     .update({
       name: formData.get('name') as string,
       ig_handle: formData.get('ig_handle') as string,
+      ig_account_id: (formData.get('ig_account_id') as string) || null,
       industry: (formData.get('industry') as string) || null,
       status: formData.get('status') as ClientStatus,
       monthly_fee: formData.get('monthly_fee')

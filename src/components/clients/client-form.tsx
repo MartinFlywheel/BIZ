@@ -94,6 +94,18 @@ export function ClientForm({ client, onClose }: ClientFormProps) {
           options={statusOptions}
           defaultValue={client?.status || 'prospect'}
         />
+        <div className="space-y-1.5">
+          <Input
+            id="ig_account_id"
+            name="ig_account_id"
+            label="Instagram Account ID"
+            placeholder="17841400123456789"
+            defaultValue={client?.ig_account_id || ''}
+          />
+          <p className="text-[11px] text-zinc-600 leading-snug">
+            ID numérico de la cuenta de IG Business. Se usa para sincronizar Reels automáticamente.
+          </p>
+        </div>
         <Input
           id="monthly_fee"
           name="monthly_fee"
