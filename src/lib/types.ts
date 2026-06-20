@@ -13,7 +13,34 @@ export type InteractionClassification = 'chat_abierto' | 'conversacion_real' | '
 
 export type InteractionSource = 'manychat' | 'gohighlevel' | 'manual' | 'api'
 
-export type LeadStage = 'new' | 'contacted' | 'agenda_set' | 'showed_up' | 'no_show' | 'closed_won' | 'closed_lost'
+export type LeadStage =
+  | 'nuevo_contacto' | 'seguimiento' | 'conversando' | 'agendado'
+  | 'no_calificado' | 'vsl_enviado' | 'cliente'
+  | 'new' | 'contacted' | 'agenda_set' | 'showed_up' | 'no_show' | 'closed_won' | 'closed_lost'
+
+export const LEAD_STAGES: { id: LeadStage; label: string; color: string }[] = [
+  { id: 'nuevo_contacto', label: 'Nuevo Contacto', color: 'text-zinc-400' },
+  { id: 'seguimiento', label: 'Seguimiento', color: 'text-blue-400' },
+  { id: 'conversando', label: 'Conversando', color: 'text-violet-400' },
+  { id: 'agendado', label: 'Agendado', color: 'text-amber-400' },
+  { id: 'no_calificado', label: 'No Calificado', color: 'text-red-400' },
+  { id: 'vsl_enviado', label: 'VSL Enviado', color: 'text-cyan-400' },
+  { id: 'cliente', label: 'Cliente', color: 'text-emerald-400' },
+]
+
+export const LEAD_AVATARS = ['Marca Personal', 'Editores', 'El Comoditizado', 'En Cero'] as const
+export type LeadAvatar = typeof LEAD_AVATARS[number]
+
+export const LEAD_EVENTS = [
+  'Micro VSL Enviado',
+  'VSL Chat',
+  'Pitcheado',
+  'Calendly Enviado',
+  'Seguimiento 1',
+  'Seguimiento 2',
+  'Propuesta Enviada',
+] as const
+export type LeadEvent = typeof LEAD_EVENTS[number]
 
 export type CallOutcome = 'completed' | 'no_show' | 'rescheduled' | 'cancelled'
 
@@ -155,6 +182,8 @@ export interface Lead {
   email: string | null
   stage: LeadStage
   assigned_to: string | null
+  lead_avatar: string | null
+  events: string[]
   notes: string | null
   lost_reason: string | null
   first_touch_content_id: string | null

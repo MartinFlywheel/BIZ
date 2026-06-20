@@ -9,7 +9,7 @@ export async function getLeads(clientId?: string) {
   let query = supabase
     .from('leads')
     .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name)')
-    .order('created_at', { ascending: false })
+    .order('updated_at', { ascending: false })
 
   if (clientId) {
     query = query.eq('client_id', clientId)
@@ -28,16 +28,76 @@ export async function updateLeadStageAction(id: string, stage: LeadStage) {
     updated_at: new Date().toISOString(),
   }
 
-  if (stage === 'contacted') updates.contacted_at = new Date().toISOString()
-  if (stage === 'agenda_set') updates.agenda_at = new Date().toISOString()
-  if (stage === 'showed_up' || stage === 'no_show') updates.call_at = new Date().toISOString()
-  if (stage === 'closed_won' || stage === 'closed_lost') updates.closed_at = new Date().toISOString()
+  if (stage === 'agendado' || stage === 'agenda_set') updates.agenda_at = new Date().toISOString()
+  if (stage === 'cliente' || stage === 'closed_won') updates.closed_at = new Date().toISOString()
 
   const { error } = await supabase.from('leads').update(updates).eq('id', id)
   if (error) throw error
 
   revalidatePath('/leads')
   revalidatePath('/dashboard')
+}
+
+export async function updateLeadAvatarAction(id: string, avatar: string | null) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      lead_avatar: avatar,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/leads')
+}
+
+export async function addLeadEventAction(id: string, event: string) {
+  const supabase = await createClient()
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('events')
+    .eq('id', id)
+    .single()
+
+  const currentEvents: string[] = lead?.events || []
+  if (currentEvents.includes(event)) return
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      events: [...currentEvents, event],
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/leads')
+}
+
+export async function removeLeadEventAction(id: string, event: string) {
+  const supabase = await createClient()
+
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('events')
+    .eq('id', id)
+    .single()
+
+  const currentEvents: string[] = lead?.events || []
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      events: currentEvents.filter((e) => e !== event),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/leads')
 }
 
 export async function updateLeadAction(id: string, formData: FormData) {
@@ -50,6 +110,7 @@ export async function updateLeadAction(id: string, formData: FormData) {
       phone: (formData.get('phone') as string) || null,
       email: (formData.get('email') as string) || null,
       assigned_to: (formData.get('assigned_to') as string) || null,
+      lead_avatar: (formData.get('lead_avatar') as string) || null,
       notes: (formData.get('notes') as string) || null,
       close_value: formData.get('close_value')
         ? parseFloat(formData.get('close_value') as string)

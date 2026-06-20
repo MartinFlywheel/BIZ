@@ -21,19 +21,26 @@ interface Props {
 // ── Stage config ──────────────────────────────────────────────────────────────
 
 const STAGES: { id: LeadStage; label: string; color: string; dot: string }[] = [
-    { id: 'new', label: 'Nuevo', color: 'bg-zinc-800 border-zinc-700', dot: 'bg-zinc-400' },
-    { id: 'contacted', label: 'Contactado', color: 'bg-blue-950/40 border-blue-900/50', dot: 'bg-blue-400' },
-    { id: 'agenda_set', label: 'Agenda', color: 'bg-violet-950/40 border-violet-900/50', dot: 'bg-violet-400' },
-    { id: 'showed_up', label: 'Show', color: 'bg-amber-950/40 border-amber-900/50', dot: 'bg-amber-400' },
-    { id: 'no_show', label: 'No Show', color: 'bg-red-950/30 border-red-900/40', dot: 'bg-red-500' },
-    { id: 'closed_won', label: 'Cerrado ✓', color: 'bg-emerald-950/40 border-emerald-900/50', dot: 'bg-emerald-400' },
-    { id: 'closed_lost', label: 'Perdido', color: 'bg-zinc-900/60 border-zinc-800', dot: 'bg-zinc-600' },
+    { id: 'nuevo_contacto', label: 'Nuevo Contacto', color: 'bg-zinc-800 border-zinc-700', dot: 'bg-zinc-400' },
+    { id: 'seguimiento', label: 'Seguimiento', color: 'bg-blue-950/40 border-blue-900/50', dot: 'bg-blue-400' },
+    { id: 'conversando', label: 'Conversando', color: 'bg-violet-950/40 border-violet-900/50', dot: 'bg-violet-400' },
+    { id: 'agendado', label: 'Agendado', color: 'bg-amber-950/40 border-amber-900/50', dot: 'bg-amber-400' },
+    { id: 'no_calificado', label: 'No Calificado', color: 'bg-red-950/30 border-red-900/40', dot: 'bg-red-500' },
+    { id: 'vsl_enviado', label: 'VSL Enviado', color: 'bg-cyan-950/40 border-cyan-900/50', dot: 'bg-cyan-400' },
+    { id: 'cliente', label: 'Cliente', color: 'bg-emerald-950/40 border-emerald-900/50', dot: 'bg-emerald-400' },
 ]
 
-const STAGE_BADGE: Record<LeadStage, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info' }> = {
+const STAGE_BADGE: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info' }> = {
+    nuevo_contacto: { label: 'Nuevo Contacto', variant: 'default' },
+    seguimiento: { label: 'Seguimiento', variant: 'info' },
+    conversando: { label: 'Conversando', variant: 'info' },
+    agendado: { label: 'Agendado', variant: 'warning' },
+    no_calificado: { label: 'No Calificado', variant: 'danger' },
+    vsl_enviado: { label: 'VSL Enviado', variant: 'info' },
+    cliente: { label: 'Cliente', variant: 'success' },
     new: { label: 'Nuevo', variant: 'default' },
     contacted: { label: 'Contactado', variant: 'info' },
-    agenda_set: { label: 'Agenda', variant: 'info' },
+    agenda_set: { label: 'Agenda', variant: 'warning' },
     showed_up: { label: 'Show', variant: 'warning' },
     no_show: { label: 'No Show', variant: 'danger' },
     closed_won: { label: 'Ganado', variant: 'success' },

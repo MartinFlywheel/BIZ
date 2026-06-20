@@ -45,7 +45,7 @@ export function Dialog({ open, onClose, title, description, children, className 
         >
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm fade-in"
                 onClick={onClose}
                 aria-hidden="true"
             />
@@ -53,7 +53,7 @@ export function Dialog({ open, onClose, title, description, children, className 
             {/* Panel */}
             <div
                 className={cn(
-                    'relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl',
+                    'relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl modal-enter',
                     className
                 )}
             >
