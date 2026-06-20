@@ -56,22 +56,26 @@ export async function createContentAction(formData: FormData) {
 }
 
 async function extractIgThumbnail(permalink: string): Promise<string | null> {
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+
+  if (!appId || !appSecret) return null
+
   try {
-    const res = await fetch(permalink, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-      },
-      redirect: 'follow',
+    const params = new URLSearchParams({
+      url: permalink,
+      access_token: `${appId}|${appSecret}`,
+      fields: 'thumbnail_url',
     })
+
+    const res = await fetch(
+      `https://graph.facebook.com/v19.0/instagram_oembed?${params.toString()}`
+    )
 
     if (!res.ok) return null
 
-    const html = await res.text()
-
-    const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
-      || html.match(/<meta\s+content="([^"]+)"\s+property="og:image"/i)
-
-    return ogMatch?.[1] || null
+    const data = await res.json()
+    return data.thumbnail_url || null
   } catch {
     return null
   }
