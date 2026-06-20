@@ -31,6 +31,17 @@ export function formatDate(date: string): string {
   }).format(new Date(date))
 }
 
+export function formatDateCompact(date: string): string {
+  const d = new Date(date)
+  return new Intl.DateTimeFormat('es-AR', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d)
+}
+
 export function formatRelativeTime(date: string): string {
   const now = new Date()
   const then = new Date(date)

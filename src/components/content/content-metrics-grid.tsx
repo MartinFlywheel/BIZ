@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
+import { ContentPieceForm } from './content-piece-form'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
@@ -59,6 +61,7 @@ const contentTypeLabel: Record<string, string> = {
 
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
+    const [showNewPieceForm, setShowNewPieceForm] = useState(false)
 
     // Build a map for quick lookup
     const metricsMap = new Map<string, ContentMetric>()
@@ -93,11 +96,17 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                         <BarChart2 className="h-4 w-4 text-zinc-400" />
                         <h3 className="text-sm font-semibold text-zinc-300">Embudo Agregado del Cliente</h3>
                     </div>
-                    {totals.cash > 0 && (
-                        <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 rounded-md px-2 py-0.5">
-                            {formatCurrency(totals.cash)} cobrado
-                        </span>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {totals.cash > 0 && (
+                            <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 rounded-md px-2 py-0.5">
+                                {formatCurrency(totals.cash)} cobrado
+                            </span>
+                        )}
+                        <Button size="sm" onClick={() => setShowNewPieceForm(true)}>
+                            <Plus className="h-3.5 w-3.5" />
+                            Nueva Pieza
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-1 overflow-x-auto pb-1">
@@ -152,8 +161,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                 key={cp.id}
                                 onClick={() => setSelectedPiece(cp)}
                                 className={`group relative rounded-xl border text-left transition-all hover:border-zinc-600 hover:bg-zinc-800/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${hasMetrics
-                                        ? 'border-emerald-900/50 bg-emerald-950/10'
-                                        : 'border-zinc-800 bg-zinc-900/40'
+                                    ? 'border-emerald-900/50 bg-emerald-950/10'
+                                    : 'border-zinc-800 bg-zinc-900/40'
                                     }`}
                             >
                                 {/* Thumbnail */}
@@ -227,12 +236,18 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                 </div>
             )}
 
-            {/* ── Modal ── */}
+            {/* ── Modals ── */}
             {selectedPiece && (
                 <ContentFunnelForm
                     contentPiece={selectedPiece}
                     existingMetric={selectedMetric}
                     onClose={() => setSelectedPiece(null)}
+                />
+            )}
+            {showNewPieceForm && (
+                <ContentPieceForm
+                    clientId={clientId}
+                    onClose={() => setShowNewPieceForm(false)}
                 />
             )}
         </div>

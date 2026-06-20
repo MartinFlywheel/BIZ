@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { formatDate } from '@/lib/utils'
-import { Search, Filter, User, Calendar, Phone } from 'lucide-react'
+import { formatDate, formatDateCompact } from '@/lib/utils'
+import { Search, Filter, User, Calendar, Phone, ExternalLink } from 'lucide-react'
 import type { Lead, LeadStage } from '@/lib/types'
 
 interface AgencyUser {
@@ -232,55 +232,55 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
 
             {/* ── Table View ── */}
             {view === 'table' && (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
                     {filtered.length === 0 ? (
                         <div className="py-12 text-center text-zinc-500 text-sm">Sin leads que coincidan</div>
                     ) : (
                         <table className="w-full">
                             <thead>
-                                <tr className="border-b border-zinc-800">
-                                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Lead</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Estado</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Asignado</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Último contacto</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Teléfono</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Valor</th>
+                                <tr className="border-b border-zinc-800/80">
+                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Usuario Instagram</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Nombre</th>
+                                    <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Chat</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Estado</th>
+                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Última Interx.</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-zinc-800">
+                            <tbody className="divide-y divide-zinc-900">
                                 {filtered.map((lead) => {
-                                    const assignee = agencyUsers.find((u) => u.id === lead.assigned_to)
-                                    const lastActivity = lead.contacted_at || lead.agenda_at || lead.call_at || lead.created_at
+                                    const lastActivity = lead.updated_at || lead.contacted_at || lead.agenda_at || lead.call_at || lead.created_at
                                     const stageCfg = STAGE_BADGE[lead.stage]
 
                                     return (
-                                        <tr key={lead.id} className="hover:bg-zinc-800/50">
-                                            <td className="px-4 py-3">
-                                                <p className="text-sm font-medium text-zinc-100">
-                                                    {lead.full_name || lead.ig_username || '—'}
-                                                </p>
-                                                {lead.ig_username && lead.full_name && (
-                                                    <p className="text-xs text-zinc-500">@{lead.ig_username}</p>
+                                        <tr key={lead.id} className="hover:bg-zinc-900/60 transition-colors">
+                                            <td className="px-4 py-3.5">
+                                                <span className="text-sm font-semibold text-zinc-100">
+                                                    {lead.ig_username || '—'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3.5 text-sm text-zinc-400">
+                                                {lead.full_name || '—'}
+                                            </td>
+                                            <td className="px-4 py-3.5 text-center">
+                                                {lead.ig_username ? (
+                                                    <a
+                                                        href={`https://ig.me/m/${lead.ig_username}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-flex text-zinc-500 hover:text-zinc-200 transition-colors"
+                                                        title="Abrir DM en Instagram"
+                                                    >
+                                                        <ExternalLink className="h-4 w-4" />
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-zinc-700">—</span>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-4 py-3.5">
                                                 <Badge variant={stageCfg.variant}>{stageCfg.label}</Badge>
                                             </td>
-                                            <td className="px-4 py-3 text-sm text-zinc-400">
-                                                {assignee?.full_name || '—'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-zinc-500">
-                                                {lastActivity ? formatDate(lastActivity) : '—'}
-                                            </td>
-                                            <td className="px-4 py-3 text-sm text-zinc-400">
-                                                {lead.phone || '—'}
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-sm font-mono">
-                                                {lead.close_value ? (
-                                                    <span className="text-emerald-400">${lead.close_value.toLocaleString()}</span>
-                                                ) : (
-                                                    <span className="text-zinc-600">—</span>
-                                                )}
+                                            <td className="px-4 py-3.5 text-sm text-zinc-500">
+                                                {lastActivity ? formatDateCompact(lastActivity) : '—'}
                                             </td>
                                         </tr>
                                     )
