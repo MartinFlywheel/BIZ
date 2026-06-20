@@ -77,3 +77,15 @@ export async function updateCallAction(id: string, formData: FormData) {
   if (error) throw error
   revalidatePath('/calls')
 }
+
+export async function updateCallFathomUrl(callId: string, fathomUrl: string) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('sales_calls')
+    .update({ fathom_call_url: fathomUrl || null })
+    .eq('id', callId)
+
+  if (error) throw error
+  revalidatePath('/calls')
+}

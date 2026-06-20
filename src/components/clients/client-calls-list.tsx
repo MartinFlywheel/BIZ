@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
-import { createCallAction } from '@/lib/actions/calls'
+import { createCallAction, updateCallFathomUrl } from '@/lib/actions/calls'
 import { formatDate } from '@/lib/utils'
 import { ExternalLink, Clock, Mic, Plus, X, Phone } from 'lucide-react'
 import type { SalesCall, Lead } from '@/lib/types'
@@ -151,17 +151,42 @@ export function ClientCallsList({ calls, leads }: Props) {
                                             <span className="text-zinc-600 text-sm">—</span>
                                         )}
                                     </div>
-                                    <div className="flex justify-end">
-                                        {call.fathom_call_url ? (
+                                    <div className="flex items-center gap-2 justify-end">
+                                        {call.next_steps?.startsWith('Google Meet:') && (
+                                            <a
+                                                href={call.next_steps.replace('Google Meet: ', '')}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-blue-500 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                title="Abrir Google Meet"
+                                            >
+                                                <Phone className="h-3.5 w-3.5" />
+                                            </a>
+                                        )}
+                                        {call.fathom_call_url && !call.fathom_call_url.startsWith('https://meet.') ? (
                                             <a
                                                 href={call.fathom_call_url}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="text-zinc-600 hover:text-zinc-300 transition-colors opacity-0 group-hover:opacity-100"
-                                                title="Ver grabación en Fathom"
+                                                title="Ver en Fathom"
                                             >
                                                 <ExternalLink className="h-3.5 w-3.5" />
                                             </a>
+                                        ) : !call.fathom_call_url || call.fathom_call_url.startsWith('https://meet.') ? (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    const url = prompt('Pegá el link de Fathom:')
+                                                    if (url) {
+                                                        updateCallFathomUrl(call.id, url).then(() => router.refresh())
+                                                    }
+                                                }}
+                                                className="text-amber-600 hover:text-amber-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                title="Agregar link de Fathom"
+                                            >
+                                                <Mic className="h-3.5 w-3.5" />
+                                            </button>
                                         ) : null}
                                     </div>
                                 </div>
