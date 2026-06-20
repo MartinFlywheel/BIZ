@@ -25,8 +25,9 @@ export async function createContentAction(formData: FormData) {
   const clientId = formData.get('client_id') as string
   const igPermalink = (formData.get('ig_permalink') as string) || null
 
-  let thumbnailUrl: string | null = null
-  if (igPermalink) {
+  const manualThumbnail = (formData.get('ig_thumbnail_url') as string) || null
+  let thumbnailUrl: string | null = manualThumbnail
+  if (!thumbnailUrl && igPermalink) {
     thumbnailUrl = await extractIgThumbnail(igPermalink)
   }
 

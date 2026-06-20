@@ -92,6 +92,20 @@ export function ContentPieceForm({ clientId, onClose }: Props) {
                     placeholder="https://www.instagram.com/reel/..."
                 />
 
+                {/* Thumbnail manual */}
+                <div className="space-y-1.5">
+                    <Input
+                        id="ig_thumbnail_url"
+                        name="ig_thumbnail_url"
+                        label="Portada / Thumbnail (URL)"
+                        type="url"
+                        placeholder="https://... o pegar link de imagen"
+                    />
+                    <p className="text-[11px] text-zinc-600 leading-snug">
+                        Tip: abrí el Reel en el navegador, click derecho en la imagen → &quot;Copiar dirección de imagen&quot;
+                    </p>
+                </div>
+
                 {/* Published at */}
                 <div className="space-y-1.5">
                     <label htmlFor="published_at" className="block text-sm font-medium text-zinc-400">
