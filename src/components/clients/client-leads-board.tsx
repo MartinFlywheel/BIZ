@@ -1,9 +1,17 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { formatDate, formatDateCompact } from '@/lib/utils'
-import { Search, Filter, User, Calendar, Phone, ExternalLink } from 'lucide-react'
+import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2 } from 'lucide-react'
+import {
+    updateLeadStageAction,
+    updateLeadAvatarAction,
+    addLeadEventAction,
+    removeLeadEventAction,
+} from '@/lib/actions/leads'
+import { LEAD_STAGES, LEAD_AVATARS, LEAD_EVENTS } from '@/lib/types'
 import type { Lead, LeadStage } from '@/lib/types'
 
 interface AgencyUser {
@@ -47,7 +55,148 @@ const STAGE_BADGE: Record<string, { label: string; variant: 'default' | 'success
     closed_lost: { label: 'Perdido', variant: 'default' },
 }
 
-// ── Lead Card ─────────────────────────────────────────────────────────────────
+// Stage dot color for the inline select
+const STAGE_DOT: Record<string, string> = {
+    nuevo_contacto: 'bg-zinc-400',
+    seguimiento: 'bg-blue-400',
+    conversando: 'bg-violet-400',
+    agendado: 'bg-amber-400',
+    no_calificado: 'bg-red-500',
+    vsl_enviado: 'bg-cyan-400',
+    cliente: 'bg-emerald-400',
+}
+
+// ── Inline Stage Dropdown ─────────────────────────────────────────────────────
+
+function StageDropdown({ lead }: { lead: Lead }) {
+    const router = useRouter()
+    const [isPending, startTransition] = useTransition()
+    const [optimisticStage, setOptimisticStage] = useState<LeadStage>(lead.stage)
+
+    const stageCfg = STAGE_BADGE[optimisticStage] ?? STAGE_BADGE.nuevo_contacto
+    const dot = STAGE_DOT[optimisticStage] ?? 'bg-zinc-400'
+
+    function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+        const newStage = e.target.value as LeadStage
+        setOptimisticStage(newStage)
+        startTransition(async () => {
+            await updateLeadStageAction(lead.id, newStage)
+            router.refresh()
+        })
+    }
+
+    return (
+        <div className="relative inline-flex items-center gap-1.5">
+            {isPending && (
+                <Loader2 className="absolute -left-5 h-3 w-3 text-zinc-500 animate-spin" />
+            )}
+            <span className={`h-2 w-2 rounded-full flex-shrink-0 ${dot}`} />
+            <select
+                value={optimisticStage}
+                onChange={handleChange}
+                disabled={isPending}
+                className={`appearance-none bg-transparent text-xs font-medium pr-4 focus:outline-none cursor-pointer transition-opacity ${isPending ? 'opacity-50' : ''} ${stageCfg.variant === 'success' ? 'text-emerald-400' : stageCfg.variant === 'warning' ? 'text-amber-400' : stageCfg.variant === 'danger' ? 'text-red-400' : stageCfg.variant === 'info' ? 'text-blue-400' : 'text-zinc-400'}`}
+                style={{ WebkitAppearance: 'none' }}
+            >
+                {LEAD_STAGES.map((s) => (
+                    <option key={s.id} value={s.id} className="bg-zinc-900 text-zinc-100">
+                        {s.label}
+                    </option>
+                ))}
+            </select>
+            {/* Custom chevron */}
+            <svg className="absolute right-0 h-3 w-3 text-zinc-600 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+        </div>
+    )
+}
+
+// ── Inline Avatar Dropdown ────────────────────────────────────────────────────
+
+function AvatarDropdown({ lead }: { lead: Lead }) {
+    const router = useRouter()
+    const [isPending, startTransition] = useTransition()
+    const [optimistic, setOptimistic] = useState<string>(lead.lead_avatar ?? '')
+
+    function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+        const val = e.target.value
+        setOptimistic(val)
+        startTransition(async () => {
+            await updateLeadAvatarAction(lead.id, val || null)
+            router.refresh()
+        })
+    }
+
+    return (
+        <div className="relative inline-flex items-center">
+            {isPending && (
+                <Loader2 className="absolute -left-5 h-3 w-3 text-zinc-500 animate-spin" />
+            )}
+            <select
+                value={optimistic}
+                onChange={handleChange}
+                disabled={isPending}
+                className={`appearance-none bg-transparent text-xs text-zinc-400 pr-4 focus:outline-none cursor-pointer transition-opacity ${isPending ? 'opacity-50' : ''}`}
+                style={{ WebkitAppearance: 'none' }}
+            >
+                <option value="" className="bg-zinc-900 text-zinc-500">— Avatar —</option>
+                {LEAD_AVATARS.map((a) => (
+                    <option key={a} value={a} className="bg-zinc-900 text-zinc-100">{a}</option>
+                ))}
+            </select>
+            <svg className="absolute right-0 h-3 w-3 text-zinc-600 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+        </div>
+    )
+}
+
+// ── Inline Event Tags ─────────────────────────────────────────────────────────
+
+function EventTags({ lead }: { lead: Lead }) {
+    const router = useRouter()
+    const [isPending, startTransition] = useTransition()
+    const [optimisticEvents, setOptimisticEvents] = useState<string[]>(lead.events ?? [])
+
+    function toggleEvent(event: string) {
+        const has = optimisticEvents.includes(event)
+        const next = has ? optimisticEvents.filter((e) => e !== event) : [...optimisticEvents, event]
+        setOptimisticEvents(next)
+        startTransition(async () => {
+            if (has) {
+                await removeLeadEventAction(lead.id, event)
+            } else {
+                await addLeadEventAction(lead.id, event)
+            }
+            router.refresh()
+        })
+    }
+
+    return (
+        <div className={`flex flex-wrap gap-1 transition-opacity ${isPending ? 'opacity-60' : ''}`}>
+            {LEAD_EVENTS.map((event) => {
+                const active = optimisticEvents.includes(event)
+                return (
+                    <button
+                        key={event}
+                        onClick={() => toggleEvent(event)}
+                        disabled={isPending}
+                        title={event}
+                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium border transition-all ${active
+                            ? 'bg-violet-950/60 border-violet-800/60 text-violet-300'
+                            : 'bg-zinc-900 border-zinc-800 text-zinc-600 hover:border-zinc-700 hover:text-zinc-400'
+                            }`}
+                    >
+                        {event}
+                    </button>
+                )
+            })}
+        </div>
+    )
+}
+
+// ── Lead Card (Kanban) ────────────────────────────────────────────────────────
 
 function LeadCard({ lead, agencyUsers }: { lead: Lead; agencyUsers: AgencyUser[] }) {
     const assignee = agencyUsers.find((u) => u.id === lead.assigned_to)
@@ -108,7 +257,7 @@ function LeadCard({ lead, agencyUsers }: { lead: Lead; agencyUsers: AgencyUser[]
 export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
     const [search, setSearch] = useState('')
     const [stageFilter, setStageFilter] = useState<LeadStage | 'all'>('all')
-    const [view, setView] = useState<'kanban' | 'table'>('kanban')
+    const [view, setView] = useState<'kanban' | 'table'>('table')
 
     // Filter leads
     const filtered = useMemo(() => {
@@ -147,8 +296,8 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
             <div className="grid grid-cols-4 gap-3">
                 {[
                     { label: 'Total Leads', value: leads.length, color: 'text-zinc-100' },
-                    { label: 'Agendas', value: leads.filter((l) => l.stage === 'agenda_set').length, color: 'text-violet-400' },
-                    { label: 'Cierres', value: leads.filter((l) => l.stage === 'closed_won').length, color: 'text-emerald-400' },
+                    { label: 'Agendas', value: leads.filter((l) => l.stage === 'agendado' || l.stage === 'agenda_set').length, color: 'text-violet-400' },
+                    { label: 'Cierres', value: leads.filter((l) => l.stage === 'cliente' || l.stage === 'closed_won').length, color: 'text-emerald-400' },
                     { label: 'Revenue', value: totalRevenue > 0 ? `$${totalRevenue.toLocaleString()}` : '—', color: 'text-emerald-400' },
                 ].map((stat) => (
                     <div key={stat.label} className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-center">
@@ -243,57 +392,79 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                     {filtered.length === 0 ? (
                         <div className="py-12 text-center text-zinc-500 text-sm">Sin leads que coincidan</div>
                     ) : (
-                        <table className="w-full">
-                            <thead>
-                                <tr className="border-b border-zinc-800/80">
-                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Usuario Instagram</th>
-                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Nombre</th>
-                                    <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Chat</th>
-                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Estado</th>
-                                    <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Última Interx.</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-900">
-                                {filtered.map((lead) => {
-                                    const lastActivity = lead.updated_at || lead.contacted_at || lead.agenda_at || lead.call_at || lead.created_at
-                                    const stageCfg = STAGE_BADGE[lead.stage]
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[900px]">
+                                <thead>
+                                    <tr className="border-b border-zinc-800/80">
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Usuario IG</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Nombre</th>
+                                        <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Chat</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Estado</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Avatar</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Eventos</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Última Interx.</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-900">
+                                    {filtered.map((lead) => {
+                                        const lastActivity = lead.updated_at || lead.contacted_at || lead.agenda_at || lead.call_at || lead.created_at
 
-                                    return (
-                                        <tr key={lead.id} className="hover:bg-zinc-900/60 transition-colors">
-                                            <td className="px-4 py-3.5">
-                                                <span className="text-sm font-semibold text-zinc-100">
-                                                    {lead.ig_username || '—'}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3.5 text-sm text-zinc-400">
-                                                {lead.full_name || '—'}
-                                            </td>
-                                            <td className="px-4 py-3.5 text-center">
-                                                {lead.ig_username ? (
-                                                    <a
-                                                        href={`https://ig.me/m/${lead.ig_username}`}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex text-zinc-500 hover:text-zinc-200 transition-colors"
-                                                        title="Abrir DM en Instagram"
-                                                    >
-                                                        <ExternalLink className="h-4 w-4" />
-                                                    </a>
-                                                ) : (
-                                                    <span className="text-zinc-700">—</span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3.5">
-                                                <Badge variant={stageCfg.variant}>{stageCfg.label}</Badge>
-                                            </td>
-                                            <td className="px-4 py-3.5 text-sm text-zinc-500">
-                                                {lastActivity ? formatDateCompact(lastActivity) : '—'}
-                                            </td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
+                                        return (
+                                            <tr key={lead.id} className="hover:bg-zinc-900/60 transition-colors group">
+                                                {/* IG Username */}
+                                                <td className="px-4 py-3">
+                                                    <span className="text-sm font-semibold text-zinc-100">
+                                                        {lead.ig_username ? `@${lead.ig_username}` : '—'}
+                                                    </span>
+                                                </td>
+
+                                                {/* Full name */}
+                                                <td className="px-4 py-3 text-sm text-zinc-400 max-w-[140px] truncate">
+                                                    {lead.full_name || '—'}
+                                                </td>
+
+                                                {/* DM link */}
+                                                <td className="px-4 py-3 text-center">
+                                                    {lead.ig_username ? (
+                                                        <a
+                                                            href={`https://ig.me/m/${lead.ig_username}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex text-zinc-600 hover:text-zinc-200 transition-colors"
+                                                            title="Abrir DM en Instagram"
+                                                        >
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                        </a>
+                                                    ) : (
+                                                        <span className="text-zinc-700">—</span>
+                                                    )}
+                                                </td>
+
+                                                {/* Stage dropdown */}
+                                                <td className="px-4 py-3">
+                                                    <StageDropdown lead={lead} />
+                                                </td>
+
+                                                {/* Avatar dropdown */}
+                                                <td className="px-4 py-3">
+                                                    <AvatarDropdown lead={lead} />
+                                                </td>
+
+                                                {/* Event tags */}
+                                                <td className="px-4 py-3 max-w-[320px]">
+                                                    <EventTags lead={lead} />
+                                                </td>
+
+                                                {/* Last activity */}
+                                                <td className="px-4 py-3 text-xs text-zinc-500 whitespace-nowrap">
+                                                    {lastActivity ? formatDateCompact(lastActivity) : '—'}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </div>
             )}
