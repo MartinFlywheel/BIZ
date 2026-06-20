@@ -92,41 +92,66 @@ export async function POST(request: Request) {
       return NextResponse.json({ received: true, action: 'cancelled' })
     }
 
-    // ── Find matching lead ──
-    let leadId: string | null = null
+    // ── Identify client by Calendly organization URI ──
     let clientId: string | null = null
 
+    const { data: clientsWithCalendly } = await supabase
+      .from('clients')
+      .select('id, calendly_org_uri')
+      .not('calendly_org_uri', 'is', null)
+
+    if (clientsWithCalendly && clientsWithCalendly.length > 0) {
+      const eventUri = calendlyEventUri || ''
+      for (const c of clientsWithCalendly) {
+        if (c.calendly_org_uri && eventUri.includes(c.calendly_org_uri.split('/organizations/')[1] || '___none___')) {
+          clientId = c.id
+          break
+        }
+      }
+      if (!clientId) {
+        clientId = clientsWithCalendly[0].id
+      }
+    }
+
+    // ── Find matching lead ──
+    let leadId: string | null = null
+
     if (inviteeEmail) {
-      const { data: leadByEmail } = await supabase
+      let query = supabase
         .from('leads')
         .select('id, client_id')
         .ilike('email', inviteeEmail)
         .limit(1)
-        .maybeSingle()
+
+      if (clientId) query = query.eq('client_id', clientId)
+
+      const { data: leadByEmail } = await query.maybeSingle()
 
       if (leadByEmail) {
         leadId = leadByEmail.id
-        clientId = leadByEmail.client_id
+        if (!clientId) clientId = leadByEmail.client_id
       }
     }
 
     if (!leadId && inviteeName) {
-      const { data: leadByName } = await supabase
+      let query = supabase
         .from('leads')
         .select('id, client_id')
         .ilike('full_name', `%${inviteeName}%`)
         .limit(1)
-        .maybeSingle()
+
+      if (clientId) query = query.eq('client_id', clientId)
+
+      const { data: leadByName } = await query.maybeSingle()
 
       if (leadByName) {
         leadId = leadByName.id
-        clientId = leadByName.client_id
+        if (!clientId) clientId = leadByName.client_id
       }
     }
 
     if (!leadId) {
-      // No matching lead — log for manual review but still create the call
-      console.log(`[Calendly] No lead match for: ${inviteeName} (${inviteeEmail})`)
+      console.log(`[Calendly] No lead match for: ${inviteeName} (${inviteeEmail}). Client: ${clientId || 'unknown'}`)
     }
 
     // ── Update lead stage to agenda_set ──

@@ -63,6 +63,9 @@ export interface Client {
   industry: string | null
   status: ClientStatus
   monthly_fee: number | null
+  calendly_token: string | null
+  calendly_org_uri: string | null
+  calendly_webhook_id: string | null
   onboarded_at: string | null
   created_at: string
   updated_at: string

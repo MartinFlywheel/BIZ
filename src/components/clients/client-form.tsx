@@ -106,6 +106,18 @@ export function ClientForm({ client, onClose }: ClientFormProps) {
             ID numérico de la cuenta de IG Business. Se usa para sincronizar Reels automáticamente.
           </p>
         </div>
+        <div className="space-y-1.5">
+          <Input
+            id="calendly_token"
+            name="calendly_token"
+            label="Calendly Personal Access Token"
+            placeholder="eyJraWQiOi..."
+            defaultValue={client?.calendly_token || ''}
+          />
+          <p className="text-[11px] text-zinc-600 leading-snug">
+            Al guardar, el webhook de Calendly se registra automáticamente para este cliente.
+          </p>
+        </div>
         <Input
           id="monthly_fee"
           name="monthly_fee"
