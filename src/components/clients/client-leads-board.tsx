@@ -3,16 +3,22 @@
 import { useState, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
+import { Modal } from '@/components/ui/modal'
 import { formatDate, formatDateCompact } from '@/lib/utils'
-import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2 } from 'lucide-react'
+import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2, Plus, X, TrendingUp } from 'lucide-react'
 import {
     updateLeadStageAction,
     updateLeadAvatarAction,
     addLeadEventAction,
     removeLeadEventAction,
+    createLeadAction,
 } from '@/lib/actions/leads'
 import { LEAD_STAGES, LEAD_AVATARS, LEAD_EVENTS } from '@/lib/types'
-import type { Lead, LeadStage } from '@/lib/types'
+import type { Lead, LeadStage, ContentPiece } from '@/lib/types'
+import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 
 interface AgencyUser {
     id: string
@@ -24,6 +30,9 @@ interface AgencyUser {
 interface Props {
     leads: Lead[]
     agencyUsers: AgencyUser[]
+    contentPieces: ContentPiece[]
+    clientId: string
+    leadFunnel: ClientFunnelAggregate
 }
 
 // ── Stage config ──────────────────────────────────────────────────────────────
@@ -252,12 +261,217 @@ function LeadCard({ lead, agencyUsers }: { lead: Lead; agencyUsers: AgencyUser[]
     )
 }
 
+// ── Lead Funnel Banner ────────────────────────────────────────────────────────
+
+function LeadFunnelBanner({ funnel }: { funnel: ClientFunnelAggregate }) {
+    // Only show stages with count > 0, or the first few key stages
+    const keyStages = funnel.by_stage.filter((s) => s.count > 0)
+
+    if (keyStages.length === 0) {
+        return null
+    }
+
+    return (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+            <div className="flex items-center gap-2 mb-3">
+                <TrendingUp className="h-4 w-4 text-zinc-400" />
+                <h3 className="text-sm font-semibold text-zinc-300">Funnel de Leads</h3>
+                <span className="ml-auto text-xs text-zinc-500 font-mono">{funnel.total_leads} leads totales</span>
+                {funnel.total_revenue > 0 && (
+                    <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 rounded-md px-2 py-0.5">
+                        ${funnel.total_revenue.toLocaleString()} revenue
+                    </span>
+                )}
+            </div>
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 flex-wrap gap-y-2">
+                {keyStages.map((stage, i) => (
+                    <div key={stage.id} className="flex items-center gap-1">
+                        <div className="flex flex-col items-center gap-0.5 min-w-[72px]">
+                            <span className="font-mono text-lg font-semibold text-zinc-100">{stage.count}</span>
+                            <span className="text-[10px] text-zinc-500 text-center leading-tight">{stage.label}</span>
+                        </div>
+                        {i < keyStages.length - 1 && (
+                            <span className="text-zinc-700 text-sm select-none">→</span>
+                        )}
+                    </div>
+                ))}
+            </div>
+            {funnel.total_cierres > 0 && (
+                <div className="mt-3 pt-3 border-t border-zinc-800 flex items-center gap-4 text-xs text-zinc-500">
+                    <span>
+                        <span className="text-emerald-400 font-mono font-semibold">{funnel.total_cierres}</span> cierres
+                    </span>
+                    {funnel.total_revenue > 0 && (
+                        <span>
+                            <span className="text-emerald-400 font-mono font-semibold">${funnel.total_revenue.toLocaleString()}</span> revenue total
+                        </span>
+                    )}
+                </div>
+            )}
+        </div>
+    )
+}
+
+// ── Nuevo Lead Form ───────────────────────────────────────────────────────────
+
+function NuevoLeadForm({
+    clientId,
+    agencyUsers,
+    contentPieces,
+    onClose,
+}: {
+    clientId: string
+    agencyUsers: AgencyUser[]
+    contentPieces: ContentPiece[]
+    onClose: () => void
+}) {
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+    const router = useRouter()
+
+    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+        e.preventDefault()
+        setLoading(true)
+        setError(null)
+        try {
+            const formData = new FormData(e.currentTarget)
+            formData.set('client_id', clientId)
+            await createLeadAction(formData)
+            router.refresh()
+            onClose()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Error al crear el lead')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const stageOptions = LEAD_STAGES.map((s) => ({ value: s.id, label: s.label }))
+    const avatarOptions = LEAD_AVATARS.map((a) => ({ value: a, label: a }))
+    const userOptions = agencyUsers.map((u) => ({ value: u.id, label: u.full_name }))
+    const contentOptions = contentPieces.map((cp) => ({
+        value: cp.id,
+        label: cp.keyword_trigger
+            ? `${cp.keyword_trigger}${cp.caption ? ` — ${cp.caption.slice(0, 40)}` : ''}`
+            : cp.caption?.slice(0, 60) || cp.content_type,
+    }))
+
+    return (
+        <Modal onClose={onClose} size="md">
+            <div className="flex items-center justify-between mb-6">
+                <div>
+                    <h2 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
+                        <Plus className="h-4 w-4" /> Nuevo Lead
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">Registrá un nuevo lead manualmente</p>
+                </div>
+                <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200">
+                    <X className="h-5 w-5" />
+                </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                    <Input
+                        id="ig_username"
+                        name="ig_username"
+                        label="Usuario IG"
+                        placeholder="@usuario"
+                    />
+                    <Input
+                        id="full_name"
+                        name="full_name"
+                        label="Nombre Completo"
+                        placeholder="Juan Pérez"
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                    <Input
+                        id="phone"
+                        name="phone"
+                        label="Teléfono"
+                        placeholder="+54 9 11 1234-5678"
+                        type="tel"
+                    />
+                    <Input
+                        id="email"
+                        name="email"
+                        label="Email"
+                        placeholder="juan@email.com"
+                        type="email"
+                    />
+                </div>
+
+                <Select
+                    id="stage"
+                    name="stage"
+                    label="Estado *"
+                    options={stageOptions}
+                    defaultValue="nuevo_contacto"
+                />
+
+                <Select
+                    id="lead_avatar"
+                    name="lead_avatar"
+                    label="Avatar"
+                    placeholder="— Sin avatar —"
+                    options={avatarOptions}
+                />
+
+                {agencyUsers.length > 0 && (
+                    <Select
+                        id="assigned_to"
+                        name="assigned_to"
+                        label="Asignado a"
+                        placeholder="— Sin asignar —"
+                        options={userOptions}
+                    />
+                )}
+
+                {contentPieces.length > 0 && (
+                    <Select
+                        id="content_id"
+                        name="content_id"
+                        label="Fuente (Pieza de Contenido)"
+                        placeholder="— Sin fuente —"
+                        options={contentOptions}
+                    />
+                )}
+
+                {error && (
+                    <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
+                        {error}
+                    </p>
+                )}
+
+                <div className="flex gap-3 pt-1">
+                    <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+                        Cancelar
+                    </Button>
+                    <Button type="submit" disabled={loading} className="flex-1">
+                        {loading ? 'Creando...' : 'Crear Lead'}
+                    </Button>
+                </div>
+            </form>
+        </Modal>
+    )
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
+export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, leadFunnel }: Props) {
     const [search, setSearch] = useState('')
     const [stageFilter, setStageFilter] = useState<LeadStage | 'all'>('all')
     const [view, setView] = useState<'kanban' | 'table'>('table')
+    const [showNewLeadForm, setShowNewLeadForm] = useState(false)
+
+    // Build content map for Fuente lookup
+    const contentMap = useMemo(() => {
+        const map = new Map<string, ContentPiece>()
+        for (const cp of contentPieces) map.set(cp.id, cp)
+        return map
+    }, [contentPieces])
 
     // Filter leads
     const filtered = useMemo(() => {
@@ -292,6 +506,9 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
 
     return (
         <div className="space-y-4">
+            {/* ── Lead Funnel Banner ── */}
+            <LeadFunnelBanner funnel={leadFunnel} />
+
             {/* ── Header Stats ── */}
             <div className="grid grid-cols-4 gap-3">
                 {[
@@ -351,6 +568,12 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                         Tabla
                     </button>
                 </div>
+
+                {/* Nuevo Lead button */}
+                <Button size="sm" onClick={() => setShowNewLeadForm(true)}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Nuevo Lead
+                </Button>
             </div>
 
             {/* ── Kanban View ── */}
@@ -393,7 +616,7 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                         <div className="py-12 text-center text-zinc-500 text-sm">Sin leads que coincidan</div>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[900px]">
+                            <table className="w-full min-w-[1000px]">
                                 <thead>
                                     <tr className="border-b border-zinc-800/80">
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Usuario IG</th>
@@ -401,6 +624,7 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                                         <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Chat</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Estado</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Avatar</th>
+                                        <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Fuente</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Eventos</th>
                                         <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Última Interx.</th>
                                     </tr>
@@ -408,6 +632,8 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                                 <tbody className="divide-y divide-zinc-900">
                                     {filtered.map((lead) => {
                                         const lastActivity = lead.updated_at || lead.contacted_at || lead.agenda_at || lead.call_at || lead.created_at
+                                        const contentPiece = lead.content_id ? contentMap.get(lead.content_id) : null
+                                        const fuente = contentPiece?.keyword_trigger || null
 
                                         return (
                                             <tr key={lead.id} className="hover:bg-zinc-900/60 transition-colors group">
@@ -450,6 +676,17 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                                                     <AvatarDropdown lead={lead} />
                                                 </td>
 
+                                                {/* Fuente */}
+                                                <td className="px-4 py-3">
+                                                    {fuente ? (
+                                                        <span className="font-mono text-[11px] text-cyan-400 bg-cyan-950/30 border border-cyan-900/40 rounded px-1.5 py-0.5">
+                                                            {fuente}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-zinc-700 text-xs">—</span>
+                                                    )}
+                                                </td>
+
                                                 {/* Event tags */}
                                                 <td className="px-4 py-3 max-w-[320px]">
                                                     <EventTags lead={lead} />
@@ -467,6 +704,16 @@ export function ClientLeadsBoard({ leads, agencyUsers }: Props) {
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* ── Nuevo Lead Modal ── */}
+            {showNewLeadForm && (
+                <NuevoLeadForm
+                    clientId={clientId}
+                    agencyUsers={agencyUsers}
+                    contentPieces={contentPieces}
+                    onClose={() => setShowNewLeadForm(false)}
+                />
             )}
         </div>
     )

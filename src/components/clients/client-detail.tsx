@@ -17,6 +17,7 @@ import { deleteCampaignAction } from '@/lib/actions/campaigns'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { Pencil, Trash2, Plus } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall } from '@/lib/types'
+import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 
 interface AgencyUser {
   id: string
@@ -34,6 +35,7 @@ interface Props {
   calls: SalesCall[]
   agencyUsers: AgencyUser[]
   interactions: Interaction[]
+  leadFunnel: ClientFunnelAggregate
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -44,7 +46,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions }: Props) {
+export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel }: Props) {
   const [editing, setEditing] = useState(false)
   const [showCampaignForm, setShowCampaignForm] = useState(false)
   const router = useRouter()
@@ -146,6 +148,9 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
               <ClientLeadsBoard
                 leads={leads}
                 agencyUsers={agencyUsers}
+                contentPieces={contentPieces}
+                clientId={client.id}
+                leadFunnel={leadFunnel}
               />
             )}
 
