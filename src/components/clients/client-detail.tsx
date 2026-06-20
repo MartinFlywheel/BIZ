@@ -9,6 +9,9 @@ import { Tabs } from '@/components/ui/tabs'
 import { ClientForm } from './client-form'
 import { CampaignForm } from '@/components/campaigns/campaign-form'
 import { ContentMetricsGrid } from '@/components/content/content-metrics-grid'
+import { type ContentMetric } from '@/components/content/content-funnel-form'
+import { ClientLeadsBoard } from './client-leads-board'
+import { ClientCallsList } from './client-calls-list'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { deleteCampaignAction } from '@/lib/actions/campaigns'
 import { formatDate, formatCurrency } from '@/lib/utils'
@@ -20,22 +23,6 @@ interface AgencyUser {
   full_name: string
   email: string
   role: string
-}
-
-interface ContentMetric {
-  id: string
-  content_id: string
-  client_id: string
-  chats_nuevos: number
-  conversaciones: number
-  agendas: number
-  shows: number
-  cierres: number
-  ticket: number | null
-  aov: number | null
-  cash_collected: number | null
-  manychat_label: string | null
-  notas: string | null
 }
 
 interface Props {
@@ -156,15 +143,17 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
             )}
 
             {activeTab === 'crm_setters' && (
-              <div className="p-4 text-zinc-400">
-                Placeholder para CRM Setters
-              </div>
+              <ClientLeadsBoard
+                leads={leads}
+                agencyUsers={agencyUsers}
+              />
             )}
 
             {activeTab === 'calls' && (
-              <div className="p-4 text-zinc-400">
-                Placeholder para Llamadas
-              </div>
+              <ClientCallsList
+                calls={calls}
+                leads={leads}
+              />
             )}
           </>
         )}

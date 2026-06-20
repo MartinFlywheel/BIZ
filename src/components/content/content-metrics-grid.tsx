@@ -2,27 +2,10 @@
 
 import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { ContentFunnelForm } from './content-funnel-form'
+import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
-
-interface ContentMetric {
-    id: string
-    content_id: string
-    client_id: string
-    chats_nuevos: number
-    conversaciones: number
-    agendas: number
-    shows: number
-    cierres: number
-    ticket: number | null
-    aov: number | null
-    cash_collected: number | null
-    manychat_label: string | null
-    notas: string | null
-}
 
 interface Props {
     contentPieces: ContentPiece[]
@@ -42,7 +25,7 @@ function FunnelStep({
     highlight?: boolean
 }) {
     return (
-        <div className="flex flex-col items-center gap-0.5">
+        <div className="flex flex-col items-center gap-0.5 min-w-[56px]">
             <span className={`font-mono text-xl font-semibold ${highlight ? 'text-emerald-400' : 'text-zinc-100'}`}>
                 {formatNumber(value)}
             </span>
@@ -56,7 +39,7 @@ function FunnelStep({
 
 function FunnelArrow() {
     return (
-        <div className="flex flex-col items-center justify-center text-zinc-700 text-lg select-none">
+        <div className="flex flex-col items-center justify-center text-zinc-700 text-lg select-none px-1">
             →
         </div>
     )
@@ -65,6 +48,13 @@ function FunnelArrow() {
 function pct(num: number, den: number): string {
     if (!den) return '—'
     return `${((num / den) * 100).toFixed(1)}%`
+}
+
+const contentTypeLabel: Record<string, string> = {
+    reel: 'Reel',
+    story: 'Story',
+    post: 'Post',
+    live: 'Live',
 }
 
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: Props) {
@@ -79,7 +69,6 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
     // Aggregate funnel totals across all pieces
     const totals = contentMetrics.reduce(
         (acc, m) => ({
-            views: acc.views + 0, // views come from content_pieces
             chats: acc.chats + (m.chats_nuevos || 0),
             conversaciones: acc.conversaciones + (m.conversaciones || 0),
             agendas: acc.agendas + (m.agendas || 0),
@@ -87,20 +76,13 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
             cierres: acc.cierres + (m.cierres || 0),
             cash: acc.cash + (m.cash_collected || 0),
         }),
-        { views: 0, chats: 0, conversaciones: 0, agendas: 0, shows: 0, cierres: 0, cash: 0 }
+        { chats: 0, conversaciones: 0, agendas: 0, shows: 0, cierres: 0, cash: 0 }
     )
 
     // Sum views from content_pieces
     const totalViews = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
 
-    const selectedMetric = selectedPiece ? metricsMap.get(selectedPiece.id) ?? null : null
-
-    const contentTypeLabel: Record<string, string> = {
-        reel: 'Reel',
-        story: 'Story',
-        post: 'Post',
-        live: 'Live',
-    }
+    const selectedMetric = selectedPiece ? (metricsMap.get(selectedPiece.id) ?? null) : null
 
     return (
         <div className="space-y-6">
@@ -118,7 +100,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                     )}
                 </div>
 
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <div className="flex items-center gap-1 overflow-x-auto pb-1">
                     <FunnelStep label="Views" value={totalViews} />
                     <FunnelArrow />
                     <FunnelStep
@@ -209,7 +191,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                 {/* Card body */}
                                 <div className="p-2.5 space-y-1.5">
                                     <div className="flex items-center justify-between gap-1">
-                                        <Badge className="text-[10px] px-1.5 py-0">{contentTypeLabel[cp.content_type]}</Badge>
+                                        <Badge className="text-[10px] px-1.5 py-0">
+                                            {contentTypeLabel[cp.content_type]}
+                                        </Badge>
                                         <span className="font-mono text-xs text-zinc-300 font-medium">
                                             {formatNumber(cp.views)}
                                         </span>
@@ -226,13 +210,13 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                             <span className="text-[10px] text-emerald-500 font-mono">
                                                 {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
                                             </span>
-                                            {metric.cash_collected && (
-                                                <span className="text-[10px] text-zinc-600">·</span>
-                                            )}
-                                            {metric.cash_collected && (
-                                                <span className="text-[10px] text-emerald-600 font-mono">
-                                                    {formatCurrency(metric.cash_collected)}
-                                                </span>
+                                            {metric.cash_collected != null && (
+                                                <>
+                                                    <span className="text-[10px] text-zinc-600">·</span>
+                                                    <span className="text-[10px] text-emerald-600 font-mono">
+                                                        {formatCurrency(metric.cash_collected)}
+                                                    </span>
+                                                </>
                                             )}
                                         </div>
                                     )}
