@@ -13,7 +13,7 @@ export interface ContentMetric {
     content_id: string
     client_id: string
     chats_nuevos: number
-    conversaciones: number
+    conversaciones_nuevas: number
     agendas: number
     shows: number
     cierres: number
@@ -88,7 +88,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, onClose }: Pro
                             type="number"
                             min="0"
                             placeholder="0"
-                            defaultValue={existingMetric?.conversaciones ?? ''}
+                            defaultValue={existingMetric?.conversaciones_nuevas ?? ''}
                         />
                         <Input
                             id="agendas"

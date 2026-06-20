@@ -165,7 +165,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
     const totals = contentMetrics.reduce(
         (acc, m) => ({
             chats: acc.chats + (m.chats_nuevos || 0),
-            conversaciones: acc.conversaciones + (m.conversaciones || 0),
+            conversaciones: acc.conversaciones + (m.conversaciones_nuevas || 0),
             agendas: acc.agendas + (m.agendas || 0),
             shows: acc.shows + (m.shows || 0),
             cierres: acc.cierres + (m.cierres || 0),
@@ -270,10 +270,20 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                             className="h-full w-full object-cover"
                                         />
                                     ) : (
-                                        <div className="flex h-full w-full items-center justify-center">
-                                            <span className="text-xs text-zinc-600 font-medium uppercase tracking-wider">
+                                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
+                                            {cp.keyword_trigger && (
+                                                <span className="font-mono text-sm font-bold text-zinc-400">
+                                                    {cp.keyword_trigger}
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
                                                 {contentTypeLabel[cp.content_type] || cp.content_type}
                                             </span>
+                                            {cp.caption && !cp.keyword_trigger && (
+                                                <p className="text-xs text-zinc-500 line-clamp-3 leading-tight">
+                                                    {cp.caption}
+                                                </p>
+                                            )}
                                         </div>
                                     )}
 

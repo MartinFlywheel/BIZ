@@ -23,6 +23,12 @@ export async function getContentPieces(clientId?: string) {
 export async function createContentAction(formData: FormData) {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
+  const igPermalink = (formData.get('ig_permalink') as string) || null
+
+  let thumbnailUrl: string | null = null
+  if (igPermalink) {
+    thumbnailUrl = await extractIgThumbnail(igPermalink)
+  }
 
   const { error } = await supabase.from('content_pieces').insert({
     client_id: clientId,
@@ -37,7 +43,8 @@ export async function createContentAction(formData: FormData) {
     shares: parseInt(formData.get('shares') as string) || 0,
     saves: parseInt(formData.get('saves') as string) || 0,
     reach: parseInt(formData.get('reach') as string) || 0,
-    ig_permalink: (formData.get('ig_permalink') as string) || null,
+    ig_permalink: igPermalink,
+    ig_thumbnail_url: thumbnailUrl,
     metrics_source: 'manual',
     metrics_updated_at: new Date().toISOString(),
   })
@@ -45,6 +52,28 @@ export async function createContentAction(formData: FormData) {
   if (error) throw error
   revalidatePath('/content')
   revalidatePath(`/clients/${clientId}`)
+}
+
+async function extractIgThumbnail(permalink: string): Promise<string | null> {
+  try {
+    const res = await fetch(permalink, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+      },
+      redirect: 'follow',
+    })
+
+    if (!res.ok) return null
+
+    const html = await res.text()
+
+    const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+      || html.match(/<meta\s+content="([^"]+)"\s+property="og:image"/i)
+
+    return ogMatch?.[1] || null
+  } catch {
+    return null
+  }
 }
 
 export async function updateContentAction(id: string, formData: FormData) {
@@ -89,7 +118,7 @@ export async function upsertContentMetrics(contentId: string, clientId: string, 
     content_id: contentId,
     client_id: clientId,
     chats_nuevos: parseInt(formData.get('chats_nuevos') as string) || 0,
-    conversaciones: parseInt(formData.get('conversaciones') as string) || 0,
+    conversaciones_nuevas: parseInt(formData.get('conversaciones') as string) || 0,
     agendas: parseInt(formData.get('agendas') as string) || 0,
     shows: parseInt(formData.get('shows') as string) || 0,
     cierres: parseInt(formData.get('cierres') as string) || 0,
