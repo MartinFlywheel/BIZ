@@ -81,3 +81,42 @@ export async function deleteContentAction(id: string) {
   if (error) throw error
   revalidatePath('/content')
 }
+
+export async function upsertContentMetrics(contentId: string, clientId: string, formData: FormData) {
+  const supabase = await createClient()
+
+  const payload = {
+    content_id: contentId,
+    client_id: clientId,
+    chats_nuevos: parseInt(formData.get('chats_nuevos') as string) || 0,
+    conversaciones_nuevas: parseInt(formData.get('conversaciones') as string) || 0,
+    agendas: parseInt(formData.get('agendas') as string) || 0,
+    shows: parseInt(formData.get('shows') as string) || 0,
+    cierres: parseInt(formData.get('cierres') as string) || 0,
+    ticket: formData.get('ticket') ? parseFloat(formData.get('ticket') as string) : null,
+    aov: formData.get('aov') ? parseFloat(formData.get('aov') as string) : null,
+    cash_collected: formData.get('cash_collected') ? parseFloat(formData.get('cash_collected') as string) : null,
+    manychat_label: (formData.get('manychat_label') as string) || null,
+    notes: (formData.get('notas') as string) || null,
+    updated_at: new Date().toISOString(),
+  }
+
+  const { error } = await supabase
+    .from('content_metrics')
+    .upsert(payload, { onConflict: 'content_id' })
+
+  if (error) throw error
+  revalidatePath('/content')
+  revalidatePath(`/clients/${clientId}`)
+}
+
+export async function getContentMetricsByClient(clientId: string) {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('content_metrics')
+    .select('*')
+    .eq('client_id', clientId)
+
+  if (error) throw error
+  return data
+}

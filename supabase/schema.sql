@@ -81,6 +81,32 @@ CREATE TABLE content_pieces (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- MÉTRICAS DE FUNNEL POR PIEZA DE CONTENIDO (Atribución por Contenido)
+CREATE TABLE content_metrics (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content_id UUID REFERENCES content_pieces(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  client_id UUID REFERENCES clients(id) NOT NULL,
+  -- Funnel de conversión atribuido a esta pieza
+  chats_nuevos INTEGER DEFAULT 0,
+  conversaciones INTEGER DEFAULT 0,
+  agendas INTEGER DEFAULT 0,
+  shows INTEGER DEFAULT 0,
+  cierres INTEGER DEFAULT 0,
+  -- Métricas económicas
+  ticket DECIMAL(12,2),
+  aov DECIMAL(12,2),
+  cash_collected DECIMAL(12,2),
+  -- Etiqueta de ManyChat para tracking
+  manychat_label TEXT,
+  -- Notas cualitativas del equipo
+  notas TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_content_metrics_client ON content_metrics(client_id);
+CREATE INDEX idx_content_metrics_content ON content_metrics(content_id);
+
 -- NOTAS CUALITATIVAS DE CONTENIDO
 CREATE TABLE content_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -364,6 +390,11 @@ CREATE POLICY "client_own_data" ON sales_calls FOR SELECT USING (
 -- Team assignments
 CREATE POLICY "agency_full_access" ON team_assignments FOR ALL USING (get_user_type() = 'agency');
 CREATE POLICY "client_own_data" ON team_assignments FOR SELECT USING (get_user_type() = 'client' AND client_id = get_user_client_id());
+
+-- Content metrics
+ALTER TABLE content_metrics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "agency_full_access" ON content_metrics FOR ALL USING (get_user_type() = 'agency');
+CREATE POLICY "client_own_data" ON content_metrics FOR SELECT USING (get_user_type() = 'client' AND client_id = get_user_client_id());
 
 -- Notifications
 CREATE POLICY "own_notifications" ON notifications FOR ALL USING (user_id = auth.uid());

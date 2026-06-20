@@ -1,11 +1,12 @@
 import { getClient } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
-import { getContentPieces } from '@/lib/actions/content'
-import { getClientMetrics } from '@/lib/actions/funnel'
+import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
+import { getLeads } from '@/lib/actions/leads'
+import { getCalls } from '@/lib/actions/calls'
+import { getAgencyUsers } from '@/lib/actions/team'
+import { getInteractions } from '@/lib/actions/interactions'
 import { ClientDetail } from '@/components/clients/client-detail'
 import { notFound } from 'next/navigation'
-import type { ClientMetrics } from '@/lib/types'
-
 
 export default async function ClientDetailPage({
   params,
@@ -14,23 +15,35 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params
 
-  const data = await Promise.all([
-    getClient(id),
-    getCampaigns(id),
-    getContentPieces(id),
-    getClientMetrics(id, 'weekly'),
-  ]).catch(() => null)
+  try {
+    const [client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions] = await Promise.all([
+      getClient(id),
+      getCampaigns(id),
+      getContentPieces(id),
+      getContentMetricsByClient(id),
+      getLeads(id),
+      getCalls(),
+      getAgencyUsers(),
+      getInteractions(id),
+    ])
 
-  if (!data) notFound()
+    // Filter calls by client: only calls whose lead belongs to this client
+    const clientLeadIds = new Set(leads.map((l: { id: string }) => l.id))
+    const clientCalls = calls.filter((c: { lead_id: string }) => clientLeadIds.has(c.lead_id))
 
-  const [client, campaigns, contentPieces, metrics] = data
-
-  return (
-    <ClientDetail
-      client={client}
-      campaigns={campaigns}
-      contentPieces={contentPieces}
-      metrics={(metrics ?? []) as ClientMetrics[]}
-    />
-  )
+    return (
+      <ClientDetail
+        client={client}
+        campaigns={campaigns}
+        contentPieces={contentPieces}
+        contentMetrics={contentMetrics}
+        leads={leads}
+        calls={clientCalls}
+        agencyUsers={agencyUsers}
+        interactions={interactions}
+      />
+    )
+  } catch {
+    notFound()
+  }
 }
