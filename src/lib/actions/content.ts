@@ -74,7 +74,7 @@ async function extractIgThumbnail(permalink: string): Promise<string | null> {
         const data = await res.json()
         if (data.thumbnail_url) return data.thumbnail_url
       }
-    } catch {}
+    } catch { }
   }
 
   // Method 2: Instagram Graph API via system token
@@ -88,7 +88,7 @@ async function extractIgThumbnail(permalink: string): Promise<string | null> {
         const data = await res.json()
         if (data.thumbnail_url) return data.thumbnail_url
       }
-    } catch {}
+    } catch { }
   }
 
   return null
@@ -171,4 +171,96 @@ export async function getContentMetricsByClient(clientId: string) {
 
   if (error) throw error
   return data
+}
+
+export interface QuickAddResult {
+  added: number
+  skipped: number
+  error?: string
+}
+
+export async function quickAddLatestReels(clientId: string, limit = 10): Promise<QuickAddResult> {
+  const supabase = await createClient()
+
+  // Get the integration for this client
+  const { data: integration, error: intError } = await supabase
+    .from('integrations')
+    .select('access_token, status, token_expires_at')
+    .eq('client_id', clientId)
+    .eq('platform', 'instagram')
+    .eq('status', 'connected')
+    .single()
+
+  if (intError || !integration) {
+    return { added: 0, skipped: 0, error: 'No hay integración de Instagram conectada para este cliente.' }
+  }
+
+  if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
+    return { added: 0, skipped: 0, error: 'El token de Instagram ha expirado. Reconecta la integración.' }
+  }
+
+  // Fetch latest media from IG Graph API
+  const mediaRes = await fetch(
+    `https://graph.instagram.com/me/media?fields=id,caption,media_type,permalink,thumbnail_url,timestamp&limit=${limit}&access_token=${integration.access_token}`
+  )
+
+  if (!mediaRes.ok) {
+    return { added: 0, skipped: 0, error: `Error de la API de Meta: ${mediaRes.status}` }
+  }
+
+  const mediaData = await mediaRes.json()
+  const mediaItems: Array<{
+    id: string
+    caption?: string
+    media_type: string
+    permalink?: string
+    thumbnail_url?: string
+    timestamp: string
+  }> = mediaData.data || []
+
+  // Filter only reels (VIDEO type)
+  const reels = mediaItems.filter((m) => m.media_type === 'VIDEO')
+
+  let added = 0
+  let skipped = 0
+
+  for (const media of reels) {
+    // Check if already exists
+    const { data: existing } = await supabase
+      .from('content_pieces')
+      .select('id')
+      .eq('ig_media_id', media.id)
+      .eq('client_id', clientId)
+      .single()
+
+    if (existing) {
+      skipped++
+      continue
+    }
+
+    const { error: insertError } = await supabase.from('content_pieces').insert({
+      client_id: clientId,
+      content_type: 'reel',
+      ig_media_id: media.id,
+      ig_permalink: media.permalink || null,
+      ig_thumbnail_url: media.thumbnail_url || null,
+      caption: media.caption || null,
+      published_at: media.timestamp,
+      views: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      saves: 0,
+      reach: 0,
+      metrics_source: 'manual',
+      metrics_updated_at: new Date().toISOString(),
+    })
+
+    if (!insertError) {
+      added++
+    }
+  }
+
+  revalidatePath(`/clients/${clientId}`)
+  return { added, skipped }
 }

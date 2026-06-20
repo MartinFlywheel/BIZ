@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
-import { deleteContentAction } from '@/lib/actions/content'
+import { deleteContentAction, quickAddLatestReels } from '@/lib/actions/content'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 
 // ── Webhook Integration Banner ────────────────────────────────────────────────
@@ -157,7 +157,31 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
+    const [quickAdding, setQuickAdding] = useState(false)
+    const [quickAddToast, setQuickAddToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const router = useRouter()
+
+    async function handleQuickAdd() {
+        setQuickAdding(true)
+        setQuickAddToast(null)
+        try {
+            const result = await quickAddLatestReels(clientId, 10)
+            if (result.error) {
+                setQuickAddToast({ type: 'error', message: result.error })
+            } else {
+                const msg = result.added === 0
+                    ? `Sin nuevos reels (${result.skipped} ya existían)`
+                    : `${result.added} reel${result.added !== 1 ? 's' : ''} agregado${result.added !== 1 ? 's' : ''}${result.skipped > 0 ? `, ${result.skipped} ya existían` : ''}`
+                setQuickAddToast({ type: 'success', message: msg })
+                if (result.added > 0) router.refresh()
+            }
+        } catch (err) {
+            setQuickAddToast({ type: 'error', message: err instanceof Error ? err.message : 'Error inesperado' })
+        } finally {
+            setQuickAdding(false)
+            setTimeout(() => setQuickAddToast(null), 5000)
+        }
+    }
 
     async function handleDelete(e: React.MouseEvent, piece: ContentPiece) {
         e.stopPropagation()
@@ -211,12 +235,36 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                 {formatCurrency(totals.cash)} cobrado
                             </span>
                         )}
+                        <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={handleQuickAdd}
+                            disabled={quickAdding}
+                            title="Importar los últimos 10 reels desde Instagram"
+                        >
+                            <RefreshCw className={`h-3.5 w-3.5 ${quickAdding ? 'animate-spin' : ''}`} />
+                            {quickAdding ? 'Importando...' : 'Quick Add Reels'}
+                        </Button>
                         <Button size="sm" onClick={() => setShowNewPieceForm(true)}>
                             <Plus className="h-3.5 w-3.5" />
                             Nueva Pieza
                         </Button>
                     </div>
                 </div>
+
+                {/* Quick Add toast */}
+                {quickAddToast && (
+                    <div className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${quickAddToast.type === 'success'
+                            ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400'
+                            : 'border-red-900/50 bg-red-950/20 text-red-400'
+                        }`}>
+                        {quickAddToast.type === 'success'
+                            ? <Check className="h-3.5 w-3.5 flex-shrink-0" />
+                            : <span className="flex-shrink-0">⚠</span>
+                        }
+                        {quickAddToast.message}
+                    </div>
+                )}
 
                 <div className="flex items-center gap-1 overflow-x-auto pb-1">
                     <FunnelStep label="Views" value={totalViews} />
