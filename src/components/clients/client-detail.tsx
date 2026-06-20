@@ -12,11 +12,12 @@ import { ContentMetricsGrid } from '@/components/content/content-metrics-grid'
 import { type ContentMetric } from '@/components/content/content-funnel-form'
 import { ClientLeadsBoard } from './client-leads-board'
 import { ClientCallsList } from './client-calls-list'
+import { ClientCompetitors } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { deleteCampaignAction } from '@/lib/actions/campaigns'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { Pencil, Trash2, Plus } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall } from '@/lib/types'
+import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 
 interface AgencyUser {
@@ -36,6 +37,7 @@ interface Props {
   agencyUsers: AgencyUser[]
   interactions: Interaction[]
   leadFunnel: ClientFunnelAggregate
+  competitors: Competitor[]
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -46,7 +48,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel }: Props) {
+export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors }: Props) {
   const [editing, setEditing] = useState(false)
   const [showCampaignForm, setShowCampaignForm] = useState(false)
   const router = useRouter()
@@ -63,6 +65,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
     { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
     { id: 'crm_setters', label: 'CRM Setters', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
+    { id: 'competencia', label: 'Competencia', count: competitors.length },
   ]
 
   return (
@@ -158,6 +161,13 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
               <ClientCallsList
                 calls={calls}
                 leads={leads}
+              />
+            )}
+
+            {activeTab === 'competencia' && (
+              <ClientCompetitors
+                competitors={competitors}
+                clientId={client.id}
               />
             )}
           </>
