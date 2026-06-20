@@ -423,6 +423,39 @@ export interface ContentMetrics {
   updated_at: string
 }
 
+// =====================================================
+// Competitors Module
+// =====================================================
+
+export interface Competitor {
+  id: string
+  client_id: string
+  name: string
+  ig_handle: string | null
+  ig_profile_url: string | null
+  ig_account_id: string | null
+  followers: number | null
+  analisis_estrategico: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CompetitorReel {
+  id: string
+  competitor_id: string
+  ig_media_id: string | null
+  video_url: string | null
+  thumbnail_url: string | null
+  caption: string | null
+  views: number
+  likes: number
+  comments: number
+  shares: number
+  saves: number
+  published_at: string | null
+  synced_at: string
+}
+
 export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other'
 
 
