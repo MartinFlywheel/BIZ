@@ -6,8 +6,100 @@ import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Link2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
+
+// ── Webhook Integration Banner ────────────────────────────────────────────────
+
+const WEBHOOK_PATH = '/api/webhooks/manychat'
+
+const PAYLOAD_EXAMPLE = `{
+  "ig_username": "usuario_ig",
+  "full_name": "Nombre Apellido",
+  "subscriber_id": "manychat_subscriber_id",
+  "payload_id": "C_21_04"
+}`
+
+function WebhookBanner() {
+    const [copied, setCopied] = useState(false)
+    const [expanded, setExpanded] = useState(false)
+
+    const webhookUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}${WEBHOOK_PATH}`
+        : WEBHOOK_PATH
+
+    async function handleCopy() {
+        try {
+            await navigator.clipboard.writeText(webhookUrl)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        } catch {
+            // fallback: select text
+        }
+    }
+
+    return (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+            {/* Header — always visible */}
+            <button
+                onClick={() => setExpanded((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/40 transition-colors"
+            >
+                <div className="flex items-center gap-2">
+                    <Link2 className="h-3.5 w-3.5 text-zinc-500" />
+                    <span className="text-xs font-medium text-zinc-400">
+                        🔗 Integración ManyChat / n8n
+                    </span>
+                </div>
+                {expanded
+                    ? <ChevronUp className="h-3.5 w-3.5 text-zinc-600" />
+                    : <ChevronDown className="h-3.5 w-3.5 text-zinc-600" />
+                }
+            </button>
+
+            {/* Expanded content */}
+            {expanded && (
+                <div className="px-4 pb-4 space-y-3 border-t border-zinc-800">
+                    {/* Webhook URL */}
+                    <div className="mt-3 space-y-1.5">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">
+                            URL del Webhook
+                        </p>
+                        <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                            <code className="flex-1 text-xs text-zinc-300 font-mono truncate">
+                                {webhookUrl}
+                            </code>
+                            <button
+                                onClick={handleCopy}
+                                className="flex-shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
+                                title="Copiar URL"
+                            >
+                                {copied
+                                    ? <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                    : <Copy className="h-3.5 w-3.5" />
+                                }
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Payload structure */}
+                    <div className="space-y-1.5">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">
+                            Estructura del Payload (JSON)
+                        </p>
+                        <pre className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-[11px] font-mono text-zinc-400 overflow-x-auto leading-relaxed">
+                            {PAYLOAD_EXAMPLE}
+                        </pre>
+                        <p className="text-[11px] text-zinc-600 leading-snug">
+                            El campo <span className="font-mono text-zinc-500">payload_id</span> debe coincidir con el{' '}
+                            <span className="font-mono text-zinc-500">keyword_trigger</span> de la pieza de contenido.
+                        </p>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
 
 interface Props {
     contentPieces: ContentPiece[]
@@ -144,6 +236,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                     />
                 </div>
             </div>
+
+            {/* ── Webhook Integration Banner ── */}
+            <WebhookBanner />
 
             {/* ── Content Gallery Grid ── */}
             {contentPieces.length === 0 ? (
