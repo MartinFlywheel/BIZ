@@ -1,12 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
+import { deleteContentAction } from '@/lib/actions/content'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Link2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 
 // ── Webhook Integration Banner ────────────────────────────────────────────────
@@ -154,6 +156,21 @@ const contentTypeLabel: Record<string, string> = {
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
+    const [deleting, setDeleting] = useState<string | null>(null)
+    const router = useRouter()
+
+    async function handleDelete(e: React.MouseEvent, piece: ContentPiece) {
+        e.stopPropagation()
+        if (!confirm(`¿Eliminar "${piece.caption || piece.keyword_trigger || 'esta pieza'}"?\nSe borrarán también sus métricas asociadas.`)) return
+        setDeleting(piece.id)
+        try {
+            await deleteContentAction(piece.id, clientId)
+            router.refresh()
+        } catch {
+            alert('Error al eliminar')
+        }
+        setDeleting(null)
+    }
 
     // Build a map for quick lookup
     const metricsMap = new Map<string, ContentMetric>()
@@ -286,6 +303,16 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                             )}
                                         </div>
                                     )}
+
+                                    {/* Delete button */}
+                                    <button
+                                        onClick={(e) => handleDelete(e, cp)}
+                                        disabled={deleting === cp.id}
+                                        className="absolute top-2 left-2 rounded-md bg-black/60 p-1 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 hover:bg-black/80 z-10"
+                                        title="Eliminar pieza"
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
 
                                     {/* Has-metrics indicator */}
                                     {hasMetrics && (

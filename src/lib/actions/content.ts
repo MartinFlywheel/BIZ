@@ -108,12 +108,17 @@ export async function updateContentAction(id: string, formData: FormData) {
   revalidatePath('/content')
 }
 
-export async function deleteContentAction(id: string) {
+export async function deleteContentAction(id: string, clientId: string) {
   const supabase = await createClient()
-  const { error } = await supabase.from('content_pieces').delete().eq('id', id)
 
+  await supabase.from('content_metrics').delete().eq('content_id', id)
+  await supabase.from('content_notes').delete().eq('content_id', id)
+
+  const { error } = await supabase.from('content_pieces').delete().eq('id', id)
   if (error) throw error
+
   revalidatePath('/content')
+  revalidatePath(`/clients/${clientId}`)
 }
 
 export async function upsertContentMetrics(contentId: string, clientId: string, formData: FormData) {
