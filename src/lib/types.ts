@@ -14,18 +14,27 @@ export type InteractionClassification = 'chat_abierto' | 'conversacion_real' | '
 export type InteractionSource = 'manychat' | 'gohighlevel' | 'manual' | 'api'
 
 export type LeadStage =
-  | 'nuevo_contacto' | 'seguimiento' | 'conversando' | 'agendado'
-  | 'no_calificado' | 'vsl_enviado' | 'cliente'
-  | 'new' | 'contacted' | 'agenda_set' | 'showed_up' | 'no_show' | 'closed_won' | 'closed_lost'
+  | 'nuevo_contacto' | 'seguimiento' | 'conversando'
+  | 'micro_vsl_enviado' | 'vsl_chat' | 'pitcheado'
+  | 'calendly_enviado' | 'seguimiento_1' | 'seguimiento_2'
+  | 'propuesta_enviada' | 'agendado' | 'no_calificado' | 'cierre'
+  | 'new' | 'contacted' | 'agenda_set' | 'showed_up' | 'no_show'
+  | 'closed_won' | 'closed_lost' | 'vsl_enviado' | 'cliente'
 
 export const LEAD_STAGES: { id: LeadStage; label: string; color: string }[] = [
   { id: 'nuevo_contacto', label: 'Nuevo Contacto', color: 'text-zinc-400' },
   { id: 'seguimiento', label: 'Seguimiento', color: 'text-blue-400' },
   { id: 'conversando', label: 'Conversando', color: 'text-violet-400' },
-  { id: 'agendado', label: 'Agendado', color: 'text-amber-400' },
+  { id: 'micro_vsl_enviado', label: 'Micro VSL Enviado', color: 'text-cyan-400' },
+  { id: 'vsl_chat', label: 'VSL Chat', color: 'text-cyan-300' },
+  { id: 'pitcheado', label: 'Pitcheado', color: 'text-orange-400' },
+  { id: 'calendly_enviado', label: 'Calendly Enviado', color: 'text-indigo-400' },
+  { id: 'seguimiento_1', label: 'Seguimiento 1', color: 'text-blue-300' },
+  { id: 'seguimiento_2', label: 'Seguimiento 2', color: 'text-blue-200' },
+  { id: 'propuesta_enviada', label: 'Propuesta Enviada', color: 'text-amber-400' },
+  { id: 'agendado', label: 'Agendado', color: 'text-amber-300' },
   { id: 'no_calificado', label: 'No Calificado', color: 'text-red-400' },
-  { id: 'vsl_enviado', label: 'VSL Enviado', color: 'text-cyan-400' },
-  { id: 'cliente', label: 'Cliente', color: 'text-emerald-400' },
+  { id: 'cierre', label: 'Cierre', color: 'text-emerald-400' },
 ]
 
 export const LEAD_AVATARS = ['Marca Personal', 'Editores', 'El Comoditizado', 'En Cero'] as const
@@ -176,6 +185,7 @@ export interface Lead {
   id: string
   client_id: string
   interaction_id: string | null
+  content_id: string | null
   ig_username: string | null
   full_name: string | null
   phone: string | null

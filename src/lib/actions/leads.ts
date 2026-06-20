@@ -111,18 +111,53 @@ export async function updateLeadAction(id: string, formData: FormData) {
       email: (formData.get('email') as string) || null,
       assigned_to: (formData.get('assigned_to') as string) || null,
       lead_avatar: (formData.get('lead_avatar') as string) || null,
+      content_id: (formData.get('content_id') as string) || null,
       notes: (formData.get('notes') as string) || null,
       close_value: formData.get('close_value')
         ? parseFloat(formData.get('close_value') as string)
         : null,
       lost_reason: (formData.get('lost_reason') as string) || null,
-      conversion_touch_content_id: (formData.get('conversion_touch_content_id') as string) || null,
-      conversion_touch_at: formData.get('conversion_touch_content_id')
-        ? new Date().toISOString()
-        : null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+
+  if (error) throw error
+  revalidatePath('/leads')
+}
+
+export async function createLeadAction(formData: FormData) {
+  const supabase = await createClient()
+  const clientId = formData.get('client_id') as string
+
+  const { error } = await supabase.from('leads').insert({
+    client_id: clientId,
+    ig_username: (formData.get('ig_username') as string) || null,
+    full_name: (formData.get('full_name') as string) || null,
+    phone: (formData.get('phone') as string) || null,
+    email: (formData.get('email') as string) || null,
+    stage: (formData.get('stage') as LeadStage) || 'nuevo_contacto',
+    content_id: (formData.get('content_id') as string) || null,
+    lead_avatar: (formData.get('lead_avatar') as string) || null,
+    close_value: formData.get('close_value')
+      ? parseFloat(formData.get('close_value') as string)
+      : null,
+  })
+
+  if (error) throw error
+  revalidatePath('/leads')
+  revalidatePath(`/clients/${clientId}`)
+}
+
+export async function assignLeadContentAction(leadId: string, contentId: string | null) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      content_id: contentId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', leadId)
 
   if (error) throw error
   revalidatePath('/leads')
