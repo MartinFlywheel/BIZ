@@ -56,29 +56,42 @@ export async function createContentAction(formData: FormData) {
 }
 
 async function extractIgThumbnail(permalink: string): Promise<string | null> {
+  // Method 1: Facebook oEmbed API (app token)
   const appId = process.env.META_APP_ID
   const appSecret = process.env.META_APP_SECRET
 
-  if (!appId || !appSecret) return null
-
-  try {
-    const params = new URLSearchParams({
-      url: permalink,
-      access_token: `${appId}|${appSecret}`,
-      fields: 'thumbnail_url',
-    })
-
-    const res = await fetch(
-      `https://graph.facebook.com/v19.0/instagram_oembed?${params.toString()}`
-    )
-
-    if (!res.ok) return null
-
-    const data = await res.json()
-    return data.thumbnail_url || null
-  } catch {
-    return null
+  if (appId && appSecret) {
+    try {
+      const params = new URLSearchParams({
+        url: permalink,
+        access_token: `${appId}|${appSecret}`,
+        fields: 'thumbnail_url',
+      })
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/instagram_oembed?${params.toString()}`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.thumbnail_url) return data.thumbnail_url
+      }
+    } catch {}
   }
+
+  // Method 2: Instagram Graph API via system token
+  const systemToken = process.env.META_SYSTEM_USER_TOKEN
+  if (systemToken) {
+    try {
+      const res = await fetch(
+        `https://graph.instagram.com/oembed?url=${encodeURIComponent(permalink)}&access_token=${systemToken}`
+      )
+      if (res.ok) {
+        const data = await res.json()
+        if (data.thumbnail_url) return data.thumbnail_url
+      }
+    } catch {}
+  }
+
+  return null
 }
 
 export async function updateContentAction(id: string, formData: FormData) {
