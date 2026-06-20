@@ -1,97 +1,267 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 export async function POST(request: Request) {
+  const supabase = createAdminClient()
+  let webhookLogId: string | null = null
+
   try {
-    const supabase = createAdminClient()
     const payload = await request.json()
 
-    await supabase.from('webhook_logs').insert({
-      source: 'manychat',
-      event_type: payload.event || 'unknown',
-      payload,
-    })
-
-    const subscriberId = payload.subscriber_id || payload.id
-    const igUsername = payload.ig_username || payload.username
-    const name = payload.name || payload.full_name
-    const tags = payload.tags || []
-    const customFields = payload.custom_fields || {}
-
-    if (!subscriberId) {
-      return NextResponse.json({ error: 'Missing subscriber_id' }, { status: 400 })
-    }
-
-    const clientId = payload.client_id || customFields.client_id
-    if (!clientId) {
-      await supabase
-        .from('webhook_logs')
-        .update({ error: 'Missing client_id in payload or custom_fields' })
-        .eq('source', 'manychat')
-        .order('received_at', { ascending: false })
-        .limit(1)
-      return NextResponse.json({ error: 'Missing client_id' }, { status: 400 })
-    }
-
-    const isQualified = tags.includes('qualified') ||
-      tags.includes('conversacion_real') ||
-      customFields.qualified === true ||
-      customFields.responded === true
-
-    const isDisqualified = tags.includes('disqualified') ||
-      customFields.disqualified === true
-
-    let classification: 'chat_abierto' | 'conversacion_real' | 'disqualified' = 'chat_abierto'
-    if (isQualified) classification = 'conversacion_real'
-    if (isDisqualified) classification = 'disqualified'
-
-    const { data: existing } = await supabase
-      .from('interactions')
-      .select('id, classification')
-      .eq('manychat_subscriber_id', subscriberId)
-      .eq('client_id', clientId)
+    // ── Step 1: Log raw payload ──────────────────────────────────
+    const { data: logRow, error: logError } = await supabase
+      .from('webhook_logs')
+      .insert({
+        source: 'manychat',
+        event_type: 'incoming_message',
+        payload,
+        processed: false,
+      })
+      .select('id')
       .single()
 
-    if (existing) {
-      if (classification !== 'chat_abierto' && existing.classification === 'chat_abierto') {
-        await supabase
-          .from('interactions')
-          .update({
-            classification,
-            prospect_responded_at: new Date().toISOString(),
-            qualified_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
-            ig_username: igUsername || undefined,
-            prospect_name: name || undefined,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id)
+    if (logError) {
+      console.error('[ManyChat] Log insert error:', logError.message)
+    }
+    webhookLogId = logRow?.id || null
+
+    // ── Step 2: Extract data ─────────────────────────────────────
+    const igUsername = (
+      payload.ig_username ||
+      payload.username ||
+      payload.custom_fields?.ig_username ||
+      ''
+    ).replace(/^@/, '').trim()
+
+    const fullName = (
+      payload.full_name ||
+      payload.name ||
+      payload.custom_fields?.full_name ||
+      ''
+    ).trim() || null
+
+    const subscriberId = (
+      payload.subscriber_id ||
+      payload.manychat_subscriber_id ||
+      payload.id ||
+      ''
+    ).toString()
+
+    const payloadId = (
+      payload.payload_id ||
+      payload.keyword ||
+      payload.custom_fields?.payload_id ||
+      payload.custom_fields?.keyword ||
+      payload.custom_fields?.content_id ||
+      ''
+    ).trim()
+
+    const phone = payload.phone || payload.custom_fields?.phone || null
+    const email = payload.email || payload.custom_fields?.email || null
+    const customFields = payload.custom_fields || {}
+
+    if (!igUsername && !subscriberId) {
+      await markLogError(supabase, webhookLogId, 'Missing ig_username and subscriber_id')
+      return NextResponse.json({ error: 'Missing identifier' }, { status: 400 })
+    }
+
+    // ── Step 3: Content attribution ──────────────────────────────
+    // Match payload_id against content_pieces.keyword_trigger
+    let contentId: string | null = null
+    let clientId: string | null = null
+
+    if (payloadId) {
+      const { data: contentMatch } = await supabase
+        .from('content_pieces')
+        .select('id, client_id')
+        .ilike('keyword_trigger', payloadId)
+        .limit(1)
+        .maybeSingle()
+
+      if (contentMatch) {
+        contentId = contentMatch.id
+        clientId = contentMatch.client_id
       }
-    } else {
-      await supabase.from('interactions').insert({
-        client_id: clientId,
-        ig_username: igUsername,
-        prospect_name: name,
-        classification,
-        source: 'manychat',
-        manychat_subscriber_id: subscriberId,
-        keyword_used: customFields.keyword || payload.keyword || null,
-        bot_triggered_at: new Date().toISOString(),
-        prospect_responded_at: classification !== 'chat_abierto' ? new Date().toISOString() : null,
-        qualified_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
-        prequalification_data: customFields,
+    }
+
+    // Fallback: try client_id from payload directly
+    if (!clientId) {
+      clientId = payload.client_id || customFields.client_id || null
+    }
+
+    // If still no client, try matching by IG account
+    if (!clientId && igUsername) {
+      const { data: clientMatch } = await supabase
+        .from('clients')
+        .select('id')
+        .ilike('ig_handle', `%${igUsername.split('.')[0]}%`)
+        .limit(1)
+        .maybeSingle()
+
+      if (clientMatch) clientId = clientMatch.id
+    }
+
+    if (!clientId) {
+      await markLogError(supabase, webhookLogId, `No client matched for payload_id="${payloadId}" username="${igUsername}"`)
+      return NextResponse.json({
+        received: true,
+        warning: 'No client matched — logged for manual review',
       })
     }
 
-    await supabase
-      .from('webhook_logs')
-      .update({ processed: true })
-      .eq('source', 'manychat')
-      .order('received_at', { ascending: false })
-      .limit(1)
+    // ── Step 4: Upsert lead ──────────────────────────────────────
+    const { data: existingLead } = await supabase
+      .from('leads')
+      .select('id, stage, first_touch_content_id')
+      .eq('client_id', clientId)
+      .eq('ig_username', igUsername)
+      .maybeSingle()
 
-    return NextResponse.json({ received: true, classification })
+    let leadId: string
+
+    if (existingLead) {
+      leadId = existingLead.id
+
+      const updates: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      }
+
+      // If lead already has a first touch but gets a new content trigger,
+      // record it as conversion touch
+      if (contentId && existingLead.first_touch_content_id && existingLead.first_touch_content_id !== contentId) {
+        updates.conversion_touch_content_id = contentId
+        updates.conversion_touch_at = new Date().toISOString()
+        updates.conversion_touch_type = 'manychat_keyword'
+      }
+
+      if (fullName) updates.full_name = fullName
+      if (phone) updates.phone = phone
+      if (email) updates.email = email
+
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update(updates)
+        .eq('id', leadId)
+
+      if (updateError) {
+        console.error('[ManyChat] Lead update error:', updateError.message)
+      }
+    } else {
+      const { data: newLead, error: insertError } = await supabase
+        .from('leads')
+        .insert({
+          client_id: clientId,
+          ig_username: igUsername,
+          full_name: fullName,
+          phone,
+          email,
+          stage: 'new',
+          first_touch_content_id: contentId,
+          first_touch_at: new Date().toISOString(),
+          first_touch_type: payloadId ? 'manychat_keyword' : 'manychat_direct',
+        })
+        .select('id')
+        .single()
+
+      if (insertError) {
+        console.error('[ManyChat] Lead insert error:', insertError.message)
+        await markLogError(supabase, webhookLogId, `Lead insert failed: ${insertError.message}`)
+        return NextResponse.json({ error: 'Lead creation failed' }, { status: 500 })
+      }
+
+      leadId = newLead.id
+    }
+
+    // ── Step 5: Register interaction ─────────────────────────────
+    const tags = payload.tags || []
+    const isQualified = tags.includes('qualified') ||
+      tags.includes('conversacion_real') ||
+      customFields.qualified === true
+
+    const classification = isQualified ? 'conversacion_real' as const : 'chat_abierto' as const
+
+    const { error: interactionError } = await supabase
+      .from('interactions')
+      .insert({
+        client_id: clientId,
+        content_id: contentId,
+        ig_username: igUsername,
+        prospect_name: fullName,
+        classification,
+        source: 'manychat',
+        manychat_subscriber_id: subscriberId,
+        keyword_used: payloadId || null,
+        bot_triggered_at: new Date().toISOString(),
+        prospect_responded_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
+        qualified_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
+        promoted_to_lead: true,
+        prequalification_data: customFields,
+      })
+
+    if (interactionError) {
+      console.error('[ManyChat] Interaction insert error:', interactionError.message)
+    }
+
+    // ── Step 6: Update content_metrics chats count ────────────────
+    if (contentId) {
+      const { data: existingMetric } = await supabase
+        .from('content_metrics')
+        .select('id, chats_nuevos')
+        .eq('content_id', contentId)
+        .maybeSingle()
+
+      if (existingMetric) {
+        await supabase
+          .from('content_metrics')
+          .update({
+            chats_nuevos: (existingMetric.chats_nuevos || 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingMetric.id)
+      } else {
+        await supabase.from('content_metrics').insert({
+          content_id: contentId,
+          client_id: clientId,
+          chats_nuevos: 1,
+        })
+      }
+    }
+
+    // ── Step 7: Mark webhook log as processed ────────────────────
+    if (webhookLogId) {
+      await supabase
+        .from('webhook_logs')
+        .update({ processed: true })
+        .eq('id', webhookLogId)
+    }
+
+    return NextResponse.json({
+      received: true,
+      lead_id: leadId,
+      content_id: contentId,
+      client_id: clientId,
+      classification,
+      is_new_lead: !existingLead,
+    })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[ManyChat] Fatal error:', msg)
+    await markLogError(supabase, webhookLogId, msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
+}
+
+async function markLogError(
+  supabase: ReturnType<typeof createAdminClient>,
+  logId: string | null,
+  errorMsg: string
+) {
+  if (!logId) return
+  await supabase
+    .from('webhook_logs')
+    .update({ error: errorMsg })
+    .eq('id', logId)
 }
