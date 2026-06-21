@@ -73,16 +73,42 @@ export async function getCompetitorWithReels(
 export async function createCompetitorAction(formData: FormData) {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
+  const igHandle = (formData.get('ig_handle') as string) || null
 
-  const { error } = await supabase.from('competitors').insert({
+  const { data: competitor, error } = await supabase.from('competitors').insert({
     client_id: clientId,
     name: formData.get('name') as string,
-    ig_handle: (formData.get('ig_handle') as string) || null,
+    ig_handle: igHandle,
     analisis_estrategico: (formData.get('analisis_estrategico') as string) || null,
-  })
+  }).select('id').single()
 
   if (error) throw error
+
+  if (igHandle && competitor) {
+    triggerN8nSync(competitor.id, igHandle).catch((err) =>
+      console.error('[Competitor] n8n trigger failed:', err)
+    )
+  }
+
   revalidatePath(`/clients/${clientId}`)
+}
+
+async function triggerN8nSync(competitorId: string, igHandle: string) {
+  const n8nUrl = process.env.N8N_COMPETITOR_SYNC_URL
+  if (!n8nUrl) {
+    console.log('[Competitor] N8N_COMPETITOR_SYNC_URL not configured, skipping auto-sync')
+    return
+  }
+
+  await fetch(n8nUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      competitor_id: competitorId,
+      ig_handle: igHandle,
+      instagram_profile_url: `https://www.instagram.com/${igHandle.replace(/^@/, '')}/`,
+    }),
+  })
 }
 
 export async function updateCompetitorAction(id: string, formData: FormData) {
