@@ -22,6 +22,8 @@ import {
     RefreshCw,
     Eye,
     Heart,
+    Play,
+    MessageCircle,
 } from 'lucide-react'
 import type { Competitor, CompetitorReel } from '@/lib/types'
 
@@ -125,6 +127,28 @@ function NuevoCompetidorForm({
 
 // ── Competitor Reels Grid ─────────────────────────────────────────────────────
 
+function ReelThumbnail({ url }: { url: string | null }) {
+    const [failed, setFailed] = useState(false)
+
+    if (!url || failed) {
+        return (
+            <div className="flex h-full w-full flex-col items-center justify-center bg-zinc-800">
+                <Play className="h-8 w-8 text-zinc-600" />
+            </div>
+        )
+    }
+
+    return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+            src={url}
+            alt="Reel thumbnail"
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+        />
+    )
+}
+
 function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
     if (reels.length === 0) {
         return (
@@ -141,39 +165,29 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
             {reels.map((reel) => (
                 <div
                     key={reel.id}
-                    className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden"
+                    className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors"
                 >
-                    {/* Thumbnail */}
-                    <div className="relative aspect-[9/16] w-full bg-zinc-800 overflow-hidden rounded-t-xl">
-                        {reel.thumbnail_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                                src={reel.thumbnail_url}
-                                alt={reel.caption || 'Reel'}
-                                className="h-full w-full object-cover"
-                            />
-                        ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                                <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium">Reel</span>
-                            </div>
-                        )}
+                    <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-800">
+                        <ReelThumbnail url={reel.thumbnail_url} />
+                        <div className="absolute top-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                            {formatNumber(reel.views)}
+                        </div>
                     </div>
 
-                    {/* Card body */}
                     <div className="p-2.5 space-y-1.5">
                         {reel.caption && (
                             <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
                                 {reel.caption}
                             </p>
                         )}
-                        <div className="flex items-center gap-3 text-[11px] text-zinc-500">
-                            <span className="flex items-center gap-1">
-                                <Eye className="h-3 w-3" />
-                                <span className="font-mono">{formatNumber(reel.views)}</span>
-                            </span>
+                        <div className="flex items-center gap-3 text-[10px] text-zinc-600">
                             <span className="flex items-center gap-1">
                                 <Heart className="h-3 w-3" />
                                 <span className="font-mono">{formatNumber(reel.likes)}</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <MessageCircle className="h-3 w-3" />
+                                <span className="font-mono">{formatNumber(reel.comments)}</span>
                             </span>
                         </div>
                     </div>
