@@ -154,7 +154,9 @@ function ReelThumbnail({ url }: { url: string | null }) {
     )
 }
 
-function MultiplierBadge({ multiplier }: { multiplier: number }) {
+function MultiplierBadge({ multiplier, views }: { multiplier: number; views: number }) {
+    if (views <= 0) return null
+
     const color =
         multiplier >= 1.5
             ? 'bg-emerald-500/80 text-emerald-50'
@@ -168,6 +170,8 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
         </span>
     )
 }
+
+const REEL_CARD_SHADOW = 'inset 0 1px 1px rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.5)'
 
 function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
     if (reels.length === 0) {
@@ -192,14 +196,15 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
                 return (
                     <div
                         key={reel.id}
-                        className="group rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
+                        className="group rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
+                        style={{ boxShadow: REEL_CARD_SHADOW }}
                     >
                         {/* Thumbnail */}
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
                             <ReelThumbnail url={reel.thumbnail_url} />
 
-                            {/* Multiplier badge — top left */}
-                            <MultiplierBadge multiplier={multiplier} />
+                            {/* Multiplier badge — top left (only when views > 0) */}
+                            <MultiplierBadge multiplier={multiplier} views={reel.views} />
 
                             {/* Duration — bottom right (if available) */}
                             {(reel as CompetitorReel & { duration?: number | null }).duration != null && (
@@ -216,29 +221,39 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
 
                         {/* Card body */}
                         <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                            {/* Views — big */}
-                            <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
-                                {formatNumber(reel.views)}
-                            </p>
+                            {/* Views — big (only when > 0) */}
+                            {(reel.views || 0) > 0 && (
+                                <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                    {formatNumber(reel.views)}
+                                </p>
+                            )}
 
-                            {/* Engagement row */}
+                            {/* Engagement row — only show metrics with value > 0 */}
                             <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
-                                <span className="flex items-center gap-0.5">
-                                    <Heart className="h-3 w-3" />
-                                    {formatNumber(reel.likes)}
-                                </span>
-                                <span className="flex items-center gap-0.5">
-                                    <MessageCircle className="h-3 w-3" />
-                                    {formatNumber(reel.comments)}
-                                </span>
-                                <span className="flex items-center gap-0.5">
-                                    <Share2 className="h-3 w-3" />
-                                    {formatNumber(reel.shares)}
-                                </span>
-                                <span className="flex items-center gap-0.5">
-                                    <Bookmark className="h-3 w-3" />
-                                    {formatNumber(reel.saves)}
-                                </span>
+                                {(reel.likes || 0) > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                        <Heart className="h-3 w-3" />
+                                        {formatNumber(reel.likes)}
+                                    </span>
+                                )}
+                                {(reel.comments || 0) > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                        <MessageCircle className="h-3 w-3" />
+                                        {formatNumber(reel.comments)}
+                                    </span>
+                                )}
+                                {(reel.shares || 0) > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                        <Share2 className="h-3 w-3" />
+                                        {formatNumber(reel.shares)}
+                                    </span>
+                                )}
+                                {(reel.saves || 0) > 0 && (
+                                    <span className="flex items-center gap-0.5">
+                                        <Bookmark className="h-3 w-3" />
+                                        {formatNumber(reel.saves)}
+                                    </span>
+                                )}
                             </div>
 
                             {/* Caption */}
@@ -443,11 +458,12 @@ function CompetitorCard({
                                         return (
                                             <div
                                                 key={reel.id}
-                                                className="group rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
+                                                className="group rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
+                                                style={{ boxShadow: REEL_CARD_SHADOW }}
                                             >
                                                 <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
                                                     <ReelThumbnail url={reel.thumbnail_url} />
-                                                    <MultiplierBadge multiplier={multiplier} />
+                                                    <MultiplierBadge multiplier={multiplier} views={reel.views} />
                                                     {(reel as CompetitorReel & { duration?: number | null }).duration != null && (
                                                         <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
                                                             {(() => {
@@ -460,22 +476,32 @@ function CompetitorCard({
                                                     )}
                                                 </div>
                                                 <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                                                    <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
-                                                        {formatNumber(reel.views)}
-                                                    </p>
+                                                    {(reel.views || 0) > 0 && (
+                                                        <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                                            {formatNumber(reel.views)}
+                                                        </p>
+                                                    )}
                                                     <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Heart className="h-3 w-3" />{formatNumber(reel.likes)}
-                                                        </span>
-                                                        <span className="flex items-center gap-0.5">
-                                                            <MessageCircle className="h-3 w-3" />{formatNumber(reel.comments)}
-                                                        </span>
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Share2 className="h-3 w-3" />{formatNumber(reel.shares)}
-                                                        </span>
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Bookmark className="h-3 w-3" />{formatNumber(reel.saves)}
-                                                        </span>
+                                                        {(reel.likes || 0) > 0 && (
+                                                            <span className="flex items-center gap-0.5">
+                                                                <Heart className="h-3 w-3" />{formatNumber(reel.likes)}
+                                                            </span>
+                                                        )}
+                                                        {(reel.comments || 0) > 0 && (
+                                                            <span className="flex items-center gap-0.5">
+                                                                <MessageCircle className="h-3 w-3" />{formatNumber(reel.comments)}
+                                                            </span>
+                                                        )}
+                                                        {(reel.shares || 0) > 0 && (
+                                                            <span className="flex items-center gap-0.5">
+                                                                <Share2 className="h-3 w-3" />{formatNumber(reel.shares)}
+                                                            </span>
+                                                        )}
+                                                        {(reel.saves || 0) > 0 && (
+                                                            <span className="flex items-center gap-0.5">
+                                                                <Bookmark className="h-3 w-3" />{formatNumber(reel.saves)}
+                                                            </span>
+                                                        )}
                                                     </div>
                                                     {reel.caption && (
                                                         <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">

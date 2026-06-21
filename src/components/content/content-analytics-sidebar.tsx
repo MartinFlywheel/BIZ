@@ -19,7 +19,7 @@ function GlassCard({ children, className = '' }: { children: React.ReactNode; cl
             className={`rounded-2xl border border-white/[0.06] p-4 relative overflow-hidden ${className}`}
             style={{
                 background: 'linear-gradient(145deg, rgba(255,69,58,0.06) 0%, rgba(0,0,0,0.55) 100%)',
-                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 4px 20px rgba(255,69,58,0.08)',
             }}
         >
             {/* ambient glow */}

@@ -343,12 +343,12 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 ? {
                                                     border: '1px solid rgba(52,211,153,0.15)',
                                                     background: 'linear-gradient(160deg, rgba(255,69,58,0.06) 0%, rgba(0,0,0,0.5) 60%)',
-                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.5)',
                                                 }
                                                 : {
                                                     border: '1px solid rgba(255,255,255,0.06)',
                                                     background: 'linear-gradient(160deg, rgba(255,69,58,0.05) 0%, rgba(0,0,0,0.5) 60%)',
-                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.5)',
                                                 }
                                             }
                                         >
@@ -378,10 +378,12 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                     </div>
                                                 )}
 
-                                                {/* Multiplier badge — top left */}
-                                                <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
-                                                    ×{multiplier.toFixed(1)}
-                                                </span>
+                                                {/* Multiplier badge — top left (only when views > 0) */}
+                                                {(cp.views || 0) > 0 && (
+                                                    <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
+                                                        ×{multiplier.toFixed(1)}
+                                                    </span>
+                                                )}
 
                                                 {/* Has-metrics indicator — top right */}
                                                 {hasMetrics && (
@@ -400,29 +402,39 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                                             {/* Card body */}
                                             <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                                                {/* Views — big */}
-                                                <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
-                                                    {formatNumber(cp.views)}
-                                                </p>
+                                                {/* Views — big (only when > 0) */}
+                                                {(cp.views || 0) > 0 && (
+                                                    <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                                        {formatNumber(cp.views)}
+                                                    </p>
+                                                )}
 
-                                                {/* Engagement row */}
+                                                {/* Engagement row — only show metrics with value > 0 */}
                                                 <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
-                                                    <span className="flex items-center gap-0.5">
-                                                        <Heart className="h-3 w-3" />
-                                                        {formatNumber(cp.likes)}
-                                                    </span>
-                                                    <span className="flex items-center gap-0.5">
-                                                        <MessageCircle className="h-3 w-3" />
-                                                        {formatNumber(cp.comments)}
-                                                    </span>
-                                                    <span className="flex items-center gap-0.5">
-                                                        <Share2 className="h-3 w-3" />
-                                                        {formatNumber(cp.shares)}
-                                                    </span>
-                                                    <span className="flex items-center gap-0.5">
-                                                        <Bookmark className="h-3 w-3" />
-                                                        {formatNumber(cp.saves)}
-                                                    </span>
+                                                    {(cp.likes || 0) > 0 && (
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Heart className="h-3 w-3" />
+                                                            {formatNumber(cp.likes)}
+                                                        </span>
+                                                    )}
+                                                    {(cp.comments || 0) > 0 && (
+                                                        <span className="flex items-center gap-0.5">
+                                                            <MessageCircle className="h-3 w-3" />
+                                                            {formatNumber(cp.comments)}
+                                                        </span>
+                                                    )}
+                                                    {(cp.shares || 0) > 0 && (
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Share2 className="h-3 w-3" />
+                                                            {formatNumber(cp.shares)}
+                                                        </span>
+                                                    )}
+                                                    {(cp.saves || 0) > 0 && (
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Bookmark className="h-3 w-3" />
+                                                            {formatNumber(cp.saves)}
+                                                        </span>
+                                                    )}
                                                 </div>
 
                                                 {/* Caption */}
