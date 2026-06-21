@@ -17,6 +17,9 @@ export async function getCompetitors(clientId: string): Promise<Competitor[]> {
 }
 
 export async function getCompetitorReelsByClient(clientId: string): Promise<Record<string, CompetitorReel[]>> {
+  const { unstable_noStore } = await import('next/cache')
+  unstable_noStore()
+
   const supabase = await createClient()
 
   const { data: competitors } = await supabase
@@ -28,11 +31,13 @@ export async function getCompetitorReelsByClient(clientId: string): Promise<Reco
 
   const ids = competitors.map((c) => c.id)
 
-  const { data: reels } = await supabase
+  const { data: reels, error } = await supabase
     .from('competitor_reels')
     .select('*')
     .in('competitor_id', ids)
     .order('published_at', { ascending: false })
+
+  console.log('[Competitors] Reels fetched:', ids.length, 'competitors,', reels?.length ?? 0, 'reels', error ? `ERROR: ${error.message}` : '')
 
   const grouped: Record<string, CompetitorReel[]> = {}
   for (const reel of reels || []) {
