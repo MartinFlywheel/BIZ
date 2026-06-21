@@ -10,6 +10,7 @@ import { formatNumber } from '@/lib/utils'
 import {
     createCompetitorAction,
     deleteCompetitorAction,
+    updateCompetitorAnalysis,
 } from '@/lib/actions/competitors'
 import {
     Plus,
@@ -264,6 +265,50 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
     )
 }
 
+// ── Analysis Sidebar ──────────────────────────────────────────────────────────
+
+function AnalysisField({
+    label,
+    field,
+    competitorId,
+    initialValue,
+}: {
+    label: string
+    field: 'oferta' | 'avatar_target' | 'conclusion'
+    competitorId: string
+    initialValue: string | null
+}) {
+    const [value, setValue] = useState(initialValue ?? '')
+    const [saving, setSaving] = useState(false)
+
+    async function handleBlur() {
+        if (value === (initialValue ?? '')) return
+        setSaving(true)
+        try {
+            await updateCompetitorAnalysis(competitorId, field, value)
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600">{label}</p>
+                {saving && <span className="text-[10px] text-zinc-600 font-mono">guardando…</span>}
+            </div>
+            <textarea
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onBlur={handleBlur}
+                rows={4}
+                placeholder={`${label}…`}
+                className="w-full resize-none rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300 placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none transition-colors leading-relaxed"
+            />
+        </div>
+    )
+}
+
 // ── Competitor Card ───────────────────────────────────────────────────────────
 
 function CompetitorCard({
@@ -353,27 +398,110 @@ function CompetitorCard({
                 </div>
             </button>
 
-            {/* Expanded: full analysis + reels */}
+            {/* Expanded: two-column layout */}
             {isExpanded && (
-                <div className="border-t border-zinc-800 px-4 pb-4 space-y-4">
-                    {/* Full analysis */}
-                    {competitor.analisis_estrategico && (
-                        <div className="pt-4">
-                            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 mb-2">
-                                Análisis Estratégico
+                <div className="border-t border-zinc-800 px-4 pb-4">
+                    <div className="flex gap-4 pt-4 items-start">
+                        {/* Left: scrollable reels grid (2/3) */}
+                        <div className="flex-[2] min-w-0 overflow-y-auto max-h-[80vh]">
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 mb-3">
+                                Reels del Competidor
                             </p>
-                            <p className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap">
-                                {competitor.analisis_estrategico}
-                            </p>
+                            <div className="grid grid-cols-3 gap-3">
+                                {reels.length === 0 ? (
+                                    <div className="col-span-3 rounded-xl border border-zinc-800/60 bg-zinc-900/30 py-10 text-center">
+                                        <RefreshCw className="h-6 w-6 text-zinc-700 mx-auto mb-3" />
+                                        <p className="text-sm text-zinc-500">Los reels se sincronizan automáticamente via n8n</p>
+                                        <p className="text-xs text-zinc-600 mt-1">Cuando estén disponibles aparecerán aquí</p>
+                                    </div>
+                                ) : (() => {
+                                    const totalV = reels.reduce((s, r) => s + (r.views || 0), 0)
+                                    const avgV = reels.length > 0 ? totalV / reels.length : 1
+                                    return reels.map((reel) => {
+                                        const multiplier = avgV > 0 ? reel.views / avgV : 0
+                                        const reelUrl = reel.video_url ?? undefined
+                                        return (
+                                            <div
+                                                key={reel.id}
+                                                className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col"
+                                            >
+                                                <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
+                                                    <ReelThumbnail url={reel.thumbnail_url} />
+                                                    <MultiplierBadge multiplier={multiplier} />
+                                                    {(reel as CompetitorReel & { duration?: number | null }).duration != null && (
+                                                        <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                                                            {(() => {
+                                                                const d = (reel as CompetitorReel & { duration?: number }).duration!
+                                                                const m = Math.floor(d / 60)
+                                                                const s = d % 60
+                                                                return `${m}:${String(s).padStart(2, '0')}`
+                                                            })()}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
+                                                    <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                                        {formatNumber(reel.views)}
+                                                    </p>
+                                                    <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Heart className="h-3 w-3" />{formatNumber(reel.likes)}
+                                                        </span>
+                                                        <span className="flex items-center gap-0.5">
+                                                            <MessageCircle className="h-3 w-3" />{formatNumber(reel.comments)}
+                                                        </span>
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Share2 className="h-3 w-3" />{formatNumber(reel.shares)}
+                                                        </span>
+                                                        <span className="flex items-center gap-0.5">
+                                                            <Bookmark className="h-3 w-3" />{formatNumber(reel.saves)}
+                                                        </span>
+                                                    </div>
+                                                    {reel.caption && (
+                                                        <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
+                                                            {reel.caption}
+                                                        </p>
+                                                    )}
+                                                    {reelUrl && (
+                                                        <a
+                                                            href={reelUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                                        >
+                                                            <ExternalLink className="h-3 w-3" />
+                                                            Ver en IG
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )
+                                    })
+                                })()}
+                            </div>
                         </div>
-                    )}
 
-                    {/* Reels section */}
-                    <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 mb-3">
-                            Reels del Competidor
-                        </p>
-                        <CompetitorReelsGrid reels={reels} />
+                        {/* Right: sticky analysis sidebar (1/3) */}
+                        <div className="flex-1 min-w-0 sticky top-8 space-y-4">
+                            <AnalysisField
+                                label="Oferta"
+                                field="oferta"
+                                competitorId={competitor.id}
+                                initialValue={competitor.oferta}
+                            />
+                            <AnalysisField
+                                label="Avatar"
+                                field="avatar_target"
+                                competitorId={competitor.id}
+                                initialValue={competitor.avatar_target}
+                            />
+                            <AnalysisField
+                                label="Conclusión"
+                                field="conclusion"
+                                competitorId={competitor.id}
+                                initialValue={competitor.conclusion}
+                            />
+                        </div>
                     </div>
                 </div>
             )}
