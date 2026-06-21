@@ -185,7 +185,7 @@ export async function quickAddLatestReels(clientId: string, limit = 10): Promise
         target: 'client',
         ig_handle: igHandle,
         instagram_profile_url: `https://www.instagram.com/${igHandle}/`,
-        callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhooks/client-content-sync`,
+        callback_url: `https://holding-chi.vercel.app/api/webhooks/client-content-sync`,
       }),
     })
 
