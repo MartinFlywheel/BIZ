@@ -301,11 +301,19 @@ function AnalysisField({
     }
 
     return (
-        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] backdrop-blur-xl p-3 space-y-2">
-            <div className="flex items-center justify-between">
+        <div
+            className="rounded-2xl border border-red-950/40 backdrop-blur-xl p-3 space-y-2 relative overflow-hidden"
+            style={{
+                background: 'linear-gradient(145deg, rgba(255,69,58,0.10) 0%, rgba(120,20,15,0.12) 50%, rgba(0,0,0,0.55) 100%)',
+                boxShadow: 'inset 0 1px 1px rgba(255,100,80,0.08), 0 0 0 1px rgba(255,69,58,0.08)',
+            }}
+        >
+            {/* ambient red glow top-right */}
+            <div className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full bg-red-600/15 blur-3xl" />
+            <div className="flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-1.5">
                     {analysisFieldIcons[field]}
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">{label}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-red-400/70">{label}</p>
                 </div>
                 {saving && <span className="text-[10px] text-zinc-600 font-mono">guardando…</span>}
             </div>
@@ -315,7 +323,7 @@ function AnalysisField({
                 onBlur={handleBlur}
                 rows={4}
                 placeholder={`${label}…`}
-                className="w-full resize-none bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm text-zinc-300 placeholder:text-zinc-600 leading-relaxed"
+                className="relative z-10 w-full resize-none bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm text-zinc-300 placeholder:text-zinc-600 leading-relaxed"
             />
         </div>
     )
@@ -412,7 +420,7 @@ function CompetitorCard({
 
             {/* Expanded: two-column layout */}
             {isExpanded && (
-                <div className="border-t border-zinc-800 px-4 pb-4">
+                <div className="border-t border-zinc-800 px-4 pb-4" style={{ background: 'radial-gradient(ellipse 120% 80% at 50% 0%, rgba(255,69,58,0.07) 0%, rgba(255,69,58,0.02) 40%, transparent 70%)' }}>
                     <div className="flex gap-4 pt-4 items-start">
                         {/* Left: scrollable reels grid (2/3) */}
                         <div className="flex-[2] min-w-0 overflow-y-auto max-h-[80vh] border-r border-white/[0.04] pr-4">

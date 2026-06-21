@@ -331,10 +331,19 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                             return (
                                 <div
                                     key={cp.id}
-                                    className={`group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300 ${hasMetrics
-                                        ? 'border-emerald-900/50 bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] hover:border-emerald-800/60 hover:bg-white/[0.04]'
-                                        : 'border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] hover:border-white/[0.1] hover:bg-white/[0.04]'
-                                        }`}
+                                    className="group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300"
+                                    style={hasMetrics
+                                        ? {
+                                            border: '1px solid rgba(52,211,153,0.15)',
+                                            background: 'linear-gradient(160deg, rgba(255,69,58,0.06) 0%, rgba(0,0,0,0.5) 60%)',
+                                            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                        }
+                                        : {
+                                            border: '1px solid rgba(255,255,255,0.06)',
+                                            background: 'linear-gradient(160deg, rgba(255,69,58,0.05) 0%, rgba(0,0,0,0.5) 60%)',
+                                            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                        }
+                                    }
                                 >
                                     {/* Thumbnail */}
                                     <button
