@@ -27,6 +27,7 @@ import type { Competitor, CompetitorReel } from '@/lib/types'
 
 interface Props {
     competitors: Competitor[]
+    competitorReels: Record<string, CompetitorReel[]>
     clientId: string
 }
 
@@ -186,11 +187,13 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
 
 function CompetitorCard({
     competitor,
+    reels,
     clientId,
     isExpanded,
     onToggle,
 }: {
     competitor: Competitor
+    reels: CompetitorReel[]
     clientId: string
     isExpanded: boolean
     onToggle: () => void
@@ -289,8 +292,7 @@ function CompetitorCard({
                         <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 mb-3">
                             Reels del Competidor
                         </p>
-                        {/* Reels are empty by default — synced via n8n */}
-                        <CompetitorReelsGrid reels={[]} />
+                        <CompetitorReelsGrid reels={reels} />
                     </div>
                 </div>
             )}
@@ -300,7 +302,7 @@ function CompetitorCard({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ClientCompetitors({ competitors, clientId }: Props) {
+export function ClientCompetitors({ competitors, competitorReels, clientId }: Props) {
     const [showForm, setShowForm] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -341,6 +343,7 @@ export function ClientCompetitors({ competitors, clientId }: Props) {
                         <CompetitorCard
                             key={competitor.id}
                             competitor={competitor}
+                            reels={competitorReels[competitor.id] || []}
                             clientId={clientId}
                             isExpanded={expandedId === competitor.id}
                             onToggle={() => toggleExpand(competitor.id)}

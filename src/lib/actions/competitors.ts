@@ -16,6 +16,33 @@ export async function getCompetitors(clientId: string): Promise<Competitor[]> {
   return data ?? []
 }
 
+export async function getCompetitorReelsByClient(clientId: string): Promise<Record<string, CompetitorReel[]>> {
+  const supabase = await createClient()
+
+  const { data: competitors } = await supabase
+    .from('competitors')
+    .select('id')
+    .eq('client_id', clientId)
+
+  if (!competitors || competitors.length === 0) return {}
+
+  const ids = competitors.map((c) => c.id)
+
+  const { data: reels } = await supabase
+    .from('competitor_reels')
+    .select('*')
+    .in('competitor_id', ids)
+    .order('published_at', { ascending: false })
+
+  const grouped: Record<string, CompetitorReel[]> = {}
+  for (const reel of reels || []) {
+    if (!grouped[reel.competitor_id]) grouped[reel.competitor_id] = []
+    grouped[reel.competitor_id].push(reel)
+  }
+
+  return grouped
+}
+
 export async function getCompetitorWithReels(
   competitorId: string
 ): Promise<{ competitor: Competitor; reels: CompetitorReel[] } | null> {

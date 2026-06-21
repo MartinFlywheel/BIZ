@@ -17,7 +17,7 @@ import { deleteClientAction } from '@/lib/actions/clients'
 import { deleteCampaignAction } from '@/lib/actions/campaigns'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import { Pencil, Trash2, Plus } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor } from '@/lib/types'
+import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 
 interface AgencyUser {
@@ -38,6 +38,7 @@ interface Props {
   interactions: Interaction[]
   leadFunnel: ClientFunnelAggregate
   competitors: Competitor[]
+  competitorReels: Record<string, CompetitorReel[]>
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -48,7 +49,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors }: Props) {
+export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels }: Props) {
   const [editing, setEditing] = useState(false)
   const [showCampaignForm, setShowCampaignForm] = useState(false)
   const router = useRouter()
@@ -167,6 +168,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
             {activeTab === 'competencia' && (
               <ClientCompetitors
                 competitors={competitors}
+                competitorReels={competitorReels}
                 clientId={client.id}
               />
             )}
