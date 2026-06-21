@@ -147,7 +147,8 @@ export async function syncClientContent(clientId: string): Promise<{
 }
 
 // =====================================================
-// Quick Add Latest Reels — pull only the latest N reels
+// Quick Add Latest Reels — triggers n8n to scrape via Apify
+// Same pipeline as competitors, no API token needed
 // =====================================================
 
 export async function quickAddLatestReels(clientId: string, limit = 10): Promise<{
@@ -157,76 +158,46 @@ export async function quickAddLatestReels(clientId: string, limit = 10): Promise
   message: string
 }> {
   const supabase = await createClient()
-  const token = process.env.META_SYSTEM_USER_TOKEN
-
-  if (!token) {
-    return { status: 'error', added: 0, skipped: 0, message: 'META_SYSTEM_USER_TOKEN not configured' }
-  }
 
   const { data: client } = await supabase
     .from('clients')
-    .select('id, ig_account_id')
+    .select('id, ig_handle, name')
     .eq('id', clientId)
     .single()
 
-  if (!client?.ig_account_id) {
-    return { status: 'error', added: 0, skipped: 0, message: 'Client has no Instagram Account ID linked' }
+  if (!client?.ig_handle) {
+    return { status: 'error', added: 0, skipped: 0, message: 'El cliente no tiene handle de Instagram' }
   }
 
+  const n8nUrl = process.env.N8N_COMPETITOR_SYNC_URL
+  if (!n8nUrl) {
+    return { status: 'error', added: 0, skipped: 0, message: 'N8N_COMPETITOR_SYNC_URL not configured' }
+  }
+
+  const igHandle = client.ig_handle.replace(/^@/, '')
+
   try {
-    const mediaRes = await fetch(
-      `https://graph.instagram.com/${client.ig_account_id}/media?fields=${IG_MEDIA_FIELDS}&access_token=${token}&limit=${limit}`
-    )
-
-    if (!mediaRes.ok) {
-      const errorBody = await mediaRes.text()
-      return { status: 'error', added: 0, skipped: 0, message: `API error: ${mediaRes.status} — ${errorBody}` }
-    }
-
-    const mediaData = await mediaRes.json()
-    let added = 0
-    let skipped = 0
-
-    for (const media of mediaData.data || []) {
-      const { data: existing } = await supabase
-        .from('content_pieces')
-        .select('id')
-        .eq('ig_media_id', media.id)
-        .eq('client_id', clientId)
-        .maybeSingle()
-
-      if (existing) {
-        skipped++
-        continue
-      }
-
-      const contentType = media.media_type === 'VIDEO' ? 'reel'
-        : media.media_type === 'CAROUSEL_ALBUM' ? 'post'
-        : 'post'
-
-      await supabase.from('content_pieces').insert({
+    const res = await fetch(n8nUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         client_id: clientId,
-        content_type: contentType,
-        ig_media_id: media.id,
-        ig_permalink: media.permalink,
-        ig_thumbnail_url: pickThumbnail(media),
-        caption: media.caption,
-        published_at: media.timestamp,
-        views: 0,
-        metrics_source: 'meta_api',
-        metrics_updated_at: new Date().toISOString(),
-      })
+        target: 'client',
+        ig_handle: igHandle,
+        instagram_profile_url: `https://www.instagram.com/${igHandle}/`,
+        callback_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/api/webhooks/client-content-sync`,
+      }),
+    })
 
-      added++
+    if (!res.ok) {
+      return { status: 'error', added: 0, skipped: 0, message: `n8n error: ${res.status}` }
     }
-
-    revalidatePath(`/clients/${clientId}`)
 
     return {
       status: 'success',
-      added,
-      skipped,
-      message: `${added} nuevos, ${skipped} ya existían`,
+      added: 0,
+      skipped: 0,
+      message: 'Sincronización iniciada — los reels aparecerán en unos segundos',
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
