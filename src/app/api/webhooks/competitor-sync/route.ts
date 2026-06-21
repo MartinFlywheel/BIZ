@@ -23,6 +23,45 @@ interface SyncPayload {
   reels: ReelPayload[]
 }
 
+async function uploadThumbnail(
+  supabase: ReturnType<typeof createAdminClient>,
+  competitorId: string,
+  mediaId: string,
+  thumbnailUrl: string
+): Promise<string | null> {
+  try {
+    const res = await fetch(thumbnailUrl, { redirect: 'follow' })
+    if (!res.ok) return null
+
+    const contentType = res.headers.get('content-type') || 'image/jpeg'
+    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg'
+    const buffer = await res.arrayBuffer()
+
+    const path = `competitors/${competitorId}/${mediaId}.${ext}`
+
+    const { error } = await supabase.storage
+      .from('thumbnails')
+      .upload(path, buffer, {
+        contentType,
+        upsert: true,
+      })
+
+    if (error) {
+      console.error('[CompetitorSync] Upload error:', error.message)
+      return null
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('thumbnails')
+      .getPublicUrl(path)
+
+    return urlData.publicUrl
+  } catch (err) {
+    console.error('[CompetitorSync] Thumbnail fetch error:', err)
+    return null
+  }
+}
+
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -53,29 +92,37 @@ export async function POST(request: Request) {
 
     const mode = payload.mode || 'replace'
 
-    // Replace mode: wipe old reels, insert fresh batch
     if (mode === 'replace') {
-      const { error: deleteError } = await supabase
+      await supabase
         .from('competitor_reels')
         .delete()
         .eq('competitor_id', payload.competitor_id)
-
-      if (deleteError) {
-        console.error('[CompetitorSync] Delete error:', deleteError.message)
-      }
     }
 
     let inserted = 0
     let skipped = 0
+    let thumbnailsUploaded = 0
     const now = new Date().toISOString()
 
-    const rows = payload.reels
-      .filter((r) => r.ig_media_id || r.video_url)
-      .map((reel, i) => ({
+    const validReels = payload.reels.filter((r) => r.ig_media_id || r.video_url)
+    skipped = payload.reels.length - validReels.length
+
+    const rows = []
+    for (let i = 0; i < validReels.length; i++) {
+      const reel = validReels[i]
+      const mediaId = reel.ig_media_id || `ext_${Date.now()}_${i}`
+
+      let permanentUrl: string | null = null
+      if (reel.thumbnail_url) {
+        permanentUrl = await uploadThumbnail(supabase, payload.competitor_id, mediaId, reel.thumbnail_url)
+        if (permanentUrl) thumbnailsUploaded++
+      }
+
+      rows.push({
         competitor_id: payload.competitor_id,
-        ig_media_id: reel.ig_media_id || `ext_${Date.now()}_${i}`,
+        ig_media_id: mediaId,
         video_url: reel.video_url || null,
-        thumbnail_url: reel.thumbnail_url || null,
+        thumbnail_url: permanentUrl || reel.thumbnail_url || null,
         caption: reel.caption || null,
         views: reel.views || 0,
         likes: reel.likes || 0,
@@ -84,9 +131,8 @@ export async function POST(request: Request) {
         saves: reel.saves || 0,
         published_at: reel.published_at || null,
         synced_at: now,
-      }))
-
-    skipped = payload.reels.length - rows.length
+      })
+    }
 
     if (rows.length > 0) {
       if (mode === 'replace') {
@@ -105,11 +151,8 @@ export async function POST(request: Request) {
             .from('competitor_reels')
             .upsert(row, { onConflict: 'competitor_id,ig_media_id' })
 
-          if (error) {
-            skipped++
-          } else {
-            inserted++
-          }
+          if (error) skipped++
+          else inserted++
         }
       }
     }
@@ -120,6 +163,7 @@ export async function POST(request: Request) {
       competitor: competitor.name,
       inserted,
       skipped,
+      thumbnails_uploaded: thumbnailsUploaded,
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
