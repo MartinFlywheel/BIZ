@@ -331,9 +331,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                             return (
                                 <div
                                     key={cp.id}
-                                    className={`group relative rounded-xl border overflow-hidden flex flex-col transition-all hover:border-zinc-600 ${hasMetrics
-                                        ? 'border-emerald-900/50 bg-emerald-950/10'
-                                        : 'border-zinc-800 bg-zinc-900/40'
+                                    className={`group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300 ${hasMetrics
+                                        ? 'border-emerald-900/50 bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] hover:border-emerald-800/60 hover:bg-white/[0.04]'
+                                        : 'border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] hover:border-white/[0.1] hover:bg-white/[0.04]'
                                         }`}
                                 >
                                     {/* Thumbnail */}
@@ -452,7 +452,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     onClick={(e) => e.stopPropagation()}
-                                                    className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                                    className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
                                                 >
                                                     <ExternalLink className="h-3 w-3" />
                                                     Ver en IG

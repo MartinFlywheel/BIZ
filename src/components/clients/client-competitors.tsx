@@ -26,6 +26,9 @@ import {
     MessageCircle,
     Share2,
     Bookmark,
+    ShoppingBag,
+    UserCircle,
+    Lightbulb,
 } from 'lucide-react'
 import type { Competitor, CompetitorReel } from '@/lib/types'
 
@@ -189,7 +192,7 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
                 return (
                     <div
                         key={reel.id}
-                        className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col"
+                        className="group rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
                     >
                         {/* Thumbnail */}
                         <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
@@ -251,7 +254,7 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
                                     href={reelUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                    className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
                                 >
                                     <ExternalLink className="h-3 w-3" />
                                     Ver en IG
@@ -266,6 +269,12 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
 }
 
 // ── Analysis Sidebar ──────────────────────────────────────────────────────────
+
+const analysisFieldIcons: Record<'oferta' | 'avatar_target' | 'conclusion', React.ReactNode> = {
+    oferta: <ShoppingBag className="h-3 w-3 text-zinc-600" />,
+    avatar_target: <UserCircle className="h-3 w-3 text-zinc-600" />,
+    conclusion: <Lightbulb className="h-3 w-3 text-zinc-600" />,
+}
 
 function AnalysisField({
     label,
@@ -292,9 +301,12 @@ function AnalysisField({
     }
 
     return (
-        <div className="space-y-1.5">
+        <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] backdrop-blur-xl p-3 space-y-2">
             <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600">{label}</p>
+                <div className="flex items-center gap-1.5">
+                    {analysisFieldIcons[field]}
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-zinc-500">{label}</p>
+                </div>
                 {saving && <span className="text-[10px] text-zinc-600 font-mono">guardando…</span>}
             </div>
             <textarea
@@ -303,7 +315,7 @@ function AnalysisField({
                 onBlur={handleBlur}
                 rows={4}
                 placeholder={`${label}…`}
-                className="w-full resize-none rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-300 placeholder:text-zinc-700 focus:border-zinc-600 focus:outline-none transition-colors leading-relaxed"
+                className="w-full resize-none bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-sm text-zinc-300 placeholder:text-zinc-600 leading-relaxed"
             />
         </div>
     )
@@ -403,7 +415,7 @@ function CompetitorCard({
                 <div className="border-t border-zinc-800 px-4 pb-4">
                     <div className="flex gap-4 pt-4 items-start">
                         {/* Left: scrollable reels grid (2/3) */}
-                        <div className="flex-[2] min-w-0 overflow-y-auto max-h-[80vh]">
+                        <div className="flex-[2] min-w-0 overflow-y-auto max-h-[80vh] border-r border-white/[0.04] pr-4">
                             <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-600 mb-3">
                                 Reels del Competidor
                             </p>
@@ -423,7 +435,7 @@ function CompetitorCard({
                                         return (
                                             <div
                                                 key={reel.id}
-                                                className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col"
+                                                className="group rounded-xl border border-white/[0.06] bg-white/[0.02] shadow-[inset_0_1px_1px_rgba(255,255,255,0.04)] overflow-hidden hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300 flex flex-col"
                                             >
                                                 <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
                                                     <ReelThumbnail url={reel.thumbnail_url} />
@@ -467,7 +479,7 @@ function CompetitorCard({
                                                             href={reelUrl}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                                            className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
                                                         >
                                                             <ExternalLink className="h-3 w-3" />
                                                             Ver en IG
