@@ -103,6 +103,24 @@ export async function updateCompetitorAction(id: string, formData: FormData) {
   revalidatePath(`/clients/${clientId}`)
 }
 
+export async function updateCompetitorAnalysis(
+  id: string,
+  field: 'oferta' | 'avatar_target' | 'conclusion',
+  value: string
+) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('competitors')
+    .update({
+      [field]: value || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
 export async function deleteCompetitorAction(id: string, clientId: string) {
   const supabase = await createClient()
 

@@ -1,0 +1,3 @@
+ALTER TABLE competitors ADD COLUMN IF NOT EXISTS oferta TEXT;
+ALTER TABLE competitors ADD COLUMN IF NOT EXISTS avatar_target TEXT;
+ALTER TABLE competitors ADD COLUMN IF NOT EXISTS conclusion TEXT;

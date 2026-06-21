@@ -436,6 +436,9 @@ export interface Competitor {
   ig_account_id: string | null
   followers: number | null
   analisis_estrategico: string | null
+  oferta: string | null
+  avatar_target: string | null
+  conclusion: string | null
   created_at: string
   updated_at: string
 }
