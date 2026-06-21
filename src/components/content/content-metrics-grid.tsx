@@ -2,14 +2,13 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 
 // ── Webhook Integration Banner ────────────────────────────────────────────────
@@ -256,8 +255,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                 {/* Quick Add toast */}
                 {quickAddToast && (
                     <div className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${quickAddToast.type === 'success'
-                            ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400'
-                            : 'border-red-900/50 bg-red-950/20 text-red-400'
+                        ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400'
+                        : 'border-red-900/50 bg-red-950/20 text-red-400'
                         }`}>
                         {quickAddToast.type === 'success'
                             ? <Check className="h-3.5 w-3.5 flex-shrink-0" />
@@ -313,107 +312,158 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
                 </div>
             ) : (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                    {contentPieces.map((cp) => {
-                        const metric = metricsMap.get(cp.id)
-                        const hasMetrics = !!metric
+                    {(() => {
+                        const totalViews = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
+                        const avgViews = contentPieces.length > 0 ? totalViews / contentPieces.length : 1
 
-                        return (
-                            <button
-                                key={cp.id}
-                                onClick={() => setSelectedPiece(cp)}
-                                className={`group relative rounded-xl border text-left transition-all hover:border-zinc-600 hover:bg-zinc-800/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 ${hasMetrics
-                                    ? 'border-emerald-900/50 bg-emerald-950/10'
-                                    : 'border-zinc-800 bg-zinc-900/40'
-                                    }`}
-                            >
-                                {/* Thumbnail */}
-                                <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
-                                    {cp.ig_thumbnail_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={cp.ig_thumbnail_url}
-                                            alt={cp.caption || cp.content_type}
-                                            className="h-full w-full object-cover"
-                                        />
-                                    ) : (
-                                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
-                                            {cp.keyword_trigger && (
-                                                <span className="font-mono text-sm font-bold text-zinc-400">
-                                                    {cp.keyword_trigger}
-                                                </span>
-                                            )}
-                                            <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
-                                                {contentTypeLabel[cp.content_type] || cp.content_type}
-                                            </span>
-                                            {cp.caption && !cp.keyword_trigger && (
-                                                <p className="text-xs text-zinc-500 line-clamp-3 leading-tight">
-                                                    {cp.caption}
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
+                        return contentPieces.map((cp) => {
+                            const metric = metricsMap.get(cp.id)
+                            const hasMetrics = !!metric
+                            const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
+                            const multiplierColor =
+                                multiplier >= 1.5
+                                    ? 'bg-emerald-500/80 text-emerald-50'
+                                    : multiplier >= 1.0
+                                        ? 'bg-amber-500/80 text-amber-50'
+                                        : 'bg-red-500/80 text-red-50'
+                            const reelUrl = cp.ig_permalink ?? undefined
 
-                                    {/* Delete button */}
+                            return (
+                                <div
+                                    key={cp.id}
+                                    className={`group relative rounded-xl border overflow-hidden flex flex-col transition-all hover:border-zinc-600 ${hasMetrics
+                                        ? 'border-emerald-900/50 bg-emerald-950/10'
+                                        : 'border-zinc-800 bg-zinc-900/40'
+                                        }`}
+                                >
+                                    {/* Thumbnail */}
                                     <button
-                                        onClick={(e) => handleDelete(e, cp)}
-                                        disabled={deleting === cp.id}
-                                        className="absolute top-2 left-2 rounded-md bg-black/60 p-1 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-400 hover:bg-black/80 z-10"
-                                        title="Eliminar pieza"
+                                        onClick={() => setSelectedPiece(cp)}
+                                        className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
                                     >
-                                        <Trash2 className="h-3.5 w-3.5" />
+                                        {cp.ig_thumbnail_url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                                src={cp.ig_thumbnail_url}
+                                                alt={cp.caption || cp.content_type}
+                                                className="h-full w-full object-cover"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
+                                                <Play className="h-8 w-8 text-zinc-600" />
+                                                {cp.keyword_trigger && (
+                                                    <span className="font-mono text-sm font-bold text-zinc-400">
+                                                        {cp.keyword_trigger}
+                                                    </span>
+                                                )}
+                                                <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
+                                                    {contentTypeLabel[cp.content_type] || cp.content_type}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* Multiplier badge — top left */}
+                                        <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
+                                            ×{multiplier.toFixed(1)}
+                                        </span>
+
+                                        {/* Has-metrics indicator — top right */}
+                                        {hasMetrics && (
+                                            <div className="absolute top-2 right-2">
+                                                <CheckCircle2 className="h-4 w-4 text-emerald-400 drop-shadow" />
+                                            </div>
+                                        )}
+
+                                        {/* Add metrics overlay on hover */}
+                                        {!hasMetrics && (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Plus className="h-6 w-6 text-white" />
+                                            </div>
+                                        )}
                                     </button>
 
-                                    {/* Has-metrics indicator */}
-                                    {hasMetrics && (
-                                        <div className="absolute top-2 right-2">
-                                            <CheckCircle2 className="h-4 w-4 text-emerald-400 drop-shadow" />
-                                        </div>
-                                    )}
-
-                                    {/* Add metrics overlay on hover */}
-                                    {!hasMetrics && (
-                                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Plus className="h-6 w-6 text-white" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Card body */}
-                                <div className="p-2.5 space-y-1.5">
-                                    <div className="flex items-center justify-between gap-1">
-                                        <Badge className="text-[10px] px-1.5 py-0">
-                                            {contentTypeLabel[cp.content_type]}
-                                        </Badge>
-                                        <span className="font-mono text-xs text-zinc-300 font-medium">
+                                    {/* Card body */}
+                                    <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
+                                        {/* Views — big */}
+                                        <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
                                             {formatNumber(cp.views)}
-                                        </span>
-                                    </div>
-
-                                    {cp.caption && (
-                                        <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
-                                            {cp.caption}
                                         </p>
-                                    )}
 
-                                    {hasMetrics && metric && (
-                                        <div className="flex items-center gap-1.5 pt-0.5">
-                                            <span className="text-[10px] text-emerald-500 font-mono">
-                                                {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
+                                        {/* Engagement row */}
+                                        <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                                            <span className="flex items-center gap-0.5">
+                                                <Heart className="h-3 w-3" />
+                                                {formatNumber(cp.likes)}
                                             </span>
-                                            {metric.cash_collected != null && (
-                                                <>
-                                                    <span className="text-[10px] text-zinc-600">·</span>
-                                                    <span className="text-[10px] text-emerald-600 font-mono">
-                                                        {formatCurrency(metric.cash_collected)}
-                                                    </span>
-                                                </>
+                                            <span className="flex items-center gap-0.5">
+                                                <MessageCircle className="h-3 w-3" />
+                                                {formatNumber(cp.comments)}
+                                            </span>
+                                            <span className="flex items-center gap-0.5">
+                                                <Share2 className="h-3 w-3" />
+                                                {formatNumber(cp.shares)}
+                                            </span>
+                                            <span className="flex items-center gap-0.5">
+                                                <Bookmark className="h-3 w-3" />
+                                                {formatNumber(cp.saves)}
+                                            </span>
+                                        </div>
+
+                                        {/* Caption */}
+                                        {cp.caption && (
+                                            <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
+                                                {cp.caption}
+                                            </p>
+                                        )}
+
+                                        {/* Funnel metrics if available */}
+                                        {hasMetrics && metric && (
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-[10px] text-emerald-500 font-mono">
+                                                    {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
+                                                </span>
+                                                {metric.cash_collected != null && (
+                                                    <>
+                                                        <span className="text-[10px] text-zinc-600">·</span>
+                                                        <span className="text-[10px] text-emerald-600 font-mono">
+                                                            {formatCurrency(metric.cash_collected)}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Action row */}
+                                        <div className="mt-auto flex items-center gap-1.5 pt-0.5">
+                                            {/* Delete button */}
+                                            <button
+                                                onClick={(e) => handleDelete(e, cp)}
+                                                disabled={deleting === cp.id}
+                                                className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1.5 text-zinc-500 hover:text-red-400 hover:border-red-900/50 transition-colors"
+                                                title="Eliminar pieza"
+                                            >
+                                                <Trash2 className="h-3 w-3" />
+                                            </button>
+
+                                            {/* Ver en IG */}
+                                            {reelUrl && (
+                                                <a
+                                                    href={reelUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                                >
+                                                    <ExternalLink className="h-3 w-3" />
+                                                    Ver en IG
+                                                </a>
                                             )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-                            </button>
-                        )
-                    })}
+                            )
+                        })
+                    })()}
                 </div>
             )}
 

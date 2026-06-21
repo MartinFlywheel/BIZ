@@ -20,10 +20,11 @@ import {
     ChevronUp,
     Users,
     RefreshCw,
-    Eye,
     Heart,
     Play,
     MessageCircle,
+    Share2,
+    Bookmark,
 } from 'lucide-react'
 import type { Competitor, CompetitorReel } from '@/lib/types'
 
@@ -149,6 +150,21 @@ function ReelThumbnail({ url }: { url: string | null }) {
     )
 }
 
+function MultiplierBadge({ multiplier }: { multiplier: number }) {
+    const color =
+        multiplier >= 1.5
+            ? 'bg-emerald-500/80 text-emerald-50'
+            : multiplier >= 1.0
+                ? 'bg-amber-500/80 text-amber-50'
+                : 'bg-red-500/80 text-red-50'
+
+    return (
+        <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${color}`}>
+            ×{multiplier.toFixed(1)}
+        </span>
+    )
+}
+
 function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
     if (reels.length === 0) {
         return (
@@ -160,39 +176,90 @@ function CompetitorReelsGrid({ reels }: { reels: CompetitorReel[] }) {
         )
     }
 
+    const totalViews = reels.reduce((sum, r) => sum + (r.views || 0), 0)
+    const averageViews = reels.length > 0 ? totalViews / reels.length : 1
+
     return (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {reels.map((reel) => (
-                <div
-                    key={reel.id}
-                    className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors"
-                >
-                    <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-800">
-                        <ReelThumbnail url={reel.thumbnail_url} />
-                        <div className="absolute top-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
-                            {formatNumber(reel.views)}
-                        </div>
-                    </div>
+            {reels.map((reel) => {
+                const multiplier = averageViews > 0 ? reel.views / averageViews : 0
+                const reelUrl = reel.video_url ?? undefined
 
-                    <div className="p-2.5 space-y-1.5">
-                        {reel.caption && (
-                            <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
-                                {reel.caption}
+                return (
+                    <div
+                        key={reel.id}
+                        className="group rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden hover:border-zinc-700 transition-colors flex flex-col"
+                    >
+                        {/* Thumbnail */}
+                        <div className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800">
+                            <ReelThumbnail url={reel.thumbnail_url} />
+
+                            {/* Multiplier badge — top left */}
+                            <MultiplierBadge multiplier={multiplier} />
+
+                            {/* Duration — bottom right (if available) */}
+                            {(reel as CompetitorReel & { duration?: number | null }).duration != null && (
+                                <span className="absolute bottom-2 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-mono text-zinc-300">
+                                    {(() => {
+                                        const d = (reel as CompetitorReel & { duration?: number }).duration!
+                                        const m = Math.floor(d / 60)
+                                        const s = d % 60
+                                        return `${m}:${String(s).padStart(2, '0')}`
+                                    })()}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Card body */}
+                        <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
+                            {/* Views — big */}
+                            <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                {formatNumber(reel.views)}
                             </p>
-                        )}
-                        <div className="flex items-center gap-3 text-[10px] text-zinc-600">
-                            <span className="flex items-center gap-1">
-                                <Heart className="h-3 w-3" />
-                                <span className="font-mono">{formatNumber(reel.likes)}</span>
-                            </span>
-                            <span className="flex items-center gap-1">
-                                <MessageCircle className="h-3 w-3" />
-                                <span className="font-mono">{formatNumber(reel.comments)}</span>
-                            </span>
+
+                            {/* Engagement row */}
+                            <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                                <span className="flex items-center gap-0.5">
+                                    <Heart className="h-3 w-3" />
+                                    {formatNumber(reel.likes)}
+                                </span>
+                                <span className="flex items-center gap-0.5">
+                                    <MessageCircle className="h-3 w-3" />
+                                    {formatNumber(reel.comments)}
+                                </span>
+                                <span className="flex items-center gap-0.5">
+                                    <Share2 className="h-3 w-3" />
+                                    {formatNumber(reel.shares)}
+                                </span>
+                                <span className="flex items-center gap-0.5">
+                                    <Bookmark className="h-3 w-3" />
+                                    {formatNumber(reel.saves)}
+                                </span>
+                            </div>
+
+                            {/* Caption */}
+                            {reel.caption && (
+                                <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
+                                    {reel.caption}
+                                </p>
+                            )}
+
+                            {/* Ver en IG button */}
+                            {reelUrl && (
+                                <a
+                                    href={reelUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="mt-auto flex items-center justify-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1.5 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                                >
+                                    <ExternalLink className="h-3 w-3" />
+                                    Ver en IG
+                                </a>
+                            )}
                         </div>
                     </div>
-                </div>
-            ))}
+                )
+            })}
         </div>
     )
 }
