@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
+import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
+import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 
 // ── Webhook Integration Banner ────────────────────────────────────────────────
 
@@ -107,6 +109,7 @@ interface Props {
     contentPieces: ContentPiece[]
     contentMetrics: ContentMetric[]
     clientId: string
+    contentAnalytics: ContentAnalytics
 }
 
 function FunnelStep({
@@ -153,7 +156,7 @@ const contentTypeLabel: Record<string, string> = {
     live: 'Live',
 }
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
@@ -221,7 +224,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
     const selectedMetric = selectedPiece ? (metricsMap.get(selectedPiece.id) ?? null) : null
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {/* ── Funnel Banner ── */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -305,176 +308,187 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId }: 
             {/* ── Webhook Integration Banner ── */}
             <WebhookBanner />
 
-            {/* ── Content Gallery Grid ── */}
-            {contentPieces.length === 0 ? (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-12 text-center text-zinc-500 text-sm">
-                    Sin piezas de contenido registradas
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                    {(() => {
-                        const totalViews = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
-                        const avgViews = contentPieces.length > 0 ? totalViews / contentPieces.length : 1
+            {/* ── Two-column Moka layout ── */}
+            <div className="flex gap-4 items-start">
 
-                        return contentPieces.map((cp) => {
-                            const metric = metricsMap.get(cp.id)
-                            const hasMetrics = !!metric
-                            const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
-                            const multiplierColor =
-                                multiplier >= 1.5
-                                    ? 'bg-emerald-500/80 text-emerald-50'
-                                    : multiplier >= 1.0
-                                        ? 'bg-amber-500/80 text-amber-50'
-                                        : 'bg-red-500/80 text-red-50'
-                            const reelUrl = cp.ig_permalink ?? undefined
+                {/* ── LEFT: Reels grid (2/3) ── */}
+                <div className="flex-[2] min-w-0">
+                    {contentPieces.length === 0 ? (
+                        <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-12 text-center text-zinc-500 text-sm">
+                            Sin piezas de contenido registradas
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-3 gap-3">
+                            {(() => {
+                                const totalV = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
+                                const avgViews = contentPieces.length > 0 ? totalV / contentPieces.length : 1
 
-                            return (
-                                <div
-                                    key={cp.id}
-                                    className="group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300"
-                                    style={hasMetrics
-                                        ? {
-                                            border: '1px solid rgba(52,211,153,0.15)',
-                                            background: 'linear-gradient(160deg, rgba(255,69,58,0.06) 0%, rgba(0,0,0,0.5) 60%)',
-                                            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
-                                        }
-                                        : {
-                                            border: '1px solid rgba(255,255,255,0.06)',
-                                            background: 'linear-gradient(160deg, rgba(255,69,58,0.05) 0%, rgba(0,0,0,0.5) 60%)',
-                                            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
-                                        }
-                                    }
-                                >
-                                    {/* Thumbnail */}
-                                    <button
-                                        onClick={() => setSelectedPiece(cp)}
-                                        className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
-                                    >
-                                        {cp.ig_thumbnail_url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                                src={cp.ig_thumbnail_url}
-                                                alt={cp.caption || cp.content_type}
-                                                className="h-full w-full object-cover"
-                                            />
-                                        ) : (
-                                            <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
-                                                <Play className="h-8 w-8 text-zinc-600" />
-                                                {cp.keyword_trigger && (
-                                                    <span className="font-mono text-sm font-bold text-zinc-400">
-                                                        {cp.keyword_trigger}
-                                                    </span>
-                                                )}
-                                                <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
-                                                    {contentTypeLabel[cp.content_type] || cp.content_type}
-                                                </span>
-                                            </div>
-                                        )}
+                                return contentPieces.map((cp) => {
+                                    const metric = metricsMap.get(cp.id)
+                                    const hasMetrics = !!metric
+                                    const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
+                                    const multiplierColor =
+                                        multiplier >= 1.5
+                                            ? 'bg-emerald-500/80 text-emerald-50'
+                                            : multiplier >= 1.0
+                                                ? 'bg-amber-500/80 text-amber-50'
+                                                : 'bg-red-500/80 text-red-50'
+                                    const reelUrl = cp.ig_permalink ?? undefined
 
-                                        {/* Multiplier badge — top left */}
-                                        <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
-                                            ×{multiplier.toFixed(1)}
-                                        </span>
-
-                                        {/* Has-metrics indicator — top right */}
-                                        {hasMetrics && (
-                                            <div className="absolute top-2 right-2">
-                                                <CheckCircle2 className="h-4 w-4 text-emerald-400 drop-shadow" />
-                                            </div>
-                                        )}
-
-                                        {/* Add metrics overlay on hover */}
-                                        {!hasMetrics && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Plus className="h-6 w-6 text-white" />
-                                            </div>
-                                        )}
-                                    </button>
-
-                                    {/* Card body */}
-                                    <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                                        {/* Views — big */}
-                                        <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
-                                            {formatNumber(cp.views)}
-                                        </p>
-
-                                        {/* Engagement row */}
-                                        <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
-                                            <span className="flex items-center gap-0.5">
-                                                <Heart className="h-3 w-3" />
-                                                {formatNumber(cp.likes)}
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                                <MessageCircle className="h-3 w-3" />
-                                                {formatNumber(cp.comments)}
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                                <Share2 className="h-3 w-3" />
-                                                {formatNumber(cp.shares)}
-                                            </span>
-                                            <span className="flex items-center gap-0.5">
-                                                <Bookmark className="h-3 w-3" />
-                                                {formatNumber(cp.saves)}
-                                            </span>
-                                        </div>
-
-                                        {/* Caption */}
-                                        {cp.caption && (
-                                            <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
-                                                {cp.caption}
-                                            </p>
-                                        )}
-
-                                        {/* Funnel metrics if available */}
-                                        {hasMetrics && metric && (
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-[10px] text-emerald-500 font-mono">
-                                                    {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
-                                                </span>
-                                                {metric.cash_collected != null && (
-                                                    <>
-                                                        <span className="text-[10px] text-zinc-600">·</span>
-                                                        <span className="text-[10px] text-emerald-600 font-mono">
-                                                            {formatCurrency(metric.cash_collected)}
-                                                        </span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Action row */}
-                                        <div className="mt-auto flex items-center gap-1.5 pt-0.5">
-                                            {/* Delete button */}
+                                    return (
+                                        <div
+                                            key={cp.id}
+                                            className="group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300"
+                                            style={hasMetrics
+                                                ? {
+                                                    border: '1px solid rgba(52,211,153,0.15)',
+                                                    background: 'linear-gradient(160deg, rgba(255,69,58,0.06) 0%, rgba(0,0,0,0.5) 60%)',
+                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                                }
+                                                : {
+                                                    border: '1px solid rgba(255,255,255,0.06)',
+                                                    background: 'linear-gradient(160deg, rgba(255,69,58,0.05) 0%, rgba(0,0,0,0.5) 60%)',
+                                                    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04)',
+                                                }
+                                            }
+                                        >
+                                            {/* Thumbnail */}
                                             <button
-                                                onClick={(e) => handleDelete(e, cp)}
-                                                disabled={deleting === cp.id}
-                                                className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1.5 text-zinc-500 hover:text-red-400 hover:border-red-900/50 transition-colors"
-                                                title="Eliminar pieza"
+                                                onClick={() => setSelectedPiece(cp)}
+                                                className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
                                             >
-                                                <Trash2 className="h-3 w-3" />
+                                                {cp.ig_thumbnail_url ? (
+                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                    <img
+                                                        src={cp.ig_thumbnail_url}
+                                                        alt={cp.caption || cp.content_type}
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
+                                                        <Play className="h-8 w-8 text-zinc-600" />
+                                                        {cp.keyword_trigger && (
+                                                            <span className="font-mono text-sm font-bold text-zinc-400">
+                                                                {cp.keyword_trigger}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
+                                                            {contentTypeLabel[cp.content_type] || cp.content_type}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {/* Multiplier badge — top left */}
+                                                <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
+                                                    ×{multiplier.toFixed(1)}
+                                                </span>
+
+                                                {/* Has-metrics indicator — top right */}
+                                                {hasMetrics && (
+                                                    <div className="absolute top-2 right-2">
+                                                        <CheckCircle2 className="h-4 w-4 text-emerald-400 drop-shadow" />
+                                                    </div>
+                                                )}
+
+                                                {/* Add metrics overlay on hover */}
+                                                {!hasMetrics && (
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Plus className="h-6 w-6 text-white" />
+                                                    </div>
+                                                )}
                                             </button>
 
-                                            {/* Ver en IG */}
-                                            {reelUrl && (
-                                                <a
-                                                    href={reelUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                    className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
-                                                >
-                                                    <ExternalLink className="h-3 w-3" />
-                                                    Ver en IG
-                                                </a>
-                                            )}
+                                            {/* Card body */}
+                                            <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
+                                                {/* Views — big */}
+                                                <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
+                                                    {formatNumber(cp.views)}
+                                                </p>
+
+                                                {/* Engagement row */}
+                                                <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                                                    <span className="flex items-center gap-0.5">
+                                                        <Heart className="h-3 w-3" />
+                                                        {formatNumber(cp.likes)}
+                                                    </span>
+                                                    <span className="flex items-center gap-0.5">
+                                                        <MessageCircle className="h-3 w-3" />
+                                                        {formatNumber(cp.comments)}
+                                                    </span>
+                                                    <span className="flex items-center gap-0.5">
+                                                        <Share2 className="h-3 w-3" />
+                                                        {formatNumber(cp.shares)}
+                                                    </span>
+                                                    <span className="flex items-center gap-0.5">
+                                                        <Bookmark className="h-3 w-3" />
+                                                        {formatNumber(cp.saves)}
+                                                    </span>
+                                                </div>
+
+                                                {/* Caption */}
+                                                {cp.caption && (
+                                                    <p className="text-[11px] text-zinc-500 line-clamp-2 leading-tight">
+                                                        {cp.caption}
+                                                    </p>
+                                                )}
+
+                                                {/* Funnel metrics if available */}
+                                                {hasMetrics && metric && (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[10px] text-emerald-500 font-mono">
+                                                            {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
+                                                        </span>
+                                                        {metric.cash_collected != null && (
+                                                            <>
+                                                                <span className="text-[10px] text-zinc-600">·</span>
+                                                                <span className="text-[10px] text-emerald-600 font-mono">
+                                                                    {formatCurrency(metric.cash_collected)}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Action row */}
+                                                <div className="mt-auto flex items-center gap-1.5 pt-0.5">
+                                                    {/* Delete button */}
+                                                    <button
+                                                        onClick={(e) => handleDelete(e, cp)}
+                                                        disabled={deleting === cp.id}
+                                                        className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1.5 text-zinc-500 hover:text-red-400 hover:border-red-900/50 transition-colors"
+                                                        title="Eliminar pieza"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+
+                                                    {/* Ver en IG */}
+                                                    {reelUrl && (
+                                                        <a
+                                                            href={reelUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
+                                                        >
+                                                            <ExternalLink className="h-3 w-3" />
+                                                            Ver en IG
+                                                        </a>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </div>
-                            )
-                        })
-                    })()}
+                                    )
+                                })
+                            })()}
+                        </div>
+                    )}
                 </div>
-            )}
+
+                {/* ── RIGHT: Analytics sidebar (1/3) sticky ── */}
+                <div className="w-72 flex-shrink-0 sticky top-4">
+                    <ContentAnalyticsSidebar analytics={contentAnalytics} />
+                </div>
+            </div>
 
             {/* ── Modals ── */}
             {selectedPiece && (

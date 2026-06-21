@@ -19,6 +19,7 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 import { Pencil, Trash2, Plus } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
+import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 
 interface AgencyUser {
   id: string
@@ -39,6 +40,7 @@ interface Props {
   leadFunnel: ClientFunnelAggregate
   competitors: Competitor[]
   competitorReels: Record<string, CompetitorReel[]>
+  contentAnalytics: ContentAnalytics
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -49,7 +51,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels }: Props) {
+export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics }: Props) {
   const [editing, setEditing] = useState(false)
   const [showCampaignForm, setShowCampaignForm] = useState(false)
   const router = useRouter()
@@ -145,6 +147,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
                 contentPieces={contentPieces}
                 contentMetrics={contentMetrics}
                 clientId={client.id}
+                contentAnalytics={contentAnalytics}
               />
             )}
 
