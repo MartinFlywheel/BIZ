@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { formatDate, formatDateCompact } from '@/lib/utils'
-import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2, Plus, X, TrendingUp } from 'lucide-react'
+import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2, Plus, X, TrendingUp, Settings } from 'lucide-react'
 import {
     updateLeadStageAction,
     updateLeadAvatarAction,
@@ -16,6 +16,7 @@ import {
     removeLeadEventAction,
     createLeadAction,
 } from '@/lib/actions/leads'
+import { updateClientAvatars } from '@/lib/actions/clients'
 import { LEAD_STAGES, LEAD_AVATARS, LEAD_EVENTS } from '@/lib/types'
 import type { Lead, LeadStage, ContentPiece } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
@@ -33,6 +34,7 @@ interface Props {
     contentPieces: ContentPiece[]
     clientId: string
     leadFunnel: ClientFunnelAggregate
+    customAvatars?: string[]
 }
 
 // ── Stage config ──────────────────────────────────────────────────────────────
@@ -123,7 +125,7 @@ function StageDropdown({ lead }: { lead: Lead }) {
 
 // ── Inline Avatar Dropdown ────────────────────────────────────────────────────
 
-function AvatarDropdown({ lead }: { lead: Lead }) {
+function AvatarDropdown({ lead, avatarList }: { lead: Lead; avatarList: readonly string[] }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [optimistic, setOptimistic] = useState<string>(lead.lead_avatar ?? '')
@@ -150,7 +152,7 @@ function AvatarDropdown({ lead }: { lead: Lead }) {
                 style={{ WebkitAppearance: 'none' }}
             >
                 <option value="" className="bg-zinc-900 text-zinc-500">— Avatar —</option>
-                {LEAD_AVATARS.map((a) => (
+                {avatarList.map((a) => (
                     <option key={a} value={a} className="bg-zinc-900 text-zinc-100">{a}</option>
                 ))}
             </select>
@@ -158,6 +160,114 @@ function AvatarDropdown({ lead }: { lead: Lead }) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
         </div>
+    )
+}
+
+// ── Configurar Avatares Modal ─────────────────────────────────────────────────
+
+function ConfigurarAvatarsModal({
+    clientId,
+    initialAvatars,
+    onClose,
+}: {
+    clientId: string
+    initialAvatars: string[]
+    onClose: () => void
+}) {
+    const router = useRouter()
+    const [avatars, setAvatars] = useState<string[]>(initialAvatars)
+    const [newAvatar, setNewAvatar] = useState('')
+    const [loading, setLoading] = useState(false)
+    const [error, setError] = useState<string | null>(null)
+
+    function addAvatar() {
+        const trimmed = newAvatar.trim()
+        if (!trimmed || avatars.includes(trimmed)) return
+        setAvatars([...avatars, trimmed])
+        setNewAvatar('')
+    }
+
+    function removeAvatar(avatar: string) {
+        setAvatars(avatars.filter((a) => a !== avatar))
+    }
+
+    async function handleSave() {
+        setLoading(true)
+        setError(null)
+        try {
+            await updateClientAvatars(clientId, avatars)
+            router.refresh()
+            onClose()
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Error al guardar')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    return (
+        <Modal onClose={onClose} size="sm">
+            <div className="flex items-center justify-between mb-5">
+                <div>
+                    <h2 className="text-base font-semibold text-zinc-50 flex items-center gap-2">
+                        <Settings className="h-4 w-4" /> Configurar Avatares
+                    </h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">Categorías de avatar para este cliente</p>
+                </div>
+                <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200">
+                    <X className="h-5 w-5" />
+                </button>
+            </div>
+
+            {/* Current avatars */}
+            <div className="space-y-2 mb-4 min-h-[40px]">
+                {avatars.length === 0 ? (
+                    <p className="text-xs text-zinc-600 italic">Sin avatares personalizados — se usarán los predeterminados.</p>
+                ) : (
+                    avatars.map((a) => (
+                        <div key={a} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                            <span className="text-sm text-zinc-200">{a}</span>
+                            <button
+                                onClick={() => removeAvatar(a)}
+                                className="text-zinc-600 hover:text-red-400 transition-colors"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Add new */}
+            <div className="flex gap-2 mb-5">
+                <input
+                    type="text"
+                    value={newAvatar}
+                    onChange={(e) => setNewAvatar(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addAvatar() } }}
+                    placeholder="Nuevo avatar..."
+                    className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+                />
+                <Button type="button" variant="secondary" size="sm" onClick={addAvatar}>
+                    <Plus className="h-3.5 w-3.5" />
+                </Button>
+            </div>
+
+            {error && (
+                <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2 mb-4">
+                    {error}
+                </p>
+            )}
+
+            <div className="flex gap-3">
+                <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
+                    Cancelar
+                </Button>
+                <Button type="button" disabled={loading} onClick={handleSave} className="flex-1">
+                    {loading ? 'Guardando...' : 'Guardar'}
+                </Button>
+            </div>
+        </Modal>
     )
 }
 
@@ -318,11 +428,13 @@ function NuevoLeadForm({
     clientId,
     agencyUsers,
     contentPieces,
+    avatarList,
     onClose,
 }: {
     clientId: string
     agencyUsers: AgencyUser[]
     contentPieces: ContentPiece[]
+    avatarList: readonly string[]
     onClose: () => void
 }) {
     const [loading, setLoading] = useState(false)
@@ -347,7 +459,7 @@ function NuevoLeadForm({
     }
 
     const stageOptions = LEAD_STAGES.map((s) => ({ value: s.id, label: s.label }))
-    const avatarOptions = LEAD_AVATARS.map((a) => ({ value: a, label: a }))
+    const avatarOptions = avatarList.map((a) => ({ value: a, label: a }))
     const userOptions = agencyUsers.map((u) => ({ value: u.id, label: u.full_name }))
     const contentOptions = contentPieces.map((cp) => ({
         value: cp.id,
@@ -460,11 +572,15 @@ function NuevoLeadForm({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, leadFunnel }: Props) {
+export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, leadFunnel, customAvatars }: Props) {
     const [search, setSearch] = useState('')
     const [stageFilter, setStageFilter] = useState<LeadStage | 'all'>('all')
     const [view, setView] = useState<'kanban' | 'table'>('table')
     const [showNewLeadForm, setShowNewLeadForm] = useState(false)
+    const [showAvatarConfig, setShowAvatarConfig] = useState(false)
+
+    // Use custom avatars if provided and non-empty, otherwise fall back to LEAD_AVATARS
+    const avatarList: readonly string[] = (customAvatars && customAvatars.length > 0) ? customAvatars : LEAD_AVATARS
 
     // Build content map for Fuente lookup
     const contentMap = useMemo(() => {
@@ -522,6 +638,19 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
                         <p className="text-xs text-zinc-500 mt-0.5">{stat.label}</p>
                     </div>
                 ))}
+            </div>
+
+            {/* ── CRM Setters Header ── */}
+            <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-zinc-300">CRM Setters</h2>
+                <button
+                    onClick={() => setShowAvatarConfig(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors"
+                    title="Configurar Avatares"
+                >
+                    <Settings className="h-3.5 w-3.5" />
+                    Configurar Avatares
+                </button>
             </div>
 
             {/* ── Controls ── */}
@@ -673,7 +802,7 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
 
                                                 {/* Avatar dropdown */}
                                                 <td className="px-4 py-3">
-                                                    <AvatarDropdown lead={lead} />
+                                                    <AvatarDropdown lead={lead} avatarList={avatarList} />
                                                 </td>
 
                                                 {/* Fuente */}
@@ -712,7 +841,17 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
                     clientId={clientId}
                     agencyUsers={agencyUsers}
                     contentPieces={contentPieces}
+                    avatarList={avatarList}
                     onClose={() => setShowNewLeadForm(false)}
+                />
+            )}
+
+            {/* ── Configurar Avatares Modal ── */}
+            {showAvatarConfig && (
+                <ConfigurarAvatarsModal
+                    clientId={clientId}
+                    initialAvatars={customAvatars && customAvatars.length > 0 ? customAvatars : []}
+                    onClose={() => setShowAvatarConfig(false)}
                 />
             )}
         </div>

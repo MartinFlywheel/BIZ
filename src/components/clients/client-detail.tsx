@@ -158,6 +158,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
                 contentPieces={contentPieces}
                 clientId={client.id}
                 leadFunnel={leadFunnel}
+                customAvatars={client.custom_avatars}
               />
             )}
 
