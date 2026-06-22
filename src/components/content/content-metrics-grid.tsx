@@ -28,9 +28,10 @@ function WebhookBanner() {
     const [copied, setCopied] = useState(false)
     const [expanded, setExpanded] = useState(false)
 
-    const webhookUrl = typeof window !== 'undefined'
+    const baseUrl = typeof window !== 'undefined'
         ? `${window.location.origin}${WEBHOOK_PATH}`
         : WEBHOOK_PATH
+    const webhookUrl = `${baseUrl}/{keyword_trigger}`
 
     async function handleCopy() {
         try {
@@ -84,6 +85,9 @@ function WebhookBanner() {
                                 }
                             </button>
                         </div>
+                        <p className="text-[11px] text-zinc-600 leading-snug">
+                            Reemplazá <span className="font-mono text-zinc-500">{'{keyword_trigger}'}</span> con el ID de la pieza (ej: C_21_04, R_19_04). Cada pieza tiene su propia URL.
+                        </p>
                     </div>
 
                     {/* Payload structure */}
