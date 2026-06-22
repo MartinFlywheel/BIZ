@@ -102,6 +102,7 @@ export interface Client {
   calendly_token: string | null
   calendly_org_uri: string | null
   calendly_webhook_id: string | null
+  custom_avatars: string[]
   onboarded_at: string | null
   created_at: string
   updated_at: string

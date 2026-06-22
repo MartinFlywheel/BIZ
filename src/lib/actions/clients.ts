@@ -103,6 +103,21 @@ export async function updateClientAction(id: string, formData: FormData) {
   revalidatePath(`/clients/${id}`)
 }
 
+export async function updateClientAvatars(clientId: string, avatars: string[]) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('clients')
+    .update({
+      custom_avatars: avatars.filter(Boolean),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', clientId)
+
+  if (error) throw error
+  revalidatePath(`/clients/${clientId}`)
+}
+
 export async function deleteClientAction(id: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('clients').delete().eq('id', id)
