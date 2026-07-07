@@ -4,19 +4,17 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Tabs } from '@/components/ui/tabs'
 import { ClientForm } from './client-form'
-import { CampaignForm } from '@/components/campaigns/campaign-form'
 import { ContentMetricsGrid } from '@/components/content/content-metrics-grid'
 import { type ContentMetric } from '@/components/content/content-funnel-form'
 import { ClientLeadsBoard } from './client-leads-board'
 import { ClientCallsList } from './client-calls-list'
 import { ClientCompetitors } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
-import { deleteCampaignAction } from '@/lib/actions/campaigns'
-import { formatDate, formatCurrency } from '@/lib/utils'
-import { Pencil, Trash2, Plus } from 'lucide-react'
+import { formatCurrency } from '@/lib/utils'
+import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
+import { Pencil, Trash2 } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
@@ -53,7 +51,6 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
 
 export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics }: Props) {
   const [editing, setEditing] = useState(false)
-  const [showCampaignForm, setShowCampaignForm] = useState(false)
   const router = useRouter()
   const badge = statusBadge[client.status] || statusBadge.prospect
 
@@ -64,7 +61,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
   }
 
   const tabs = [
-    { id: 'campaigns', label: 'Campañas', count: campaigns.length },
+    { id: 'analytics', label: 'Analítica' },
     { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
     { id: 'crm_setters', label: 'CRM Setters', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
@@ -99,47 +96,8 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
       <Tabs tabs={tabs}>
         {(activeTab) => (
           <>
-            {activeTab === 'campaigns' && (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <Button size="sm" onClick={() => setShowCampaignForm(true)}>
-                    <Plus className="h-3.5 w-3.5" /> Nueva Campaña
-                  </Button>
-                </div>
-                {campaigns.length === 0 ? (
-                  <Card><div className="text-center text-zinc-500 py-8">Sin campañas</div></Card>
-                ) : (
-                  <div className="space-y-3">
-                    {campaigns.map((c) => (
-                      <Card key={c.id} className="p-4 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-zinc-100">{c.name}</p>
-                          <p className="text-xs text-zinc-500">
-                            {formatDate(c.start_date)} {c.end_date ? `— ${formatDate(c.end_date)}` : ''}
-                          </p>
-                          {c.goal && <p className="text-xs text-zinc-400 mt-1">{c.goal}</p>}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={c.status === 'active' ? 'success' : c.status === 'completed' ? 'default' : 'warning'}>
-                            {c.status}
-                          </Badge>
-                          <button
-                            onClick={async () => {
-                              if (confirm('¿Eliminar esta campaña?')) {
-                                await deleteCampaignAction(c.id, client.id)
-                                router.refresh()
-                              }
-                            }}
-                            className="text-zinc-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {activeTab === 'analytics' && (
+              <ClientAnalyticsDashboard clientId={client.id} />
             )}
 
             {activeTab === 'content_metrics' && (
@@ -181,12 +139,6 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
       </Tabs>
 
       {editing && <ClientForm client={client} onClose={() => setEditing(false)} />}
-      {showCampaignForm && (
-        <CampaignForm
-          clientId={client.id}
-          onClose={() => { setShowCampaignForm(false); router.refresh() }}
-        />
-      )}
     </div>
   )
 }
