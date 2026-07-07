@@ -117,7 +117,26 @@ function Cell({
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-type RowState = Omit<MetricsRow, 'client_id' | 'period_type'> & { _saving?: boolean; _saved?: boolean }
+type RowState = Omit<MetricsRow, 'client_id' | 'period_type'>
+
+function DateCell({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded-md bg-transparent px-1.5 py-1 text-xs font-mono text-zinc-300 outline-none
+        hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12]
+        [color-scheme:dark] transition-colors"
+    />
+  )
+}
 
 function SpreadsheetRow({
   clientId,
@@ -131,67 +150,85 @@ function SpreadsheetRow({
   onDelete: () => void
 }) {
   const [row, setRow] = useState<RowState>(initialData)
+  // Track original key so we can delete-then-insert when dates change
+  const originalStartRef = useRef(initialData.period_start)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const set = useCallback((field: keyof RowState, raw: string) => {
-    const isNum = ['views_reels','views_historias','followers_gained','chats_abiertos',
-      'conversaciones','agendas','shows','cierres'].includes(field as string)
-    const isCur = ['facturacion','cash_collected'].includes(field as string)
-
-    setRow((prev) => ({
-      ...prev,
-      [field]: isNum || isCur ? (parseFloat(raw) || 0) : raw || null,
-    }))
-
+  const persist = useCallback((next: RowState) => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
       setSaving(true)
       setSaved(false)
       try {
-        await saveMetricsRow({
-          client_id: clientId,
-          period_type: periodType,
-          ...row,
-          [field]: isNum || isCur ? (parseFloat(raw) || 0) : raw || null,
-        } as MetricsRow)
+        // If period_start changed, delete old record first
+        if (next.period_start !== originalStartRef.current) {
+          await deleteMetricsRow(clientId, originalStartRef.current, periodType)
+          originalStartRef.current = next.period_start
+        }
+        await saveMetricsRow({ client_id: clientId, period_type: periodType, ...next })
         setSaved(true)
         setTimeout(() => setSaved(false), 2000)
       } catch {}
       setSaving(false)
-    }, 800)
-  }, [clientId, periodType, row])
+    }, 600)
+  }, [clientId, periodType])
+
+  function set(field: keyof RowState, raw: string) {
+    const isNum = ['views_reels','views_historias','followers_gained','chats_abiertos',
+      'conversaciones','agendas','shows','cierres'].includes(field as string)
+    const isCur = ['facturacion','cash_collected'].includes(field as string)
+    const parsed = isNum || isCur ? (parseFloat(raw) || 0) : (raw || null)
+
+    const next = { ...row, [field]: parsed }
+
+    // Auto-fill period_end when start changes
+    if (field === 'period_start' && raw) {
+      if (periodType === 'daily') next.period_end = raw
+      else if (periodType === 'weekly') next.period_end = sundayOf(raw)
+      else if (periodType === 'monthly') next.period_end = lastOfMonth(raw)
+    }
+
+    setRow(next)
+    persist(next)
+  }
 
   async function handleDelete() {
     if (!confirm('¿Eliminar este período?')) return
-    await deleteMetricsRow(clientId, row.period_start, periodType)
+    await deleteMetricsRow(clientId, originalStartRef.current, periodType)
     onDelete()
   }
 
   const pctResp = pct(row.chats_abiertos, row.views_reels)
-  const pctSeg = pct(row.followers_gained, row.views_reels)
+  const pctSeg  = pct(row.followers_gained, row.views_reels)
   const pctConv = pct(row.conversaciones, row.chats_abiertos)
 
   return (
     <tr className="group border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-      {/* Período (read-only label) */}
-      <td className="px-3 py-1.5 whitespace-nowrap">
-        <span className="text-xs text-zinc-400 font-medium">
-          {fmtPeriod(row.period_start, row.period_end, periodType)}
-        </span>
+      {/* Período — editable date inputs */}
+      <td className="px-1 py-1 whitespace-nowrap">
+        <div className="flex items-center gap-1">
+          <DateCell value={row.period_start} onChange={(v) => set('period_start', v)} />
+          {periodType !== 'daily' && (
+            <>
+              <span className="text-zinc-700 text-xs">–</span>
+              <DateCell value={row.period_end} onChange={(v) => set('period_end', v)} />
+            </>
+          )}
+        </div>
       </td>
 
-      <Cell value={row.views_reels} onChange={(v) => set('views_reels', v)} />
+      <Cell value={row.views_reels}     onChange={(v) => set('views_reels', v)} />
       <Cell value={row.views_historias} onChange={(v) => set('views_historias', v)} />
       <Cell value={row.followers_gained} onChange={(v) => set('followers_gained', v)} />
-      <Cell value={row.chats_abiertos} onChange={(v) => set('chats_abiertos', v)} />
-      <Cell value={row.conversaciones} onChange={(v) => set('conversaciones', v)} />
-      <Cell value={row.agendas} onChange={(v) => set('agendas', v)} />
-      <Cell value={row.shows} onChange={(v) => set('shows', v)} />
-      <Cell value={row.cierres} onChange={(v) => set('cierres', v)} />
-      <Cell value={row.facturacion} onChange={(v) => set('facturacion', v)} currency />
-      <Cell value={row.cash_collected} onChange={(v) => set('cash_collected', v)} currency />
+      <Cell value={row.chats_abiertos}  onChange={(v) => set('chats_abiertos', v)} />
+      <Cell value={row.conversaciones}  onChange={(v) => set('conversaciones', v)} />
+      <Cell value={row.agendas}         onChange={(v) => set('agendas', v)} />
+      <Cell value={row.shows}           onChange={(v) => set('shows', v)} />
+      <Cell value={row.cierres}         onChange={(v) => set('cierres', v)} />
+      <Cell value={row.facturacion}     onChange={(v) => set('facturacion', v)} currency />
+      <Cell value={row.cash_collected}  onChange={(v) => set('cash_collected', v)} currency />
 
       {/* Auto-calculated */}
       <td className="px-2 py-1.5 text-right">
@@ -209,7 +246,7 @@ function SpreadsheetRow({
       {/* Actions */}
       <td className="px-2 py-1.5">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {saving && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
+          {saving  && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
           {saved && !saving && <Check className="h-3 w-3 text-emerald-400" />}
           <button
             onClick={handleDelete}
