@@ -40,6 +40,7 @@ interface Props {
   competitors: Competitor[]
   competitorReels: Record<string, CompetitorReel[]>
   contentAnalytics: ContentAnalytics
+  readOnly?: boolean
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -50,7 +51,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics }: Props) {
+export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, readOnly = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const badge = statusBadge[client.status] || statusBadge.prospect
@@ -84,15 +85,17 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
             <p className="mt-1 text-sm text-zinc-300">{formatCurrency(client.monthly_fee)}/mes</p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-            <Pencil className="h-3.5 w-3.5" />
-            Editar
-          </Button>
-          <Button variant="danger" size="sm" onClick={handleDelete}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+              <Pencil className="h-3.5 w-3.5" />
+              Editar
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleDelete}>
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
       </div>
 
       <Tabs tabs={tabs}>
@@ -144,7 +147,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
         )}
       </Tabs>
 
-      {editing && <ClientForm client={client} onClose={() => setEditing(false)} />}
+      {!readOnly && editing && <ClientForm client={client} onClose={() => setEditing(false)} />}
     </div>
   )
 }
