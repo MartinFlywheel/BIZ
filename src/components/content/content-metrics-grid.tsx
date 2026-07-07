@@ -441,7 +441,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                                                 {/* Add metrics overlay on hover */}
                                                 {!hasMetrics && (
-                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity [@media(hover:none)]:hidden">
                                                         <Plus className="h-6 w-6 text-white" />
                                                     </div>
                                                 )}
