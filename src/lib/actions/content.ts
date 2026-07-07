@@ -9,7 +9,8 @@ export async function getContentPieces(clientId?: string) {
   let query = supabase
     .from('content_pieces')
     .select('*, clients(name, ig_handle), campaigns(name)')
-    .order('published_at', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
 
   if (clientId) {
     query = query.eq('client_id', clientId)

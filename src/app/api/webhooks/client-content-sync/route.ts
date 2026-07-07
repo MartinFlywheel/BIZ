@@ -15,6 +15,15 @@ interface ReelPayload {
   shares?: number
   saves?: number
   published_at?: string
+  shortCode?: string
+}
+
+// Apify's instagram-reel-scraper sometimes returns facebook.com URLs.
+// Prefer instagram.com; if only a shortCode is available, build the URL.
+function sanitizeIgPermalink(videoUrl: string | undefined, shortCode: string | undefined): string | null {
+  if (videoUrl && videoUrl.includes('instagram.com')) return videoUrl
+  if (shortCode) return `https://www.instagram.com/reel/${shortCode}/`
+  return null
 }
 
 interface SyncPayload {
@@ -102,10 +111,12 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       if (existing) {
+        const sanitizedPermalink = sanitizeIgPermalink(reel.video_url, reel.shortCode)
         await supabase
           .from('content_pieces')
           .update({
             ig_thumbnail_url: permanentUrl || reel.thumbnail_url || null,
+            ...(sanitizedPermalink && { ig_permalink: sanitizedPermalink }),
             caption: reel.caption || null,
             views: reel.views || 0,
             likes: reel.likes || 0,
@@ -123,7 +134,7 @@ export async function POST(request: Request) {
           client_id: payload.client_id,
           content_type: contentType,
           ig_media_id: mediaId,
-          ig_permalink: reel.video_url || null,
+          ig_permalink: sanitizeIgPermalink(reel.video_url, reel.shortCode),
           ig_thumbnail_url: permanentUrl || reel.thumbnail_url || null,
           caption: reel.caption || null,
           published_at: reel.published_at || null,

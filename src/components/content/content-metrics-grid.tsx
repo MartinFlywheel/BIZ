@@ -9,7 +9,7 @@ import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 
@@ -160,12 +160,22 @@ const contentTypeLabel: Record<string, string> = {
     live: 'Live',
 }
 
+type SortKey = 'recent' | 'views' | 'revenue' | 'comments'
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+    { key: 'recent', label: 'Recientes' },
+    { key: 'views', label: 'Vistas' },
+    { key: 'revenue', label: 'Revenue' },
+    { key: 'comments', label: 'Comentarios' },
+]
+
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [quickAdding, setQuickAdding] = useState(false)
     const [quickAddToast, setQuickAddToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+    const [sortBy, setSortBy] = useState<SortKey>('recent')
     const router = useRouter()
 
     async function handleQuickAdd() {
@@ -208,6 +218,19 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     for (const m of contentMetrics) {
         metricsMap.set(m.content_id, m)
     }
+
+    // Sort pieces client-side
+    const sortedPieces = [...contentPieces].sort((a, b) => {
+        if (sortBy === 'views') return (b.views || 0) - (a.views || 0)
+        if (sortBy === 'comments') return (b.comments || 0) - (a.comments || 0)
+        if (sortBy === 'revenue') {
+            const aRev = metricsMap.get(a.id)?.cash_collected || 0
+            const bRev = metricsMap.get(b.id)?.cash_collected || 0
+            return bRev - aRev
+        }
+        // 'recent' — server already sorted by published_at desc, preserve order
+        return 0
+    })
 
     // Aggregate funnel totals across all pieces
     const totals = contentMetrics.reduce(
@@ -316,18 +339,35 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
             <div className="flex gap-4 items-start">
 
                 {/* ── LEFT: Reels grid (2/3) ── */}
-                <div className="flex-[2] min-w-0">
-                    {contentPieces.length === 0 ? (
+                <div className="flex-[2] min-w-0 space-y-3">
+                    {/* Sort controls */}
+                    <div className="flex items-center gap-1.5">
+                        <ArrowUpDown className="h-3.5 w-3.5 text-zinc-600 flex-shrink-0" />
+                        {SORT_OPTIONS.map((opt) => (
+                            <button
+                                key={opt.key}
+                                onClick={() => setSortBy(opt.key)}
+                                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${sortBy === opt.key
+                                    ? 'bg-white/[0.08] text-zinc-100 border border-white/[0.12]'
+                                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                                    }`}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {sortedPieces.length === 0 ? (
                         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-12 text-center text-zinc-500 text-sm">
                             Sin piezas de contenido registradas
                         </div>
                     ) : (
                         <div className="grid grid-cols-3 gap-3">
                             {(() => {
-                                const totalV = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
-                                const avgViews = contentPieces.length > 0 ? totalV / contentPieces.length : 1
+                                const totalV = sortedPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
+                                const avgViews = sortedPieces.length > 0 ? totalV / sortedPieces.length : 1
 
-                                return contentPieces.map((cp) => {
+                                return sortedPieces.map((cp) => {
                                     const metric = metricsMap.get(cp.id)
                                     const hasMetrics = !!metric
                                     const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
@@ -337,7 +377,10 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                             : multiplier >= 1.0
                                                 ? 'bg-amber-500/80 text-amber-50'
                                                 : 'bg-red-500/80 text-red-50'
-                                    const reelUrl = cp.ig_permalink ?? undefined
+                                    // Only show IG link if it's actually an Instagram URL
+                                    const reelUrl = cp.ig_permalink?.includes('instagram.com')
+                                        ? cp.ig_permalink
+                                        : undefined
 
                                     return (
                                         <div
