@@ -216,6 +216,7 @@ export async function upsertClientMetrics(formData: FormData) {
       period_type: (formData.get('period_type') as string) || 'weekly',
       views_reels: parseInt(formData.get('views_reels') as string) || 0,
       views_historias: parseInt(formData.get('views_historias') as string) || 0,
+      followers_gained: parseInt(formData.get('followers_gained') as string) || 0,
       chats_abiertos: parseInt(formData.get('chats_abiertos') as string) || 0,
       conversaciones: parseInt(formData.get('conversaciones') as string) || 0,
       agendas: parseInt(formData.get('agendas') as string) || 0,
@@ -234,5 +235,52 @@ export async function upsertClientMetrics(formData: FormData) {
   const clientId = formData.get('client_id') as string
   revalidatePath(`/clients/${clientId}`)
   revalidatePath('/dashboard')
+}
+
+// ── Direct row save (used by the inline spreadsheet component) ──
+
+export interface MetricsRow {
+  client_id: string
+  period_type: 'daily' | 'weekly' | 'monthly'
+  period_start: string
+  period_end: string
+  views_reels: number
+  views_historias: number
+  followers_gained: number
+  chats_abiertos: number
+  conversaciones: number
+  agendas: number
+  shows: number
+  cierres: number
+  facturacion: number
+  cash_collected: number
+  notes: string | null
+}
+
+export async function saveMetricsRow(row: MetricsRow) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('client_metrics')
+    .upsert({ ...row, updated_at: new Date().toISOString() }, {
+      onConflict: 'client_id,period_start,period_type',
+    })
+
+  if (error) throw error
+  revalidatePath(`/clients/${row.client_id}`)
+}
+
+export async function deleteMetricsRow(clientId: string, periodStart: string, periodType: string) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('client_metrics')
+    .delete()
+    .eq('client_id', clientId)
+    .eq('period_start', periodStart)
+    .eq('period_type', periodType)
+
+  if (error) throw error
+  revalidatePath(`/clients/${clientId}`)
 }
 

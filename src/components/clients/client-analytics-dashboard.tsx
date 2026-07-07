@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { Eye, MessageSquare, MessageCircle, BookOpen, DollarSign, TrendingUp, ArrowUpRight, ArrowDownRight, Minus, Calendar } from 'lucide-react'
 import { getClientAnalyticsByPeriod, type ClientAnalyticsPeriod } from '@/lib/actions/client-analytics-period'
+import { MetricsSpreadsheet } from './metrics-spreadsheet'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 
 type Period = 7 | 15 | 30 | 90
@@ -363,6 +364,18 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
           </div>
         </div>
       )}
+
+      {/* ── Metrics Spreadsheet ── */}
+      <div className="pt-2">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-px flex-1 bg-white/[0.06]" />
+          <span className="text-[11px] uppercase tracking-wider text-zinc-600 font-medium px-2">
+            Registro de métricas
+          </span>
+          <div className="h-px flex-1 bg-white/[0.06]" />
+        </div>
+        <MetricsSpreadsheet clientId={clientId} />
+      </div>
     </div>
   )
 }
