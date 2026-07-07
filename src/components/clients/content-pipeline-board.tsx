@@ -10,16 +10,17 @@ import {
   type PipelineItem,
   type PipelineStage,
 } from '@/lib/actions/content-pipeline'
+import { CardDetailDrawer } from './card-detail-drawer'
 
 // ── Column config ────────────────────────────────────────────────────────────
 
 const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[] = [
-  { id: 'ideas',        label: 'Ideas',       color: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',  dot: 'bg-zinc-400' },
-  { id: 'grabar',       label: 'Grabar',      color: 'bg-orange-500/20 text-orange-300 border-orange-500/30', dot: 'bg-orange-400' },
-  { id: 'grabados',     label: 'Grabados',    color: 'bg-blue-500/20 text-blue-300 border-blue-500/30',   dot: 'bg-blue-400' },
-  { id: 'editados',     label: 'Editados',    color: 'bg-violet-500/20 text-violet-300 border-violet-500/30', dot: 'bg-violet-400' },
-  { id: 'por_publicar', label: 'Por Publicar',color: 'bg-amber-500/20 text-amber-300 border-amber-500/30', dot: 'bg-amber-400' },
-  { id: 'publicados',   label: 'Publicados',  color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', dot: 'bg-emerald-400' },
+  { id: 'ideas',        label: 'Ideas',        color: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',        dot: 'bg-zinc-400' },
+  { id: 'grabar',       label: 'Grabar',       color: 'bg-orange-500/20 text-orange-300 border-orange-500/30',  dot: 'bg-orange-400' },
+  { id: 'grabados',     label: 'Grabados',     color: 'bg-blue-500/20 text-blue-300 border-blue-500/30',        dot: 'bg-blue-400' },
+  { id: 'editados',     label: 'Editados',     color: 'bg-violet-500/20 text-violet-300 border-violet-500/30',  dot: 'bg-violet-400' },
+  { id: 'por_publicar', label: 'Por Publicar', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30',     dot: 'bg-amber-400' },
+  { id: 'publicados',   label: 'Publicados',   color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', dot: 'bg-emerald-400' },
 ]
 
 // ── Card ─────────────────────────────────────────────────────────────────────
@@ -27,29 +28,18 @@ const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[]
 function KanbanCard({
   item,
   clientId,
+  onOpen,
   onMoved,
   onDeleted,
 }: {
   item: PipelineItem
   clientId: string
+  onOpen: () => void
   onMoved: (id: string, stage: PipelineStage) => void
   onDeleted: (id: string) => void
 }) {
-  const [editing, setEditing] = useState(false)
-  const [title, setTitle] = useState(item.title)
   const [dragging, setDragging] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
-
-  async function saveTitle() {
-    const trimmed = title.trim()
-    if (!trimmed) { setTitle(item.title); setEditing(false); return }
-    if (trimmed !== item.title) {
-      await updatePipelineItem(item.id, clientId, { title: trimmed })
-    }
-    setEditing(false)
-  }
+  const wasDragged = useRef(false)
 
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
@@ -57,12 +47,12 @@ function KanbanCard({
     onDeleted(item.id)
   }
 
-  // Quick-move to next stage via button
   const stageIdx = STAGES.findIndex((s) => s.id === item.stage)
   const nextStage = stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null
   const prevStage = stageIdx > 0 ? STAGES[stageIdx - 1] : null
 
-  async function moveToStage(stage: PipelineStage) {
+  async function moveToStage(e: React.MouseEvent, stage: PipelineStage) {
+    e.stopPropagation()
     await updatePipelineItem(item.id, clientId, { stage })
     onMoved(item.id, stage)
   }
@@ -73,44 +63,51 @@ function KanbanCard({
       onDragStart={(e) => {
         e.dataTransfer.setData('itemId', item.id)
         e.dataTransfer.setData('fromStage', item.stage)
+        wasDragged.current = true
         setDragging(true)
       }}
-      onDragEnd={() => setDragging(false)}
-      className={`group relative rounded-lg border border-white/[0.06] bg-white/[0.03] p-3 transition-all cursor-grab active:cursor-grabbing
-        ${dragging ? 'opacity-40 scale-95' : 'hover:bg-white/[0.05] hover:border-white/[0.1]'}`}
+      onDragEnd={() => {
+        setDragging(false)
+        // Reset after click handler fires (which fires after dragend)
+        setTimeout(() => { wasDragged.current = false }, 50)
+      }}
+      onClick={() => {
+        if (!wasDragged.current) onOpen()
+      }}
+      className={`group relative rounded-lg border border-white/[0.06] bg-white/[0.03] p-3 transition-all cursor-pointer
+        ${dragging ? 'opacity-40 scale-95' : 'hover:bg-white/[0.06] hover:border-white/[0.1]'}`}
     >
       {/* Drag handle */}
       <GripVertical className="absolute left-1.5 top-3 h-3 w-3 text-zinc-700 opacity-0 group-hover:opacity-100 transition-opacity" />
 
       {/* Title */}
       <div className="pl-3">
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={saveTitle}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') saveTitle()
-              if (e.key === 'Escape') { setTitle(item.title); setEditing(false) }
-            }}
-            className="w-full bg-transparent text-xs text-zinc-100 outline-none border-b border-white/[0.2] pb-0.5"
-          />
-        ) : (
-          <p
-            className="text-xs text-zinc-200 leading-snug cursor-text"
-            onDoubleClick={() => setEditing(true)}
-          >
-            {item.title}
-          </p>
-        )}
+        <p className="text-xs text-zinc-200 leading-snug">{item.title}</p>
+        {/* Metadata pills */}
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {item.angle && (
+            <span className="rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-px text-[9px] text-zinc-500">
+              {item.angle}
+            </span>
+          )}
+          {item.assigned_to && (
+            <span className="rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-px text-[9px] text-zinc-500">
+              {item.assigned_to}
+            </span>
+          )}
+          {item.due_date && (
+            <span className="rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-px text-[9px] text-zinc-500 tabular-nums">
+              {new Date(item.due_date + 'T00:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Action row — visible on hover */}
       <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity pl-3">
         {prevStage && (
           <button
-            onClick={() => moveToStage(prevStage.id)}
+            onClick={(e) => moveToStage(e, prevStage.id)}
             className="rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
           >
             ← {prevStage.label}
@@ -118,14 +115,17 @@ function KanbanCard({
         )}
         {nextStage && (
           <button
-            onClick={() => moveToStage(nextStage.id)}
+            onClick={(e) => moveToStage(e, nextStage.id)}
             className="rounded px-1.5 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
           >
             {nextStage.label} →
           </button>
         )}
         <div className="flex-1" />
-        <button onClick={handleDelete} className="rounded p-0.5 text-zinc-700 hover:text-red-400 transition-colors">
+        <button
+          onClick={handleDelete}
+          className="rounded p-0.5 text-zinc-700 hover:text-red-400 transition-colors"
+        >
           <Trash2 className="h-3 w-3" />
         </button>
       </div>
@@ -139,6 +139,7 @@ function KanbanColumn({
   stage,
   items,
   clientId,
+  onOpen,
   onMoved,
   onDeleted,
   onAdded,
@@ -146,6 +147,7 @@ function KanbanColumn({
   stage: typeof STAGES[number]
   items: PipelineItem[]
   clientId: string
+  onOpen: (item: PipelineItem) => void
   onMoved: (id: string, toStage: PipelineStage, fromStage: PipelineStage) => void
   onDeleted: (id: string, stage: PipelineStage) => void
   onAdded: (item: PipelineItem) => void
@@ -171,12 +173,16 @@ function KanbanColumn({
     const trimmed = newTitle.trim()
     if (!trimmed) { setAdding(false); return }
     await createPipelineItem(clientId, trimmed, stage.id)
-    // Optimistic — create a local item
     onAdded({
       id: crypto.randomUUID(),
       client_id: clientId,
       title: trimmed,
       description: null,
+      script: null,
+      reference_url: null,
+      assigned_to: null,
+      due_date: null,
+      angle: null,
       stage: stage.id,
       position: items.length,
       created_at: new Date().toISOString(),
@@ -188,10 +194,7 @@ function KanbanColumn({
   return (
     <div
       className={`flex flex-col gap-2 min-w-[220px] max-w-[220px] rounded-xl border transition-colors
-        ${dragOver
-          ? 'border-white/[0.15] bg-white/[0.04]'
-          : 'border-white/[0.06] bg-white/[0.02]'
-        }`}
+        ${dragOver ? 'border-white/[0.15] bg-white/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
@@ -220,6 +223,7 @@ function KanbanColumn({
             key={item.id}
             item={item}
             clientId={clientId}
+            onOpen={() => onOpen(item)}
             onMoved={(id, toStage) => onMoved(id, toStage, stage.id)}
             onDeleted={(id) => onDeleted(id, stage.id)}
           />
@@ -275,6 +279,7 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
     ideas: [], grabar: [], grabados: [], editados: [], por_publicar: [], publicados: [],
   })
   const [loading, setLoading] = useState(true)
+  const [selectedItem, setSelectedItem] = useState<PipelineItem | null>(null)
 
   useEffect(() => {
     getPipelineItems(clientId).then((data) => {
@@ -300,6 +305,7 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
       ...prev,
       [stage]: prev[stage].filter((i) => i.id !== id),
     }))
+    setSelectedItem((prev) => prev?.id === id ? null : prev)
   }
 
   function handleAdded(stage: PipelineStage, item: PipelineItem) {
@@ -307,6 +313,32 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
       ...prev,
       [stage]: [...prev[stage], item],
     }))
+  }
+
+  function handleItemUpdated(updates: Partial<PipelineItem>) {
+    if (!selectedItem) return
+    const fromStage = selectedItem.stage
+    const toStage = (updates.stage as PipelineStage | undefined) ?? fromStage
+
+    setColumns((prev) => {
+      if (updates.stage && updates.stage !== fromStage) {
+        const item = prev[fromStage].find((i) => i.id === selectedItem.id)
+        if (!item) return prev
+        return {
+          ...prev,
+          [fromStage]: prev[fromStage].filter((i) => i.id !== selectedItem.id),
+          [toStage]: [{ ...item, ...updates }, ...prev[toStage]],
+        }
+      }
+      return {
+        ...prev,
+        [fromStage]: prev[fromStage].map((i) =>
+          i.id === selectedItem.id ? { ...i, ...updates } : i
+        ),
+      }
+    })
+
+    setSelectedItem((prev) => prev ? { ...prev, ...updates } : prev)
   }
 
   if (loading) {
@@ -320,18 +352,29 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-4">
-      {STAGES.map((stage) => (
-        <KanbanColumn
-          key={stage.id}
-          stage={stage}
-          items={columns[stage.id]}
-          clientId={clientId}
-          onMoved={handleMoved}
-          onDeleted={handleDeleted}
-          onAdded={(item) => handleAdded(stage.id, item)}
+    <>
+      <div className="flex gap-3 overflow-x-auto pb-4">
+        {STAGES.map((stage) => (
+          <KanbanColumn
+            key={stage.id}
+            stage={stage}
+            items={columns[stage.id]}
+            clientId={clientId}
+            onOpen={(item) => setSelectedItem(item)}
+            onMoved={handleMoved}
+            onDeleted={handleDeleted}
+            onAdded={(item) => handleAdded(stage.id, item)}
+          />
+        ))}
+      </div>
+
+      {selectedItem && (
+        <CardDetailDrawer
+          item={selectedItem}
+          onClose={() => setSelectedItem(null)}
+          onUpdated={handleItemUpdated}
         />
-      ))}
-    </div>
+      )}
+    </>
   )
 }

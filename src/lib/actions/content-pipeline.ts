@@ -16,6 +16,11 @@ export interface PipelineItem {
   client_id: string
   title: string
   description: string | null
+  script: string | null
+  reference_url: string | null
+  assigned_to: string | null
+  due_date: string | null
+  angle: string | null
   stage: PipelineStage
   position: number
   created_at: string
@@ -70,7 +75,17 @@ export async function createPipelineItem(clientId: string, title: string, stage:
   revalidatePath(`/clients/${clientId}`)
 }
 
-export async function updatePipelineItem(id: string, clientId: string, fields: { title?: string; description?: string; stage?: PipelineStage; position?: number }) {
+export async function updatePipelineItem(id: string, clientId: string, fields: {
+  title?: string
+  description?: string
+  script?: string
+  reference_url?: string
+  assigned_to?: string
+  due_date?: string | null
+  angle?: string
+  stage?: PipelineStage
+  position?: number
+}) {
   const supabase = await createClient()
 
   const { error } = await supabase
