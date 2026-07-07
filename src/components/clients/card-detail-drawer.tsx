@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { X, ExternalLink, Calendar, Tag, User, FileText } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 
@@ -67,8 +68,11 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   }
 
   const currentStage = STAGES.find((s) => s.id === stage)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return null
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <div
@@ -247,6 +251,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
 
         </div>
       </div>
-    </>
+    </>,
+    document.body
   )
 }
