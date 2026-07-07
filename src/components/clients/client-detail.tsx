@@ -14,6 +14,7 @@ import { ClientCompetitors } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
+import { ContentPipelineBoard } from './content-pipeline-board'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
@@ -63,6 +64,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
   const tabs = [
     { id: 'analytics', label: 'Analítica' },
     { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
+    { id: 'pipeline', label: 'Pipeline Contenido' },
     { id: 'crm_setters', label: 'CRM Setters', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
     { id: 'competencia', label: 'Competencia', count: competitors.length },
@@ -107,6 +109,10 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
                 clientId={client.id}
                 contentAnalytics={contentAnalytics}
               />
+            )}
+
+            {activeTab === 'pipeline' && (
+              <ContentPipelineBoard clientId={client.id} />
             )}
 
             {activeTab === 'crm_setters' && (
