@@ -41,7 +41,7 @@
 
   /* Fonts — Inter (SF Pro equivalent, works on all devices) */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, "Cascadia Mono", Consolas, monospace;
+  --font-mono: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* Radius scale */
   --radius-sm: 0.5rem;
@@ -54,6 +54,7 @@
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Smooth, minimal scrollbars */
