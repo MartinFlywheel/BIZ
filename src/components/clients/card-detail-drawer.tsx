@@ -168,7 +168,13 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     try {
       const supabase = createClient()
       const path = `${item.client_id}/${item.id}.webm`
-      await supabase.storage.from('pipeline-audio').upload(path, blob, { contentType: 'audio/webm', upsert: true })
+      const { error } = await supabase.storage
+        .from('pipeline-audio')
+        .upload(path, blob, { contentType: 'audio/webm', upsert: true })
+      if (error) {
+        alert(`Error al guardar el audio: ${error.message}\n\nAsegurate de crear el bucket "pipeline-audio" en Supabase → Storage.`)
+        return
+      }
       const { data: { publicUrl } } = supabase.storage.from('pipeline-audio').getPublicUrl(path)
       await updatePipelineItem(item.id, item.client_id, { audio_url: publicUrl })
       setAudioUrl(publicUrl)
