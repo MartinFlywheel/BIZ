@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, User, FileText } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, User, FileText, Mic, Play, Pause, Upload, Trash2 } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
+import { createClient } from '@/lib/supabase/client'
 
 const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[] = [
   { id: 'ideas',        label: 'Ideas',        color: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',       dot: 'bg-zinc-400' },
@@ -15,6 +16,89 @@ const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[]
 ]
 
 const ANGLES = ['Clientes', 'Educativo', 'Viral', 'Nutrición', 'Casos de éxito', 'Posicionamiento', 'Dolor', 'Autoridad']
+
+// ── Audio Player ─────────────────────────────────────────────────────────────
+
+function AudioPlayer({ src, onDelete }: { src: string; onDelete: () => void }) {
+  const [playing, setPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const audioRef = useRef<HTMLAudioElement>(null)
+
+  function togglePlay() {
+    const audio = audioRef.current
+    if (!audio) return
+    if (playing) { audio.pause(); setPlaying(false) }
+    else { audio.play(); setPlaying(true) }
+  }
+
+  function fmt(s: number) {
+    if (!isFinite(s) || isNaN(s)) return '0:00'
+    return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
+  }
+
+  const progress = duration ? (currentTime / duration) * 100 : 0
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
+        onEnded={() => { setPlaying(false); setCurrentTime(0) }}
+      />
+
+      <div className="flex items-center gap-3">
+        {/* Play/Pause */}
+        <button
+          onClick={togglePlay}
+          className="shrink-0 h-8 w-8 rounded-full bg-white/[0.08] hover:bg-white/[0.14] flex items-center justify-center transition-colors"
+        >
+          {playing
+            ? <Pause className="h-3.5 w-3.5 text-zinc-200" />
+            : <Play className="h-3.5 w-3.5 text-zinc-200 translate-x-px" />
+          }
+        </button>
+
+        {/* Progress bar */}
+        <div className="relative flex-1 h-1.5 bg-white/[0.07] rounded-full">
+          <div
+            className="absolute left-0 top-0 h-full bg-zinc-400 rounded-full pointer-events-none"
+            style={{ width: `${progress}%` }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={duration || 100}
+            step={0.01}
+            value={currentTime}
+            onChange={(e) => {
+              const t = Number(e.target.value)
+              if (audioRef.current) audioRef.current.currentTime = t
+              setCurrentTime(t)
+            }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        </div>
+
+        {/* Time */}
+        <span className="text-[10px] text-zinc-600 font-mono tabular-nums shrink-0 w-[72px] text-right">
+          {fmt(currentTime)} / {fmt(duration)}
+        </span>
+      </div>
+
+      <button
+        onClick={onDelete}
+        className="flex items-center gap-1 text-[11px] text-zinc-700 hover:text-red-400 transition-colors"
+      >
+        <Trash2 className="h-3 w-3" /> Eliminar audio
+      </button>
+    </div>
+  )
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
   item: PipelineItem
@@ -29,6 +113,8 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [assignedTo, setAssigned]   = useState(item.assigned_to ?? '')
   const [dueDate, setDueDate]       = useState(item.due_date ?? '')
   const [angle, setAngle]           = useState(item.angle ?? '')
+  const [audioUrl, setAudioUrl]     = useState(item.audio_url ?? null)
+  const [uploading, setUploading]   = useState(false)
   const [stage, setStage]           = useState<PipelineStage>(item.stage)
   const [stageOpen, setStageOpen]   = useState(false)
   const [angleOpen, setAngleOpen]   = useState(false)
@@ -65,6 +151,33 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     setAngle(a)
     setAngleOpen(false)
     debounceSave({ angle: a })
+  }
+
+  async function handleAudioUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop() ?? 'mp3'
+      const path = `${item.client_id}/${item.id}.${ext}`
+      await supabase.storage.from('pipeline-audio').upload(path, file, { upsert: true })
+      const { data: { publicUrl } } = supabase.storage.from('pipeline-audio').getPublicUrl(path)
+      await updatePipelineItem(item.id, item.client_id, { audio_url: publicUrl })
+      setAudioUrl(publicUrl)
+      onUpdated({ audio_url: publicUrl })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleAudioDelete() {
+    const supabase = createClient()
+    const path = audioUrl?.split('/pipeline-audio/')[1]
+    if (path) await supabase.storage.from('pipeline-audio').remove([path])
+    await updatePipelineItem(item.id, item.client_id, { audio_url: null })
+    setAudioUrl(null)
+    onUpdated({ audio_url: null })
   }
 
   const currentStage = STAGES.find((s) => s.id === stage)
@@ -233,6 +346,29 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
                 </a>
               )}
             </div>
+          </div>
+
+          {/* ── Audio ── */}
+          <div className="space-y-2">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
+              <Mic className="h-3 w-3" /> Audio
+            </p>
+            {audioUrl ? (
+              <AudioPlayer src={audioUrl} onDelete={handleAudioDelete} />
+            ) : (
+              <label className={`flex items-center gap-2.5 rounded-xl border border-dashed border-white/[0.06] px-4 py-3 cursor-pointer hover:border-white/[0.1] hover:bg-white/[0.02] transition-colors ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <Upload className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+                <span className="text-[12px] text-zinc-600">
+                  {uploading ? 'Subiendo...' : 'Subir audio (.mp3, .m4a, .wav, .ogg)'}
+                </span>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  className="hidden"
+                  onChange={handleAudioUpload}
+                />
+              </label>
+            )}
           </div>
 
           {/* ── Script ── */}
