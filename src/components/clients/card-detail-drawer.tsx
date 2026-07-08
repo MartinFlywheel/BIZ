@@ -129,7 +129,8 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [stageOpen, setStageOpen]   = useState(false)
   const [angleOpen, setAngleOpen]   = useState(false)
   const [angleCustom, setAngleCustom] = useState('')
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingRef = useRef<Parameters<typeof updatePipelineItem>[2]>({})
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -137,17 +138,35 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  // Flush any pending save immediately when drawer closes
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        const pending = pendingRef.current
+        if (Object.keys(pending).length > 0) {
+          updatePipelineItem(item.id, item.client_id, pending)
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id, item.client_id])
+
   // Sync if parent item changes (e.g. stage moved from board)
   useEffect(() => {
     setStage(item.stage)
   }, [item.stage])
 
   const debounceSave = useCallback((fields: Parameters<typeof updatePipelineItem>[2]) => {
+    // Accumulate all pending changes — don't overwrite previous field updates
+    pendingRef.current = { ...pendingRef.current, ...fields }
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
-      await updatePipelineItem(item.id, item.client_id, fields)
-      onUpdated(fields as Partial<PipelineItem>)
-    }, 500)
+      const toSave = pendingRef.current
+      pendingRef.current = {}
+      await updatePipelineItem(item.id, item.client_id, toSave)
+      onUpdated(toSave as Partial<PipelineItem>)
+    }, 800)
   }, [item.id, item.client_id, onUpdated])
 
   async function changeStage(s: PipelineStage) {
