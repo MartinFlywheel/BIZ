@@ -183,6 +183,7 @@ function KanbanColumn({
       assigned_to: null,
       due_date: null,
       angle: null,
+      audio_url: null,
       stage: stage.id,
       position: items.length,
       created_at: new Date().toISOString(),
