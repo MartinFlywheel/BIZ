@@ -376,12 +376,21 @@ export interface ClientMetrics {
   updated_at: string
 }
 
+export interface SopAttachment {
+  id: string
+  type: 'loom' | 'google_doc' | 'google_drive' | 'miro' | 'youtube' | 'notion' | 'link'
+  url: string
+  title: string
+  embed_url?: string
+}
+
 export interface Sop {
   id: string
   title: string
   content: string
   category: string | null
   tags: string[]
+  attachments: SopAttachment[]
   version: number
   created_at: string
   updated_at: string

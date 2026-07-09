@@ -37,12 +37,15 @@ export async function createSopAction(formData: FormData) {
 
   const tagsRaw = formData.get('tags') as string
   const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+  const attachmentsRaw = formData.get('attachments') as string
+  const attachments = attachmentsRaw ? JSON.parse(attachmentsRaw) : []
 
   const { error } = await supabase.from('sops').insert({
     title: formData.get('title') as string,
     content: (formData.get('content') as string) || '',
     category: (formData.get('category') as string) || null,
     tags,
+    attachments,
   })
 
   if (error) throw error
@@ -54,6 +57,8 @@ export async function updateSopAction(id: string, formData: FormData) {
 
   const tagsRaw = formData.get('tags') as string
   const tags = tagsRaw ? tagsRaw.split(',').map((t) => t.trim()).filter(Boolean) : []
+  const attachmentsRaw = formData.get('attachments') as string
+  const attachments = attachmentsRaw ? JSON.parse(attachmentsRaw) : []
 
   const { error } = await supabase
     .from('sops')
@@ -62,6 +67,7 @@ export async function updateSopAction(id: string, formData: FormData) {
       content: (formData.get('content') as string) || '',
       category: (formData.get('category') as string) || null,
       tags,
+      attachments,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
