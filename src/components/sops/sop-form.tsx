@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Modal } from '@/components/ui/modal'
 import { SOP_TAGS } from '@/lib/types'
 import type { Sop, SopAttachment } from '@/lib/types'
-import { X, Link2, FileText, Video, Layout, Youtube, ExternalLink, Plus } from 'lucide-react'
+import { X, Link2, FileText, Video, Layout, Play, ExternalLink, Plus } from 'lucide-react'
 
 // ── Attachment detection ──────────────────────────────────────────────────────
 
@@ -68,7 +68,7 @@ const TYPE_CONFIG: Record<SopAttachment['type'], { label: string; icon: React.El
   google_doc:   { label: 'Google Doc',  icon: FileText,   color: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
   google_drive: { label: 'Drive',       icon: FileText,   color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
   miro:         { label: 'Miro',        icon: Layout,     color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
-  youtube:      { label: 'YouTube',     icon: Youtube,    color: 'text-red-400 bg-red-500/10 border-red-500/20' },
+  youtube:      { label: 'YouTube',     icon: Play,       color: 'text-red-400 bg-red-500/10 border-red-500/20' },
   notion:       { label: 'Notion',      icon: FileText,   color: 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20' },
   link:         { label: 'Enlace',      icon: Link2,      color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20' },
 }
