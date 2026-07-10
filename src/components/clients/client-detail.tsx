@@ -15,8 +15,6 @@ import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
-import { AgendaSpreadsheet } from './agenda-spreadsheet'
-import { ChatMetricsSpreadsheet } from './chat-metrics-spreadsheet'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
@@ -70,9 +68,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
     { id: 'pipeline', label: 'Pipeline Contenido' },
     { id: 'crm_setters', label: 'CRM Setters', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
-    { id: 'agenda_mensual', label: 'Agenda Mensual' },
-    { id: 'chat_diario', label: 'Chat Diario' },
-    { id: 'competencia', label: 'Competencia', count: competitors.length },
+{ id: 'competencia', label: 'Competencia', count: competitors.length },
   ]
 
   return (
@@ -140,15 +136,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
               />
             )}
 
-            {activeTab === 'agenda_mensual' && (
-              <AgendaSpreadsheet clientId={client.id} />
-            )}
-
-            {activeTab === 'chat_diario' && (
-              <ChatMetricsSpreadsheet clientId={client.id} />
-            )}
-
-            {activeTab === 'competencia' && (
+{activeTab === 'competencia' && (
               <ClientCompetitors
                 competitors={competitors}
                 competitorReels={competitorReels}

@@ -14,6 +14,8 @@ import {
 import { Eye, MessageSquare, MessageCircle, BookOpen, DollarSign, TrendingUp, ArrowUpRight, ArrowDownRight, Minus, Calendar } from 'lucide-react'
 import { getClientAnalyticsByPeriod, type ClientAnalyticsPeriod } from '@/lib/actions/client-analytics-period'
 import { MetricsSpreadsheet } from './metrics-spreadsheet'
+import { AgendaSpreadsheet } from './agenda-spreadsheet'
+import { ChatMetricsSpreadsheet } from './chat-metrics-spreadsheet'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 
 type Period = 7 | 15 | 30 | 90
@@ -114,6 +116,7 @@ interface Props {
 
 export function ClientAnalyticsDashboard({ clientId }: Props) {
   const [period, setPeriod] = useState<Period>(90)
+  const [metricsTab, setMetricsTab] = useState<'contenido' | 'chat' | 'agenda'>('contenido')
   const [data, setData] = useState<ClientAnalyticsPeriod | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -367,14 +370,38 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
 
       {/* ── Metrics Spreadsheet ── */}
       <div className="pt-2">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-0">
           <div className="h-px flex-1 bg-white/[0.06]" />
           <span className="text-[11px] uppercase tracking-wider text-zinc-600 font-medium px-2">
             Registro de métricas
           </span>
           <div className="h-px flex-1 bg-white/[0.06]" />
         </div>
-        <MetricsSpreadsheet clientId={clientId} />
+
+        {/* Sheet tabs — Excel style */}
+        <div className="flex items-center gap-0 border-b border-white/[0.06] mt-3 mb-4">
+          {([
+            { id: 'contenido', label: 'Contenido' },
+            { id: 'chat',      label: 'Chat Diario' },
+            { id: 'agenda',    label: 'Agenda Mensual' },
+          ] as const).map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setMetricsTab(tab.id)}
+              className={`px-4 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
+                metricsTab === tab.id
+                  ? 'border-zinc-300 text-zinc-100'
+                  : 'border-transparent text-zinc-600 hover:text-zinc-400 hover:border-zinc-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {metricsTab === 'contenido' && <MetricsSpreadsheet clientId={clientId} />}
+        {metricsTab === 'chat'      && <ChatMetricsSpreadsheet clientId={clientId} />}
+        {metricsTab === 'agenda'    && <AgendaSpreadsheet clientId={clientId} />}
       </div>
     </div>
   )
