@@ -1,9 +1,10 @@
 'use client'
 
+import { useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react'
 import type { ClientHealthAlert } from '@/lib/types'
 
 
@@ -12,14 +13,10 @@ interface Props {
     selectedId?: string
 }
 
-/**
- * HealthAlerts — agency-wide overview.
- * Lists every active client and surfaces funnel bottlenecks pulled from the
- * weekly `client_metrics` snapshots. Clicking a client loads its detailed funnel.
- */
 export function HealthAlerts({ alerts, selectedId }: Props) {
     const router = useRouter()
     const searchParams = useSearchParams()
+    const [isPending, startTransition] = useTransition()
 
     function select(clientId: string) {
         const params = new URLSearchParams(searchParams.toString())
@@ -28,7 +25,11 @@ export function HealthAlerts({ alerts, selectedId }: Props) {
         } else {
             params.set('client', clientId)
         }
-        router.push(`/dashboard?${params.toString()}`)
+        // startTransition keeps the current UI visible (no blank) while the
+        // server streams the new ClientDetail section behind the skeleton
+        startTransition(() => {
+            router.push(`/dashboard?${params.toString()}`)
+        })
     }
 
     if (alerts.length === 0) {
@@ -68,11 +69,12 @@ export function HealthAlerts({ alerts, selectedId }: Props) {
                         <button
                             key={client.client_id}
                             onClick={() => select(client.client_id)}
+                            disabled={isPending}
                             className={cn(
                                 'group flex flex-col rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-left transition-all duration-200 hover:border-white/[0.1] hover:bg-white/[0.04]',
                                 isSelected && 'border-[#ff453a]/40 bg-[#ff453a]/[0.06]',
-                                isCritical && !isSelected &&
-                                'border-[#ff453a]/20 bg-[#ff453a]/[0.04]'
+                                isCritical && !isSelected && 'border-[#ff453a]/20 bg-[#ff453a]/[0.04]',
+                                isPending && 'opacity-60 cursor-wait',
                             )}
                         >
                             <div className="flex items-center justify-between">
@@ -108,8 +110,16 @@ export function HealthAlerts({ alerts, selectedId }: Props) {
                             )}
 
                             <span className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-zinc-500 transition-colors group-hover:text-white/80">
-                                {isSelected ? 'Ocultar funnel' : 'Ver funnel'}
-                                <ChevronRight className="h-3 w-3" />
+                                {isPending && isSelected ? (
+                                    <>
+                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        Cargando…
+                                    </>
+                                ) : isSelected ? (
+                                    <>Ocultar funnel <ChevronRight className="h-3 w-3" /></>
+                                ) : (
+                                    <>Ver funnel <ChevronRight className="h-3 w-3" /></>
+                                )}
                             </span>
                         </button>
                     )
