@@ -13,7 +13,7 @@ import {
   deleteLeadAction,
   createLeadAction,
 } from '@/lib/actions/leads'
-import { getAgendaTeamStats } from '@/lib/actions/team'
+import { getAgendaTeamStats, updateAgencyUserAction } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -618,9 +618,21 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
 
 // ── Equipo Tab ────────────────────────────────────────────────────────────────
 
+const ROLES = [
+  { value: 'admin', label: 'Admin' },
+  { value: 'sales_director', label: 'Director' },
+  { value: 'closer', label: 'Closer' },
+  { value: 'setter', label: 'Setter' },
+  { value: 'editor', label: 'Editor' },
+]
+
 function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: AgencyUser[] }) {
   const [stats, setStats] = useState<Record<string, { agendas: number; shows: number; cerradas: number }>>({})
   const [loading, setLoading] = useState(true)
+  const [localUsers, setLocalUsers] = useState(agencyUsers)
+  const [editing, setEditing] = useState<{ userId: string; field: 'full_name' | 'email' } | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [saving, setSaving] = useState<string | null>(null)
 
   useEffect(() => {
     getAgendaTeamStats(clientId)
@@ -628,6 +640,35 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
       .catch(console.error)
       .finally(() => setLoading(false))
   }, [clientId])
+
+  function startEdit(userId: string, field: 'full_name' | 'email', value: string) {
+    setEditing({ userId, field })
+    setEditValue(value)
+  }
+
+  async function commitEdit() {
+    if (!editing) return
+    const trimmed = editValue.trim()
+    if (!trimmed) { setEditing(null); return }
+    setSaving(editing.userId)
+    const result = await updateAgencyUserAction(editing.userId, { [editing.field]: trimmed })
+      .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
+    setSaving(null)
+    if (result.success) {
+      setLocalUsers(prev => prev.map(u => u.id === editing.userId ? { ...u, [editing.field]: trimmed } : u))
+    }
+    setEditing(null)
+  }
+
+  async function saveRole(userId: string, role: string) {
+    setSaving(userId)
+    const result = await updateAgencyUserAction(userId, { role })
+      .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
+    setSaving(null)
+    if (result.success) {
+      setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
+    }
+  }
 
   return (
     <div className="rounded-xl border border-white/[0.06] overflow-hidden">
@@ -649,26 +690,79 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Cargando estadísticas...
                 </td>
               </tr>
-            ) : agencyUsers.length === 0 ? (
+            ) : localUsers.length === 0 ? (
               <tr>
                 <td colSpan={8} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
               </tr>
             ) : (
-              agencyUsers.map(user => {
+              localUsers.map(user => {
                 const s = stats[user.full_name] ?? { agendas: 0, shows: 0, cerradas: 0 }
                 const showRate = s.agendas > 0 ? (s.shows / s.agendas) * 100 : 0
                 const closeRate = s.shows > 0 ? (s.cerradas / s.shows) * 100 : 0
                 const badge = ROL_BADGE[user.role] ?? { label: user.role, color: 'bg-zinc-800 text-zinc-400 border border-zinc-700' }
+                const isSaving = saving === user.id
 
                 return (
                   <tr key={user.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-                    <td className="pl-4 pr-3 py-3 text-sm font-medium text-zinc-100">{user.full_name}</td>
-                    <td className="px-3 py-3 text-xs text-zinc-500">{user.email}</td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${badge.color}`}>
-                        {badge.label}
-                      </span>
+                    {/* Nombre */}
+                    <td className="pl-4 pr-3 py-2">
+                      {editing?.userId === user.id && editing.field === 'full_name' ? (
+                        <input
+                          autoFocus
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(null) }}
+                          className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm font-medium text-zinc-100 focus:outline-none focus:border-zinc-500"
+                        />
+                      ) : (
+                        <span
+                          onClick={() => startEdit(user.id, 'full_name', user.full_name)}
+                          className="block text-sm font-medium text-zinc-100 cursor-text hover:text-white rounded px-1 py-0.5 -mx-1 hover:bg-white/[0.04] transition-colors"
+                        >
+                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : user.full_name}
+                        </span>
+                      )}
                     </td>
+
+                    {/* Correo */}
+                    <td className="px-3 py-2">
+                      {editing?.userId === user.id && editing.field === 'email' ? (
+                        <input
+                          autoFocus
+                          type="email"
+                          value={editValue}
+                          onChange={e => setEditValue(e.target.value)}
+                          onBlur={commitEdit}
+                          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditing(null) }}
+                          className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-zinc-500"
+                        />
+                      ) : (
+                        <span
+                          onClick={() => startEdit(user.id, 'email', user.email)}
+                          className="block text-xs text-zinc-500 cursor-text hover:text-zinc-300 rounded px-1 py-0.5 -mx-1 hover:bg-white/[0.04] transition-colors"
+                        >
+                          {user.email}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Rol */}
+                    <td className="px-3 py-2">
+                      <select
+                        value={user.role}
+                        disabled={isSaving}
+                        onChange={e => saveRole(user.id, e.target.value)}
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium border focus:outline-none cursor-pointer ${badge.color} bg-transparent disabled:opacity-50`}
+                      >
+                        {ROLES.map(r => (
+                          <option key={r.value} value={r.value} className="bg-zinc-900 text-zinc-100">
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.agendas}</td>
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.shows}</td>
                     <td className="px-3 py-3 text-sm font-mono text-center font-semibold text-emerald-400">{s.cerradas}</td>

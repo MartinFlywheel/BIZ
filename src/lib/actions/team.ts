@@ -67,6 +67,19 @@ export async function getAgendaTeamStats(clientId: string): Promise<Record<strin
   return stats
 }
 
+export async function updateAgencyUserAction(
+  userId: string,
+  fields: { full_name?: string; email?: string; role?: string }
+): Promise<{ success: true } | { success: false; error: string }> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('users')
+    .update(fields)
+    .eq('id', userId)
+  if (error) return { success: false, error: error.message }
+  return { success: true }
+}
+
 export async function deleteAssignmentAction(id: string, clientId: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('team_assignments').delete().eq('id', id)
