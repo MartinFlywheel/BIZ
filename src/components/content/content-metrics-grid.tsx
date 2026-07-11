@@ -12,6 +12,7 @@ import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
+import type { ClientFunnelTotals } from '@/lib/actions/metrics'
 
 // ── Webhook Integration Banner ────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ interface Props {
     contentMetrics: ContentMetric[]
     clientId: string
     contentAnalytics: ContentAnalytics
+    funnelTotals: ClientFunnelTotals
 }
 
 function FunnelStep({
@@ -169,7 +171,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
     { key: 'comments', label: 'Comentarios' },
 ]
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
@@ -232,21 +234,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         return 0
     })
 
-    // Aggregate funnel totals across all pieces
-    const totals = contentMetrics.reduce(
-        (acc, m) => ({
-            chats: acc.chats + (m.chats_nuevos || 0),
-            conversaciones: acc.conversaciones + (m.conversaciones_nuevas || 0),
-            agendas: acc.agendas + (m.agendas || 0),
-            shows: acc.shows + (m.shows || 0),
-            cierres: acc.cierres + (m.cierres || 0),
-            cash: acc.cash + (m.cash_collected || 0),
-        }),
-        { chats: 0, conversaciones: 0, agendas: 0, shows: 0, cierres: 0, cash: 0 }
-    )
-
-    // Sum views from content_pieces
-    const totalViews = contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
+    // Funnel data from the real sources: views from content_pieces,
+    // chats/convs/agendas from daily_chat_metrics, shows/cierres from agenda_records
+    const totalViews = funnelTotals.views || contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
 
     const selectedMetric = selectedPiece ? (metricsMap.get(selectedPiece.id) ?? null) : null
 
@@ -260,9 +250,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                         <h3 className="text-sm font-semibold text-zinc-300">Embudo Agregado del Cliente</h3>
                     </div>
                     <div className="flex items-center gap-2">
-                        {totals.cash > 0 && (
+                        {funnelTotals.cash > 0 && (
                             <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 rounded-md px-2 py-0.5">
-                                {formatCurrency(totals.cash)} cobrado
+                                {formatCurrency(funnelTotals.cash)} cobrado
                             </span>
                         )}
                         <Button
@@ -301,32 +291,32 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     <FunnelArrow />
                     <FunnelStep
                         label="Chats"
-                        value={totals.chats}
-                        rate={pct(totals.chats, totalViews)}
+                        value={funnelTotals.chats}
+                        rate={pct(funnelTotals.chats, totalViews)}
                     />
                     <FunnelArrow />
                     <FunnelStep
                         label="Convs."
-                        value={totals.conversaciones}
-                        rate={pct(totals.conversaciones, totals.chats)}
+                        value={funnelTotals.conversaciones}
+                        rate={pct(funnelTotals.conversaciones, funnelTotals.chats)}
                     />
                     <FunnelArrow />
                     <FunnelStep
                         label="Agendas"
-                        value={totals.agendas}
-                        rate={pct(totals.agendas, totals.conversaciones)}
+                        value={funnelTotals.agendas}
+                        rate={pct(funnelTotals.agendas, funnelTotals.conversaciones)}
                     />
                     <FunnelArrow />
                     <FunnelStep
                         label="Shows"
-                        value={totals.shows}
-                        rate={pct(totals.shows, totals.agendas)}
+                        value={funnelTotals.shows}
+                        rate={pct(funnelTotals.shows, funnelTotals.agendas)}
                     />
                     <FunnelArrow />
                     <FunnelStep
                         label="Cierres"
-                        value={totals.cierres}
-                        rate={pct(totals.cierres, totals.shows)}
+                        value={funnelTotals.cierres}
+                        rate={pct(funnelTotals.cierres, funnelTotals.shows)}
                         highlight
                     />
                 </div>

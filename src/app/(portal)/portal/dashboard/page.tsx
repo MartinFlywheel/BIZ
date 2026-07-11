@@ -10,6 +10,7 @@ import { getInteractions } from '@/lib/actions/interactions'
 import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
 import { getCompetitors, getCompetitorReelsByClient } from '@/lib/actions/competitors'
 import { getContentAnalytics } from '@/lib/actions/content-analytics'
+import { getClientFunnelTotals } from '@/lib/actions/metrics'
 import { ClientDetail } from '@/components/clients/client-detail'
 
 export default async function PortalDashboardPage() {
@@ -47,6 +48,7 @@ export default async function PortalDashboardPage() {
     competitors,
     competitorReels,
     contentAnalytics,
+    funnelTotals,
   ] = await Promise.all([
     getClient(clientId),
     getCampaigns(clientId),
@@ -59,6 +61,7 @@ export default async function PortalDashboardPage() {
     getCompetitors(clientId),
     getCompetitorReelsByClient(clientId),
     getContentAnalytics(clientId),
+    getClientFunnelTotals(clientId),
   ])
 
   const clientLeadIds = new Set(leads.map((l: { id: string }) => l.id))
@@ -78,6 +81,7 @@ export default async function PortalDashboardPage() {
       competitors={competitors}
       competitorReels={competitorReels}
       contentAnalytics={contentAnalytics}
+      funnelTotals={funnelTotals}
       readOnly
     />
   )

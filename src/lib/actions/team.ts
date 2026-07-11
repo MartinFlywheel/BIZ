@@ -44,6 +44,29 @@ export async function createAssignmentAction(formData: FormData) {
   revalidatePath(`/clients/${clientId}`)
 }
 
+export async function getAgendaTeamStats(clientId: string): Promise<Record<string, { agendas: number; shows: number; cerradas: number }>> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('agenda_records')
+    .select('closer, estado')
+    .eq('client_id', clientId)
+    .not('closer', 'is', null)
+
+  if (error) throw error
+
+  const stats: Record<string, { agendas: number; shows: number; cerradas: number }> = {}
+  for (const r of data ?? []) {
+    const closer = r.closer?.trim()
+    if (!closer) continue
+    if (!stats[closer]) stats[closer] = { agendas: 0, shows: 0, cerradas: 0 }
+    stats[closer].agendas++
+    if (r.estado === 'Show' || r.estado === 'Cerrado') stats[closer].shows++
+    if (r.estado === 'Cerrado') stats[closer].cerradas++
+  }
+
+  return stats
+}
+
 export async function deleteAssignmentAction(id: string, clientId: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('team_assignments').delete().eq('id', id)

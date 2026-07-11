@@ -8,17 +8,20 @@ import { Tabs } from '@/components/ui/tabs'
 import { ClientForm } from './client-form'
 import { ContentMetricsGrid } from '@/components/content/content-metrics-grid'
 import { type ContentMetric } from '@/components/content/content-funnel-form'
-import { ClientLeadsBoard } from './client-leads-board'
+
 import { ClientCallsList } from './client-calls-list'
 import { ClientCompetitors } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
+import { CrmTab } from './crm-tab'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
+import type { ClientFunnelTotals } from '@/lib/actions/metrics'
+import { ChatMetricsSpreadsheet } from './chat-metrics-spreadsheet'
 
 interface AgencyUser {
   id: string
@@ -40,6 +43,7 @@ interface Props {
   competitors: Competitor[]
   competitorReels: Record<string, CompetitorReel[]>
   contentAnalytics: ContentAnalytics
+  funnelTotals: ClientFunnelTotals
   readOnly?: boolean
 }
 
@@ -51,7 +55,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, readOnly = false }: Props) {
+export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions: _interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const badge = statusBadge[client.status] || statusBadge.prospect
@@ -66,7 +70,7 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
     { id: 'analytics', label: 'Analítica' },
     { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
     { id: 'pipeline', label: 'Pipeline Contenido' },
-    { id: 'crm_setters', label: 'CRM Setters', count: leads.length },
+    { id: 'crm', label: 'CRM', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
 { id: 'competencia', label: 'Competencia', count: competitors.length },
   ]
@@ -106,25 +110,31 @@ export function ClientDetail({ client, campaigns, contentPieces, contentMetrics,
             )}
 
             {activeTab === 'content_metrics' && (
-              <ContentMetricsGrid
-                contentPieces={contentPieces}
-                contentMetrics={contentMetrics}
-                clientId={client.id}
-                contentAnalytics={contentAnalytics}
-              />
+              <div className="space-y-10">
+                <ContentMetricsGrid
+                  contentPieces={contentPieces}
+                  contentMetrics={contentMetrics}
+                  clientId={client.id}
+                  contentAnalytics={contentAnalytics}
+                  funnelTotals={funnelTotals}
+                />
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-600">Registro de Métricas Diarias</p>
+                  <ChatMetricsSpreadsheet clientId={client.id} />
+                </div>
+              </div>
             )}
 
             {activeTab === 'pipeline' && (
               <ContentPipelineBoard clientId={client.id} />
             )}
 
-            {activeTab === 'crm_setters' && (
-              <ClientLeadsBoard
+            {activeTab === 'crm' && (
+              <CrmTab
                 leads={leads}
                 agencyUsers={agencyUsers}
                 contentPieces={contentPieces}
                 clientId={client.id}
-                leadFunnel={leadFunnel}
                 customAvatars={client.custom_avatars}
               />
             )}

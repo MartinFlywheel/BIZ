@@ -9,6 +9,7 @@ import { getInteractions } from '@/lib/actions/interactions'
 import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
 import { getCompetitors, getCompetitorReelsByClient } from '@/lib/actions/competitors'
 import { getContentAnalytics } from '@/lib/actions/content-analytics'
+import { getClientFunnelTotals } from '@/lib/actions/metrics'
 import { ClientDetail } from '@/components/clients/client-detail'
 import { notFound } from 'next/navigation'
 
@@ -21,7 +22,7 @@ export default async function ClientDetailPage({
   unstable_noStore()
 
   try {
-    const [client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics] = await Promise.all([
+    const [client, campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
       getClient(id),
       getCampaigns(id),
       getContentPieces(id),
@@ -34,6 +35,7 @@ export default async function ClientDetailPage({
       getCompetitors(id),
       getCompetitorReelsByClient(id),
       getContentAnalytics(id),
+      getClientFunnelTotals(id),
     ])
 
     // Filter calls by client: only calls whose lead belongs to this client
@@ -54,6 +56,7 @@ export default async function ClientDetailPage({
         competitors={competitors}
         competitorReels={competitorReels}
         contentAnalytics={contentAnalytics}
+        funnelTotals={funnelTotals}
       />
     )
   } catch {

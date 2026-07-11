@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Plus, Trash2, Check, Loader2 } from 'lucide-react'
 import {
   getDailyChatMetrics, saveDailyChatMetric, deleteDailyChatMetric,
-  type DailyChatMetric,
+  getClosingMetricsFromAgenda,
+  type DailyChatMetric, type DayClosingStats,
 } from '@/lib/actions/chat-metrics'
 import { formatCurrency } from '@/lib/utils'
 
@@ -89,9 +90,10 @@ function ReadCell({ value, emerald = false }: { value: string; emerald?: boolean
 
 type RowState = Omit<DailyChatMetric, 'id' | 'client_id' | 'created_at'>
 
-function ChatRow({ clientId, initialData, onDelete }: {
+function ChatRow({ clientId, initialData, closingStats, onDelete }: {
   clientId: string
   initialData: RowState
+  closingStats?: DayClosingStats
   onDelete: () => void
 }) {
   const [row, setRow] = useState<RowState>(initialData)
@@ -109,17 +111,11 @@ function ChatRow({ clientId, initialData, onDelete }: {
           await deleteDailyChatMetric(clientId, originalDateRef.current)
           originalDateRef.current = next.date
         }
+        // Only save SETTING fields — closing fields are calculated from agenda_records
         await saveDailyChatMetric(clientId, next.date, {
           chats_abiertos: next.chats_abiertos,
           conversaciones: next.conversaciones,
           agendas: next.agendas,
-          llamadas: next.llamadas,
-          shows: next.shows,
-          llamadas_no_calificadas: next.llamadas_no_calificadas,
-          cierres: next.cierres,
-          seniados: next.seniados,
-          total_facturacion: next.total_facturacion,
-          total_cash: next.total_cash,
         })
         setSaved(true); setTimeout(() => setSaved(false), 2000)
       } catch {}
@@ -141,18 +137,19 @@ function ChatRow({ clientId, initialData, onDelete }: {
     onDelete()
   }
 
-  // Calculated
+  // Calculated — setting from row state, closing from agenda_records
   const r = row
+  const c = closingStats
   const tasa_ag   = pct(r.agendas, r.chats_abiertos)
-  const closer_r  = pct(r.cierres, r.llamadas)
-  const show_r    = pct(r.shows, r.llamadas)
-  const aov       = perUnit(r.total_facturacion, r.cierres)
-  const cc_ll     = perUnit(r.total_cash, r.llamadas)
-  const cc_sh     = perUnit(r.total_cash, r.shows)
-  const cc_ci     = perUnit(r.total_cash, r.cierres)
-  const fa_ll     = perUnit(r.total_facturacion, r.llamadas)
-  const fa_sh     = perUnit(r.total_facturacion, r.shows)
-  const fa_ci     = perUnit(r.total_facturacion, r.cierres)
+  const closer_r  = pct(c?.cierres ?? 0, c?.llamadas ?? 0)
+  const show_r    = pct(c?.shows ?? 0, c?.llamadas ?? 0)
+  const aov       = perUnit(c?.total_facturacion ?? 0, c?.cierres ?? 0)
+  const cc_ll     = perUnit(c?.total_cash ?? 0, c?.llamadas ?? 0)
+  const cc_sh     = perUnit(c?.total_cash ?? 0, c?.shows ?? 0)
+  const cc_ci     = perUnit(c?.total_cash ?? 0, c?.cierres ?? 0)
+  const fa_ll     = perUnit(c?.total_facturacion ?? 0, c?.llamadas ?? 0)
+  const fa_sh     = perUnit(c?.total_facturacion ?? 0, c?.shows ?? 0)
+  const fa_ci     = perUnit(c?.total_facturacion ?? 0, c?.cierres ?? 0)
 
   return (
     <tr className="group border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
@@ -164,14 +161,14 @@ function ChatRow({ clientId, initialData, onDelete }: {
       <Cell value={r.chats_abiertos}          onChange={v => set('chats_abiertos', v)}          accent="blue" />
       <Cell value={r.conversaciones}          onChange={v => set('conversaciones', v)}          accent="blue" />
       <Cell value={r.agendas}                 onChange={v => set('agendas', v)}                 accent="blue" />
-      {/* CLOSING — violet accent */}
-      <Cell value={r.llamadas}                onChange={v => set('llamadas', v)}                accent="violet" />
-      <Cell value={r.shows}                   onChange={v => set('shows', v)}                   accent="violet" />
-      <Cell value={r.llamadas_no_calificadas} onChange={v => set('llamadas_no_calificadas', v)} accent="violet" />
-      <Cell value={r.cierres}                 onChange={v => set('cierres', v)}                 accent="violet" />
-      <Cell value={r.seniados}                onChange={v => set('seniados', v)}                accent="violet" />
-      <Cell value={r.total_facturacion}       onChange={v => set('total_facturacion', v)}       accent="violet" currency />
-      <Cell value={r.total_cash}              onChange={v => set('total_cash', v)}              accent="violet" currency />
+      {/* CLOSING — read-only, calculated from agenda_records */}
+      <ReadCell value={String(c?.llamadas ?? 0)} />
+      <ReadCell value={String(c?.shows ?? 0)} />
+      <ReadCell value={String(c?.llamadas_no_calificadas ?? 0)} />
+      <ReadCell value={String(c?.cierres ?? 0)} />
+      <ReadCell value={String(c?.seniados ?? 0)} />
+      <ReadCell value={formatCurrency(c?.total_facturacion ?? 0)} emerald />
+      <ReadCell value={formatCurrency(c?.total_cash ?? 0)} emerald />
       {/* Calculated */}
       <ReadCell value={tasa_ag} />
       <ReadCell value={closer_r} />
@@ -199,28 +196,35 @@ function ChatRow({ clientId, initialData, onDelete }: {
 
 // ── TotalsRow ─────────────────────────────────────────────────────────────────
 
-function TotalsRow({ rows, label }: { rows: RowState[]; label: string }) {
+function TotalsRow({ rows, label, closingByDate }: { rows: RowState[]; label: string; closingByDate: Record<string, DayClosingStats> }) {
   const sum = (k: keyof RowState) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0)
-  const ch = sum('chats_abiertos'), ag = sum('agendas'), ll = sum('llamadas')
-  const sh = sum('shows'), ci = sum('cierres')
-  const fact = sum('total_facturacion'), cash = sum('total_cash')
+  const sumC = (k: keyof DayClosingStats) =>
+    rows.reduce((s, r) => s + (Number(closingByDate[r.date]?.[k]) || 0), 0)
+
+  const ch = sum('chats_abiertos'), ag = sum('agendas')
+  const ll = sumC('llamadas'), sh = sumC('shows'), ci = sumC('cierres')
+  const fact = sumC('total_facturacion'), cash = sumC('total_cash')
 
   return (
     <tr className="border-b border-white/[0.06] bg-white/[0.02]">
       <td className="px-2 py-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{label}</span>
       </td>
-      {[sum('chats_abiertos'), sum('conversaciones'), sum('agendas'),
-        sum('llamadas'), sum('shows'), sum('llamadas_no_calificadas'),
-        sum('cierres'), sum('seniados')].map((v, i) => (
+      {[sum('chats_abiertos'), sum('conversaciones'), sum('agendas')].map((v, i) => (
         <td key={i} className="px-2 py-1.5 text-right">
           <span className="text-xs font-mono font-semibold text-zinc-300">{v}</span>
         </td>
       ))}
-      <td className="px-2 py-1.5 text-right">
+      {/* Closing totals from agenda */}
+      {[ll, sh, sumC('llamadas_no_calificadas'), ci, sumC('seniados')].map((v, i) => (
+        <td key={i} className="px-2 py-1.5 text-right bg-white/[0.004]">
+          <span className="text-xs font-mono font-semibold text-zinc-400">{v}</span>
+        </td>
+      ))}
+      <td className="px-2 py-1.5 text-right bg-white/[0.004]">
         <span className="text-xs font-mono font-semibold text-emerald-400">{formatCurrency(fact)}</span>
       </td>
-      <td className="px-2 py-1.5 text-right">
+      <td className="px-2 py-1.5 text-right bg-white/[0.004]">
         <span className="text-xs font-mono font-semibold text-emerald-300">{formatCurrency(cash)}</span>
       </td>
       {/* Calculated totals */}
@@ -250,12 +254,16 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
   const [year, setYear]   = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [rows, setRows]   = useState<RowState[]>([])
+  const [closingByDate, setClosingByDate] = useState<Record<string, DayClosingStats>>({})
   const [loading, setLoading] = useState(true)
 
   async function load() {
     setLoading(true)
     try {
-      const data = await getDailyChatMetrics(clientId, year, month)
+      const [data, closing] = await Promise.all([
+        getDailyChatMetrics(clientId, year, month),
+        getClosingMetricsFromAgenda(clientId, year, month),
+      ])
       setRows(data.map(d => ({
         date: d.date,
         chats_abiertos: d.chats_abiertos || 0,
@@ -269,6 +277,7 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
         total_facturacion: d.total_facturacion || 0,
         total_cash: d.total_cash || 0,
       })))
+      setClosingByDate(closing)
     } finally { setLoading(false) }
   }
 
@@ -363,16 +372,16 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
                     </tr>
 
                     {wRows.map(r => (
-                      <ChatRow key={r.date} clientId={clientId} initialData={r} onDelete={() => removeRow(r.date)} />
+                      <ChatRow key={r.date} clientId={clientId} initialData={r} closingStats={closingByDate[r.date]} onDelete={() => removeRow(r.date)} />
                     ))}
 
-                    <TotalsRow key={`wt-${week}`} rows={wRows} label={`Total sem. ${week}`} />
+                    <TotalsRow key={`wt-${week}`} rows={wRows} label={`Total sem. ${week}`} closingByDate={closingByDate} />
                   </>
                 ))
               )}
 
               {rows.length > 1 && (
-                <TotalsRow rows={rows} label="Total Mes" />
+                <TotalsRow rows={rows} label="Total Mes" closingByDate={closingByDate} />
               )}
             </tbody>
           </table>

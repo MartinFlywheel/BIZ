@@ -81,6 +81,61 @@ export async function getDashboardMetrics(
   }
 }
 
+// Aggregate funnel for the content tab — reads from the correct sources:
+// Views from content_pieces, Chats/Convs/Agendas from daily_chat_metrics,
+// Shows/Cierres/Facturación/Cash from agenda_records
+export async function getClientFunnelTotals(clientId: string) {
+  const supabase = await createClient()
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
+  const start = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  const [viewsRes, chatRes, agendaRes] = await Promise.all([
+    supabase.from('content_pieces').select('views').eq('client_id', clientId),
+    supabase.from('daily_chat_metrics')
+      .select('chats_abiertos, conversaciones, agendas')
+      .eq('client_id', clientId)
+      .gte('date', start).lte('date', end),
+    supabase.from('agenda_records')
+      .select('estado, monto_facturacion, monto_upfront')
+      .eq('client_id', clientId)
+      .gte('fecha_agenda', start).lte('fecha_agenda', end),
+  ])
+
+  const views = (viewsRes.data || []).reduce((s, cp) => s + (cp.views || 0), 0)
+
+  const { chats, conversaciones, agendas } = (chatRes.data || []).reduce(
+    (acc, d) => ({
+      chats: acc.chats + (d.chats_abiertos || 0),
+      conversaciones: acc.conversaciones + (d.conversaciones || 0),
+      agendas: acc.agendas + (d.agendas || 0),
+    }),
+    { chats: 0, conversaciones: 0, agendas: 0 },
+  )
+
+  const { shows, cierres, facturacion, cash } = (agendaRes.data || []).reduce(
+    (acc, r) => {
+      const e = r.estado as string | null
+      const isShow = e === 'Show' || e === 'Cerrado'
+      const isCierre = e === 'Cerrado'
+      return {
+        shows: acc.shows + (isShow ? 1 : 0),
+        cierres: acc.cierres + (isCierre ? 1 : 0),
+        facturacion: acc.facturacion + (isCierre ? (Number(r.monto_facturacion) || 0) : 0),
+        cash: acc.cash + (isCierre ? (Number(r.monto_upfront) || 0) : 0),
+      }
+    },
+    { shows: 0, cierres: 0, facturacion: 0, cash: 0 },
+  )
+
+  return { views, chats, conversaciones, agendas, shows, cierres, facturacion, cash }
+}
+
+export type ClientFunnelTotals = Awaited<ReturnType<typeof getClientFunnelTotals>>
+
 export async function getBenchmarkAlerts(
   clientId: string,
   metrics: DashboardMetrics

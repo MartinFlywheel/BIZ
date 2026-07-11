@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { X } from 'lucide-react'
 
@@ -14,6 +15,10 @@ interface DialogProps {
 }
 
 export function Dialog({ open, onClose, title, description, children, className }: DialogProps) {
+    // Track client mount so createPortal only runs in the browser (not SSR)
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => { setMounted(true) }, [])
+
     // Close on Escape key
     useEffect(() => {
         if (!open) return
@@ -26,17 +31,15 @@ export function Dialog({ open, onClose, title, description, children, className 
 
     // Prevent body scroll when open
     useEffect(() => {
-        if (open) {
-            document.body.style.overflow = 'hidden'
-        } else {
-            document.body.style.overflow = ''
-        }
+        document.body.style.overflow = open ? 'hidden' : ''
         return () => { document.body.style.overflow = '' }
     }, [open])
 
-    if (!open) return null
+    if (!open || !mounted) return null
 
-    return (
+    // Portal to document.body so CSS transforms on ancestors (e.g. tab-enter
+    // animation) don't create a stacking context that clips position:fixed
+    return createPortal(
         <div
             className="fixed inset-0 z-50 flex items-center justify-center"
             role="dialog"
@@ -83,6 +86,7 @@ export function Dialog({ open, onClose, title, description, children, className 
                     {children}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     )
 }

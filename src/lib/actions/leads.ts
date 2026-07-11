@@ -148,6 +148,30 @@ export async function createLeadAction(formData: FormData) {
   revalidatePath(`/clients/${clientId}`)
 }
 
+export async function updateLeadFieldsAction(id: string, fields: {
+  full_name?: string | null
+  ig_username?: string | null
+  phone?: string | null
+  email?: string | null
+  lead_avatar?: string | null
+  assigned_to?: string | null
+  content_id?: string | null
+  notes?: string | null
+}) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('leads')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteLeadAction(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase.from('leads').delete().eq('id', id)
+  if (error) throw error
+}
+
 export async function assignLeadContentAction(leadId: string, contentId: string | null) {
   const supabase = await createClient()
 

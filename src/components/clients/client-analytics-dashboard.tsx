@@ -14,7 +14,7 @@ import {
 import { Eye, MessageSquare, MessageCircle, BookOpen, DollarSign, TrendingUp, ArrowUpRight, ArrowDownRight, Minus, Calendar } from 'lucide-react'
 import { getClientAnalyticsByPeriod, type ClientAnalyticsPeriod } from '@/lib/actions/client-analytics-period'
 import { MetricsSpreadsheet } from './metrics-spreadsheet'
-import { AgendaSpreadsheet } from './agenda-spreadsheet'
+
 import { ChatMetricsSpreadsheet } from './chat-metrics-spreadsheet'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 
@@ -116,7 +116,7 @@ interface Props {
 
 export function ClientAnalyticsDashboard({ clientId }: Props) {
   const [period, setPeriod] = useState<Period>(90)
-  const [metricsTab, setMetricsTab] = useState<'contenido' | 'chat' | 'agenda'>('contenido')
+  const [metricsTab, setMetricsTab] = useState<'contenido' | 'chat'>('contenido')
   const [data, setData] = useState<ClientAnalyticsPeriod | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -383,7 +383,6 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
           {([
             { id: 'contenido', label: 'Contenido' },
             { id: 'chat',      label: 'Chat Diario' },
-            { id: 'agenda',    label: 'Agenda Mensual' },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -401,7 +400,6 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
 
         {metricsTab === 'contenido' && <MetricsSpreadsheet clientId={clientId} />}
         {metricsTab === 'chat'      && <ChatMetricsSpreadsheet clientId={clientId} />}
-        {metricsTab === 'agenda'    && <AgendaSpreadsheet clientId={clientId} />}
       </div>
     </div>
   )
