@@ -47,11 +47,20 @@ function MonthSelector({ year, month, onChange }: { year: number; month: number;
 
 // ── Editable cell ─────────────────────────────────────────────────────────────
 
-function Cell({ value, onChange, currency = false }: {
+// accent controls the focus ring color to match the section header
+function Cell({ value, onChange, currency = false, accent = 'default' }: {
   value: number
   onChange: (v: string) => void
   currency?: boolean
+  accent?: 'blue' | 'violet' | 'default'
 }) {
+  const focusCls =
+    accent === 'blue'
+      ? 'focus:bg-blue-500/[0.07] focus:ring-blue-500/30'
+      : accent === 'violet'
+      ? 'focus:bg-violet-500/[0.07] focus:ring-violet-500/30'
+      : 'focus:bg-white/[0.06] focus:ring-white/[0.12]'
+
   return (
     <td className="px-0.5 py-0.5">
       <input
@@ -59,7 +68,7 @@ function Cell({ value, onChange, currency = false }: {
         value={value || ''}
         placeholder="0"
         onChange={e => onChange(e.target.value)}
-        className="w-full min-w-[52px] rounded-md bg-transparent px-1.5 py-1 text-right text-xs font-mono text-zinc-200 outline-none placeholder:text-zinc-700 hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12] transition-colors"
+        className={`w-full min-w-[52px] rounded-md bg-white/[0.025] px-1.5 py-1 text-right text-xs font-mono text-zinc-200 outline-none placeholder:text-zinc-600 hover:bg-white/[0.05] focus:ring-1 transition-colors ${focusCls}`}
         min={0}
         step={currency ? 0.01 : 1}
       />
@@ -67,10 +76,11 @@ function Cell({ value, onChange, currency = false }: {
   )
 }
 
+// Calculated / read-only cell — clearly distinct: no background, muted color, cursor not-allowed
 function ReadCell({ value, emerald = false }: { value: string; emerald?: boolean }) {
   return (
-    <td className="px-2 py-1 text-right">
-      <span className={`text-xs font-mono ${emerald ? 'text-emerald-400' : 'text-zinc-600'}`}>{value}</span>
+    <td className="px-2 py-1 text-right bg-white/[0.008] select-none">
+      <span className={`text-xs font-mono ${emerald ? 'text-emerald-500/70' : 'text-zinc-700'}`}>{value}</span>
     </td>
   )
 }
@@ -150,18 +160,18 @@ function ChatRow({ clientId, initialData, onDelete }: {
         <input type="date" value={row.date} onChange={e => set('date', e.target.value)}
           className="rounded-md bg-transparent px-1.5 py-1 text-xs font-mono text-zinc-300 outline-none hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12] [color-scheme:dark] transition-colors w-[112px]" />
       </td>
-      {/* SETTING */}
-      <Cell value={r.chats_abiertos}         onChange={v => set('chats_abiertos', v)} />
-      <Cell value={r.conversaciones}          onChange={v => set('conversaciones', v)} />
-      <Cell value={r.agendas}                onChange={v => set('agendas', v)} />
-      {/* CLOSING */}
-      <Cell value={r.llamadas}               onChange={v => set('llamadas', v)} />
-      <Cell value={r.shows}                  onChange={v => set('shows', v)} />
-      <Cell value={r.llamadas_no_calificadas} onChange={v => set('llamadas_no_calificadas', v)} />
-      <Cell value={r.cierres}                onChange={v => set('cierres', v)} />
-      <Cell value={r.seniados}               onChange={v => set('seniados', v)} />
-      <Cell value={r.total_facturacion}      onChange={v => set('total_facturacion', v)} currency />
-      <Cell value={r.total_cash}             onChange={v => set('total_cash', v)} currency />
+      {/* SETTING — blue accent */}
+      <Cell value={r.chats_abiertos}          onChange={v => set('chats_abiertos', v)}          accent="blue" />
+      <Cell value={r.conversaciones}          onChange={v => set('conversaciones', v)}          accent="blue" />
+      <Cell value={r.agendas}                 onChange={v => set('agendas', v)}                 accent="blue" />
+      {/* CLOSING — violet accent */}
+      <Cell value={r.llamadas}                onChange={v => set('llamadas', v)}                accent="violet" />
+      <Cell value={r.shows}                   onChange={v => set('shows', v)}                   accent="violet" />
+      <Cell value={r.llamadas_no_calificadas} onChange={v => set('llamadas_no_calificadas', v)} accent="violet" />
+      <Cell value={r.cierres}                 onChange={v => set('cierres', v)}                 accent="violet" />
+      <Cell value={r.seniados}                onChange={v => set('seniados', v)}                accent="violet" />
+      <Cell value={r.total_facturacion}       onChange={v => set('total_facturacion', v)}       accent="violet" currency />
+      <Cell value={r.total_cash}              onChange={v => set('total_cash', v)}              accent="violet" currency />
       {/* Calculated */}
       <ReadCell value={tasa_ag} />
       <ReadCell value={closer_r} />
@@ -315,8 +325,8 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
                   Closing
                 </th>
                 <th colSpan={CALC_HEADERS.length}
-                  className="px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-600 border-l border-white/[0.06]">
-                  Calculado
+                  className="px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-700 border-l-2 border-white/[0.08] bg-white/[0.01]">
+                  Calculado ✕ solo lectura
                 </th>
                 <th rowSpan={2} />
               </tr>
@@ -328,7 +338,7 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
                   <th key={h} className={`px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-violet-400/70 whitespace-nowrap ${i === 0 ? 'border-l border-white/[0.06]' : ''}`}>{h}</th>
                 ))}
                 {CALC_HEADERS.map((h, i) => (
-                  <th key={h} className={`px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-zinc-600 whitespace-nowrap ${i === 0 ? 'border-l border-white/[0.06]' : ''}`}>{h}</th>
+                  <th key={h} className={`px-2 py-1.5 text-right text-[10px] font-semibold uppercase tracking-wider text-zinc-700 whitespace-nowrap bg-white/[0.01] ${i === 0 ? 'border-l-2 border-white/[0.08]' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
