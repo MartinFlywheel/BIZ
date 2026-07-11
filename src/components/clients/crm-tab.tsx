@@ -18,7 +18,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
-import { updateClientAvatars } from '@/lib/actions/clients'
+import { saveAvatarsAction } from '@/lib/actions/clients'
 
 type SubTab = 'leads' | 'agendas' | 'equipo'
 
@@ -722,7 +722,7 @@ function ConfigurarAvatarsModal({
     setLoading(true)
     setError(null)
     try {
-      await updateClientAvatars(clientId, avatars)
+      await saveAvatarsAction(clientId, avatars)
       onSaved(avatars)
       onClose()
     } catch (err) {
