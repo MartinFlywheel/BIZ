@@ -4,7 +4,7 @@ import { useState, useMemo, useTransition, useEffect, useRef, useCallback } from
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
-import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2 } from 'lucide-react'
+import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
 import {
@@ -18,6 +18,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
+import { updateClientAvatars } from '@/lib/actions/clients'
 
 type SubTab = 'leads' | 'agendas' | 'equipo'
 
@@ -692,10 +693,101 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
   )
 }
 
+// ── Configurar Avatares Modal ─────────────────────────────────────────────────
+
+function ConfigurarAvatarsModal({
+  clientId,
+  initialAvatars,
+  onClose,
+  onSaved,
+}: {
+  clientId: string
+  initialAvatars: string[]
+  onClose: () => void
+  onSaved: (avatars: string[]) => void
+}) {
+  const [avatars, setAvatars] = useState<string[]>(initialAvatars)
+  const [newName, setNewName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function addAvatar() {
+    const trimmed = newName.trim()
+    if (!trimmed || avatars.includes(trimmed)) return
+    setAvatars(prev => [...prev, trimmed])
+    setNewName('')
+  }
+
+  async function handleSave() {
+    setLoading(true)
+    setError(null)
+    try {
+      await updateClientAvatars(clientId, avatars)
+      onSaved(avatars)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} title="Configurar Avatares" description="Categorías de avatar para este cliente" className="max-w-sm">
+      <div className="space-y-3 mb-4 min-h-[40px]">
+        {avatars.length === 0 ? (
+          <p className="text-xs text-zinc-600 italic">Sin avatares personalizados</p>
+        ) : (
+          avatars.map(a => (
+            <div key={a} className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+              <span className="text-sm text-zinc-200">{a}</span>
+              <button
+                onClick={() => setAvatars(prev => prev.filter(x => x !== a))}
+                className="text-zinc-600 hover:text-red-400 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={newName}
+          onChange={e => setNewName(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAvatar() } }}
+          placeholder="Nuevo avatar..."
+          className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        />
+        <Button type="button" variant="secondary" size="sm" onClick={addAvatar}>
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2 mb-3">{error}</p>
+      )}
+
+      <div className="flex gap-3">
+        <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
+        <Button type="button" disabled={loading} onClick={handleSave} className="flex-1">
+          {loading ? 'Guardando...' : 'Guardar'}
+        </Button>
+      </div>
+    </Dialog>
+  )
+}
+
 // ── Main Export ───────────────────────────────────────────────────────────────
 
 export function CrmTab({ leads, agencyUsers, contentPieces, clientId, customAvatars }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
+  const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
+  const [showAvatarConfig, setShowAvatarConfig] = useState(false)
+
+  const avatarList: readonly string[] = localAvatars.length > 0 ? localAvatars : LEAD_AVATARS
 
   const subTabs: { id: SubTab; label: string; count?: number }[] = [
     { id: 'leads', label: 'Leads', count: leads.length },
@@ -705,30 +797,39 @@ export function CrmTab({ leads, agencyUsers, contentPieces, clientId, customAvat
 
   return (
     <div className="space-y-0">
-      {/* Sub-tab navigation */}
-      <div className="flex items-center gap-0 border-b border-zinc-800 mb-5">
-        {subTabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveSubTab(tab.id)}
-            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
-              activeSubTab === tab.id
-                ? 'border-violet-500 text-zinc-100'
-                : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
-            }`}
-          >
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className={`text-[10px] font-mono rounded-full px-1.5 py-0.5 ${
+      {/* Sub-tab navigation + avatar config button */}
+      <div className="flex items-center border-b border-zinc-800 mb-5">
+        <div className="flex items-center gap-0 flex-1">
+          {subTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSubTab(tab.id)}
+              className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
                 activeSubTab === tab.id
-                  ? 'bg-violet-950/60 text-violet-400'
-                  : 'bg-zinc-800 text-zinc-600'
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
+                  ? 'border-violet-500 text-zinc-100'
+                  : 'border-transparent text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
+              }`}
+            >
+              {tab.label}
+              {tab.count !== undefined && (
+                <span className={`text-[10px] font-mono rounded-full px-1.5 py-0.5 ${
+                  activeSubTab === tab.id
+                    ? 'bg-violet-950/60 text-violet-400'
+                    : 'bg-zinc-800 text-zinc-600'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => setShowAvatarConfig(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors mb-1"
+        >
+          <Settings className="h-3.5 w-3.5" />
+          Avatares
+        </button>
       </div>
 
       {activeSubTab === 'leads' && (
@@ -737,14 +838,23 @@ export function CrmTab({ leads, agencyUsers, contentPieces, clientId, customAvat
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
           clientId={clientId}
-          customAvatars={customAvatars}
+          customAvatars={localAvatars.length > 0 ? localAvatars : undefined}
         />
       )}
       {activeSubTab === 'agendas' && (
-        <AgendaSpreadsheet clientId={clientId} />
+        <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} />
       )}
       {activeSubTab === 'equipo' && (
         <EquipoTab clientId={clientId} agencyUsers={agencyUsers} />
+      )}
+
+      {showAvatarConfig && (
+        <ConfigurarAvatarsModal
+          clientId={clientId}
+          initialAvatars={localAvatars}
+          onClose={() => setShowAvatarConfig(false)}
+          onSaved={setLocalAvatars}
+        />
       )}
     </div>
   )

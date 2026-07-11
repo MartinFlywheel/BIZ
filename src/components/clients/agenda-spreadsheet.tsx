@@ -85,12 +85,13 @@ function MonthSelector({ year, month, onChange }: { year: number; month: number;
 
 interface ModalProps {
   record: AgendaRecord
+  avatarList: readonly string[]
   onClose: () => void
   onUpdated: (id: string, fields: AgendaRecordFields) => void
   onDeleted: (id: string) => void
 }
 
-function AgendaRecordModal({ record, onClose, onUpdated, onDeleted }: ModalProps) {
+function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }: ModalProps) {
   const [local, setLocal] = useState<AgendaRecord>(record)
   const pendingRef = useRef<AgendaRecordFields>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -163,7 +164,7 @@ function AgendaRecordModal({ record, onClose, onUpdated, onDeleted }: ModalProps
         <Field label="Avatar">
           <select className={selectCls} value={local.avatar ?? ''} onChange={e => set('avatar', e.target.value || null)}>
             <option value="">Sin avatar</option>
-            {LEAD_AVATARS.map(a => <option key={a} value={a}>{a}</option>)}
+            {avatarList.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </Field>
         <LinkField label="Link al perfil" field="link_perfil" />
@@ -277,7 +278,8 @@ const HEADERS = [
   'Facturación', 'Upfront', 'T. Compra', '',
 ]
 
-export function AgendaSpreadsheet({ clientId }: { clientId: string }) {
+export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: string; customAvatars?: string[] }) {
+  const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
   const now = new Date()
   const [year, setYear]     = useState(now.getFullYear())
   const [month, setMonth]   = useState(now.getMonth() + 1)
@@ -457,6 +459,7 @@ export function AgendaSpreadsheet({ clientId }: { clientId: string }) {
         <AgendaRecordModal
           key={editing.id}
           record={records.find(r => r.id === editing.id) ?? editing}
+          avatarList={avatarList}
           onClose={() => setEditing(null)}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
