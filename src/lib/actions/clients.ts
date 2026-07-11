@@ -118,13 +118,17 @@ export async function updateClientAvatars(clientId: string, avatars: string[]) {
   revalidatePath(`/clients/${clientId}`)
 }
 
-export async function saveAvatarsAction(clientId: string, avatars: string[]) {
+export async function saveAvatarsAction(
+  clientId: string,
+  avatars: string[]
+): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()
   const { error } = await supabase
     .from('clients')
     .update({ custom_avatars: avatars.filter(Boolean) })
     .eq('id', clientId)
-  if (error) throw error
+  if (error) return { success: false, error: error.message }
+  return { success: true }
 }
 
 export async function deleteClientAction(id: string) {

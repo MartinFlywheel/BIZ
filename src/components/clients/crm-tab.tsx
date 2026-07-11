@@ -721,15 +721,17 @@ function ConfigurarAvatarsModal({
   async function handleSave() {
     setLoading(true)
     setError(null)
-    try {
-      await saveAvatarsAction(clientId, avatars)
-      onSaved(avatars)
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al guardar')
-    } finally {
-      setLoading(false)
+    const result = await saveAvatarsAction(clientId, avatars).catch(e => ({
+      success: false as const,
+      error: e instanceof Error ? e.message : 'Error inesperado',
+    }))
+    setLoading(false)
+    if (!result.success) {
+      setError(result.error)
+      return
     }
+    onSaved(avatars)
+    onClose()
   }
 
   return (
