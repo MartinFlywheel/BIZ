@@ -60,6 +60,8 @@ export async function calculateFunnel(
     cierre: safeRate(cierres, shows),
   }
 
+  // Each stage shows the OUTPUT count at that level (how many reached here),
+  // and the rate is the conversion FROM the previous stage TO this one.
   const stagesDef: Array<{
     id: string
     label: string
@@ -68,19 +70,22 @@ export async function calculateFunnel(
     min: number
     max: number
   }> = [
-      { id: 'respuesta_reel', label: 'Respuesta Reel', value: views_reels, rate: rates.respuesta_reel, min: 1, max: 3 },
-      { id: 'respuesta_historia', label: 'Respuesta Historia', value: views_historias, rate: rates.respuesta_historia, min: 1, max: 5 },
-      { id: 'conversion', label: 'Conversión', value: chats_abiertos, rate: rates.conversion, min: 70, max: 100 },
-      { id: 'agendamiento', label: 'Agendamiento', value: conversaciones, rate: rates.agendamiento, min: 8, max: 12 },
-      { id: 'show_up', label: 'Show-up', value: agendas, rate: rates.show_up, min: 70, max: 100 },
-      { id: 'cierre', label: 'Cierre', value: shows, rate: rates.cierre, min: 30, max: 60 },
-    ]
+    // ── Marketing ──────────────────────────────────────────────────────────
+    { id: 'vistas',        label: 'Vistas Reels',   value: views_reels,     rate: 0,                       min: 0,  max: 0   },
+    { id: 'chats',         label: 'Chats',           value: chats_abiertos,  rate: rates.respuesta_reel,    min: 1,  max: 3   },
+    { id: 'conversaciones',label: 'Conversaciones',  value: conversaciones,  rate: rates.conversion,        min: 70, max: 100 },
+    // ── Ventas ─────────────────────────────────────────────────────────────
+    { id: 'agendas',       label: 'Agendas',         value: agendas,         rate: rates.agendamiento,      min: 8,  max: 12  },
+    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,           min: 70, max: 100 },
+    { id: 'cierres',       label: 'Cierres',         value: cierres,         rate: rates.cierre,            min: 30, max: 60  },
+  ]
 
   // Find bottleneck: stage with the biggest shortfall below benchmark
   let worstDrop = 0
   let bottleneckId: string | null = null
 
   for (const s of stagesDef) {
+    if (s.min === 0) continue   // skip entry stage
     if (s.rate < s.min) {
       const drop = s.min - s.rate
       if (drop > worstDrop) {
@@ -97,7 +102,7 @@ export async function calculateFunnel(
     rate: Math.round(s.rate * 100) / 100,
     benchmark_min: s.min,
     benchmark_max: s.max,
-    status: s.rate >= s.min ? 'healthy' : 'critical',
+    status: s.min === 0 ? 'healthy' : s.rate >= s.min ? 'healthy' : 'critical',
     is_bottleneck: s.id === bottleneckId,
   }))
 

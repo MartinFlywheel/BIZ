@@ -1,29 +1,39 @@
 'use client'
 
-import { formatNumber, formatCurrency, formatDate } from '@/lib/utils'
-import { AlertTriangle, TrendingDown } from 'lucide-react'
+import { formatCurrency, formatDate } from '@/lib/utils'
+import { TrendingDown } from 'lucide-react'
 import type { FunnelResult, FunnelStage } from '@/lib/types'
 
-// ── Color logic ───────────────────────────────────────────────────────────────
+// ── Layout ────────────────────────────────────────────────────────────────────
 
-function stageStyle(stage: FunnelStage): { fill: string; textCls: string; glow: boolean } {
-  if (stage.is_bottleneck) return { fill: '#dc2626', textCls: 'text-red-300',       glow: true  }
+const SEG_H = 92    // px height per segment
+const GAP   = 3     // px gap between segments
+const MIN_W = 22    // % narrowest at bottom
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function segFill(stage: FunnelStage): string {
+  if (stage.is_bottleneck) return '#b91c1c'
   switch (stage.status) {
-    case 'critical': return  { fill: '#7f1d1d', textCls: 'text-red-400/80',         glow: false }
-    case 'warning':  return  { fill: '#7c2d12', textCls: 'text-orange-400/70',      glow: false }
-    default:         return  { fill: '#1e1e2a', textCls: 'text-zinc-400',           glow: false }
+    case 'critical': return '#7f1d1d'
+    case 'warning':  return '#7c2d12'
+    default:         return '#1a1a28'
   }
 }
 
-// ── SVG dimensions ────────────────────────────────────────────────────────────
+function dotColor(stage: FunnelStage): string {
+  if (stage.status === 'healthy') return '#34d399'
+  if (stage.status === 'warning') return '#fbbf24'
+  return '#f87171'
+}
 
-const SEG_H = 70   // height per segment in viewBox units
-const GAP   = 4    // gap between segments
-const VW    = 360  // viewBox width
-const MAX_W = 360  // widest (top)
-const MIN_W = 80   // narrowest (bottom)
+function rateCls(stage: FunnelStage): string {
+  if (stage.status === 'healthy') return 'text-emerald-400'
+  if (stage.status === 'warning') return 'text-amber-400'
+  return 'text-red-400'
+}
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
   funnel: FunnelResult
@@ -33,12 +43,11 @@ interface Props {
 export function FunnelView({ funnel, clientName }: Props) {
   const { stages, bottleneck, bottleneck_drop, period, raw } = funnel
   const n = stages.length
-  const totalH = n * (SEG_H + GAP) - GAP
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-end justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-white/90">
@@ -62,112 +71,103 @@ export function FunnelView({ funnel, clientName }: Props) {
         )}
       </div>
 
-      {/* ── Raw volume chips ── */}
-      <div className="grid grid-cols-7 gap-2">
-        {([
-          ['Views Reel',     raw.views_reels],
-          ['Views Historia', raw.views_historias],
-          ['Chats',          raw.chats_abiertos],
-          ['Conv.',          raw.conversaciones],
-          ['Agendas',        raw.agendas],
-          ['Shows',          raw.shows],
-          ['Cierres',        raw.cierres],
-        ] as [string, number][]).map(([label, val]) => (
-          <div key={label} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-            <p className="text-[10px] uppercase tracking-wide text-zinc-500">{label}</p>
-            <p className="mt-0.5 font-mono text-sm font-semibold text-white/90">{formatNumber(val)}</p>
-          </div>
-        ))}
-      </div>
+      {/* Funnel card */}
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-5 pb-6">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-600 mb-5">
+          Embudo de ventas
+        </p>
 
-      {/* ── Visual funnel + labels ── */}
-      <div className="flex items-start gap-5">
+        <div className="flex items-stretch gap-6">
 
-        {/* SVG funnel */}
-        <div className="flex-1 min-w-0">
-          <svg
-            viewBox={`0 0 ${VW} ${totalH}`}
-            className="w-full"
-            style={{ filter: 'drop-shadow(0 8px 48px rgba(185, 28, 28, 0.18))' }}
-          >
-            <defs>
-              {/* Per-segment gradient (top slightly lighter than bottom) */}
-              {stages.map((s, i) => {
-                const { fill } = stageStyle(s)
-                return (
-                  <linearGradient key={s.id} id={`fg-${i}`} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor={fill} stopOpacity={0.95} />
-                    <stop offset="100%" stopColor={fill} stopOpacity={0.72} />
-                  </linearGradient>
-                )
-              })}
-              {/* Glow filter for bottleneck */}
-              <filter id="fn-glow" x="-25%" y="-25%" width="150%" height="150%">
-                <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur" />
-                <feMerge>
-                  <feMergeNode in="blur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
+          {/* ── Left: visual funnel trapezoids ── */}
+          <div className="flex-1 min-w-0 flex flex-col" style={{ gap: `${GAP}px` }}>
             {stages.map((stage, i) => {
-              const { glow } = stageStyle(stage)
-              const topW = MAX_W - (i / n) * (MAX_W - MIN_W)
-              const botW = MAX_W - ((i + 1) / n) * (MAX_W - MIN_W)
-              const topL = (VW - topW) / 2
-              const botL = (VW - botW) / 2
-              const y1   = i * (SEG_H + GAP)
-              const y2   = y1 + SEG_H
-              const pts  = `${topL},${y1} ${topL + topW},${y1} ${botL + botW},${y2} ${botL},${y2}`
+              const topW = 100 - (i / n) * (100 - MIN_W)
+              const botW = 100 - ((i + 1) / n) * (100 - MIN_W)
+              const ti   = (100 - topW) / 2
+              const bi   = (100 - botW) / 2
 
               return (
-                <polygon
+                <div
                   key={stage.id}
-                  points={pts}
-                  fill={`url(#fg-${i})`}
-                  filter={glow ? 'url(#fn-glow)' : undefined}
-                />
+                  style={{
+                    height: SEG_H,
+                    filter: stage.is_bottleneck
+                      ? 'drop-shadow(0 0 22px rgba(220,38,38,0.45))'
+                      : undefined,
+                  }}
+                >
+                  <div
+                    className="w-full h-full flex flex-col items-center justify-center select-none"
+                    style={{
+                      clipPath: `polygon(${ti}% 0%, ${100 - ti}% 0%, ${100 - bi}% 100%, ${bi}% 100%)`,
+                      background: segFill(stage),
+                    }}
+                  >
+                    <span
+                      className="text-[10px] font-semibold uppercase tracking-[0.18em] leading-none"
+                      style={{ color: 'rgba(255,255,255,0.45)' }}
+                    >
+                      {stage.label}
+                    </span>
+                    <span
+                      className="font-mono text-[2rem] font-bold leading-tight mt-1"
+                      style={{ color: 'rgba(255,255,255,0.92)' }}
+                    >
+                      {typeof stage.value === 'number'
+                        ? stage.value.toLocaleString()
+                        : '—'}
+                    </span>
+                  </div>
+                </div>
               )
             })}
-          </svg>
-        </div>
+          </div>
 
-        {/* Stage labels — vertically aligned with SVG segments */}
-        <div
-          className="w-52 shrink-0 flex flex-col"
-          style={{ gap: `${GAP}px` }}
-        >
-          {stages.map((stage) => {
-            const { textCls } = stageStyle(stage)
-            return (
+          {/* ── Right: conversion rates aligned to segments ── */}
+          <div
+            className="w-44 shrink-0 flex flex-col border-l border-white/[0.05]"
+            style={{ gap: `${GAP}px` }}
+          >
+            {stages.map((stage, i) => (
               <div
                 key={stage.id}
-                className="flex flex-col justify-center"
-                style={{ height: `${SEG_H}px` }}
+                className="flex flex-col justify-center pl-4"
+                style={{ height: SEG_H }}
               >
-                <div className="flex items-center gap-1.5">
-                  <span className={`text-sm font-medium ${textCls}`}>{stage.label}</span>
-                  {stage.is_bottleneck && (
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                  )}
-                </div>
-                <div className="flex items-baseline gap-1.5 font-mono mt-0.5">
-                  <span className={`text-2xl font-bold leading-none ${textCls}`}>
-                    {stage.rate}%
-                  </span>
-                  <span className="text-[11px] text-zinc-600">
-                    {stage.benchmark_min}–{stage.benchmark_max}%
-                  </span>
-                </div>
+                {/* Skip first segment — it's the funnel entry, no "conversion from above" */}
+                {i > 0 && stage.benchmark_min > 0 ? (
+                  <div className="space-y-[3px]">
+                    <p className="text-[10px] text-zinc-500 leading-tight">
+                      Tasa de {stage.label.toLowerCase()}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className="h-[7px] w-[7px] rounded-full shrink-0"
+                        style={{ background: dotColor(stage) }}
+                      />
+                      <span className={`font-mono text-xl font-bold leading-none ${rateCls(stage)}`}>
+                        {stage.rate.toFixed(1)}%
+                      </span>
+                    </div>
+                    <p className="font-mono text-[10px] text-zinc-600">
+                      {(-(100 - stage.rate)).toFixed(0)}% drop
+                    </p>
+                    <p className="text-[10px] text-zinc-700">
+                      bench {stage.benchmark_min}–{stage.benchmark_max}%
+                    </p>
+                  </div>
+                ) : i === 0 ? (
+                  <p className="text-[10px] text-zinc-700 italic">Entrada del funnel</p>
+                ) : null}
               </div>
-            )
-          })}
-        </div>
+            ))}
+          </div>
 
+        </div>
       </div>
 
-      {/* ── Money cards ── */}
+      {/* Money cards */}
       <div className="grid grid-cols-2 gap-4">
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
           <p className="text-sm font-medium text-zinc-400">Facturación</p>
