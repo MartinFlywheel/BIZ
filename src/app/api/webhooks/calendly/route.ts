@@ -75,19 +75,16 @@ export async function POST(request: Request) {
 
     // ── Handle cancellations ──
     if (body.event === 'invitee.canceled') {
-      const { data: existingCall } = await supabase
-        .from('sales_calls')
-        .select('id')
-        .eq('fathom_recording_id', calendlyEventUri)
-        .maybeSingle()
-
-      if (existingCall) {
-        await supabase
+      await Promise.all([
+        supabase
           .from('sales_calls')
           .update({ outcome: 'cancelled' })
-          .eq('id', existingCall.id)
-      }
-
+          .eq('fathom_recording_id', calendlyEventUri),
+        supabase
+          .from('agenda_records')
+          .update({ estado: 'No Show' })
+          .eq('link_reporte', calendlyEventUri),
+      ])
       await markLog(supabase, webhookLogId, true)
       return NextResponse.json({ received: true, action: 'cancelled' })
     }
@@ -165,6 +162,35 @@ export async function POST(request: Request) {
         })
         .eq('id', leadId)
         .in('stage', ['new', 'contacted'])
+    }
+
+    // ── Create or update agenda_record ──
+    if (clientId) {
+      const fechaAgenda = scheduledAt ? scheduledAt.split('T')[0] : null
+
+      // Deduplicate by Calendly event URI stored in link_reporte field
+      const { data: existingAgenda } = await supabase
+        .from('agenda_records')
+        .select('id')
+        .eq('client_id', clientId)
+        .eq('link_reporte', calendlyEventUri)
+        .maybeSingle()
+
+      if (existingAgenda) {
+        await supabase
+          .from('agenda_records')
+          .update({ nombre_lead: inviteeName, fecha_agenda: fechaAgenda, link_reunion: meetingUrl })
+          .eq('id', existingAgenda.id)
+      } else {
+        await supabase.from('agenda_records').insert({
+          client_id: clientId,
+          nombre_lead: inviteeName,
+          fecha_agenda: fechaAgenda,
+          link_reunion: meetingUrl,
+          link_reporte: calendlyEventUri,
+          estado: 'Pendiente',
+        })
+      }
     }
 
     // ── Create sales_calls record ──

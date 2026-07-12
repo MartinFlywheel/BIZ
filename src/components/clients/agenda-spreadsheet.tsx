@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Plus, Trash2, X, ExternalLink, Loader2 } from 'lucide-react'
+import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2 } from 'lucide-react'
 import {
   getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord,
   type AgendaRecord, type AgendaRecordFields,
@@ -13,7 +13,7 @@ import { Modal } from '@/components/ui/modal'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-const ESTADO_OPTIONS = ['Show','No Show','Cerrado','No Calificado','Reagendado','Pendiente']
+const ESTADO_OPTIONS = ['Pendiente','Show','No Show','Cerrado','No Calificado','Reagendado']
 const FORMA_CIERRE_OPTIONS = ['1 cuota','2 cuotas','3 cuotas','Pago completo','Otra']
 
 const estadoColor: Record<string, string> = {
@@ -23,6 +23,15 @@ const estadoColor: Record<string, string> = {
   'No Calificado':  'text-zinc-500',
   'Reagendado':     'text-amber-400',
   'Pendiente':      'text-blue-400',
+}
+
+const estadoBg: Record<string, string> = {
+  'Show':           'bg-emerald-950/40 border-emerald-900/40',
+  'Cerrado':        'bg-emerald-950/60 border-emerald-800/50',
+  'No Show':        'bg-red-950/40 border-red-900/40',
+  'No Calificado':  'bg-zinc-900 border-zinc-800',
+  'Reagendado':     'bg-amber-950/40 border-amber-900/40',
+  'Pendiente':      'bg-blue-950/40 border-blue-900/40',
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -43,27 +52,7 @@ function fmtDate(d: string | null): string {
   return new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
 }
 
-// ── Small UI primitives ───────────────────────────────────────────────────────
-
-const inputCls = 'w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500'
-const selectCls = 'w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 [&>option]:bg-zinc-900'
-
-function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
-  return (
-    <div className={full ? 'col-span-2' : ''}>
-      <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">{label}</label>
-      {children}
-    </div>
-  )
-}
-
-function SectionHead({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="col-span-2 pt-1">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 border-b border-zinc-800 pb-1 mb-1">{children}</p>
-    </div>
-  )
-}
+// ── Month selector ────────────────────────────────────────────────────────────
 
 function MonthSelector({ year, month, onChange }: { year: number; month: number; onChange: (y: number, m: number) => void }) {
   const now = new Date()
@@ -81,7 +70,26 @@ function MonthSelector({ year, month, onChange }: { year: number; month: number;
   )
 }
 
-// ── AgendaRecordModal ─────────────────────────────────────────────────────────
+// ── Full detail modal (for extra fields) ──────────────────────────────────────
+
+const inputCls = 'w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-500'
+const selectCls = 'w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500 [&>option]:bg-zinc-900'
+
+function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
+  return (
+    <div className={full ? 'col-span-2' : ''}>
+      <label className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">{label}</label>
+      {children}
+    </div>
+  )
+}
+function SectionHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="col-span-2 pt-1">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 border-b border-zinc-800 pb-1 mb-1">{children}</p>
+    </div>
+  )
+}
 
 interface ModalProps {
   record: AgendaRecord
@@ -153,26 +161,14 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200"><X className="h-4 w-4" /></button>
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-x-5 gap-y-3 max-h-[72vh] overflow-y-auto pr-2">
-
-        <SectionHead>Lead</SectionHead>
-        <Field label="Nombre">
-          <input className={inputCls} value={local.nombre_lead ?? ''} placeholder="Nombre del lead"
-            onChange={e => set('nombre_lead', e.target.value || null)} />
-        </Field>
-        <Field label="Avatar">
-          <select className={selectCls} value={local.avatar ?? ''} onChange={e => set('avatar', e.target.value || null)}>
-            <option value="">Sin avatar</option>
-            {avatarList.map(a => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </Field>
-        <LinkField label="Link al perfil" field="link_perfil" />
-
         <SectionHead>Fuente y Contacto</SectionHead>
         <Field label="Fecha 1er contacto">
           <input type="date" className={inputCls + ' [color-scheme:dark]'} value={local.fecha_1er_contacto ?? ''}
             onChange={e => set('fecha_1er_contacto', e.target.value || null)} />
+        </Field>
+        <Field label="Tiempo de compra">
+          <div className="flex h-[34px] items-center px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-sm text-zinc-400 font-mono">{tiempo}</div>
         </Field>
         <Field label="De donde vino (último CTA)">
           <input className={inputCls} value={local.de_donde_vino ?? ''} placeholder="Reel, Historia, DM..."
@@ -182,33 +178,17 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
           <input className={inputCls} value={local.primer_cta ?? ''} placeholder="Primer punto de contacto"
             onChange={e => set('primer_cta', e.target.value || null)} />
         </Field>
-        <Field label="Tiempo de compra">
-          <div className="flex h-[34px] items-center px-3 rounded-lg border border-zinc-800 bg-zinc-900 text-sm text-zinc-400 font-mono">{tiempo}</div>
-        </Field>
         <Field label="Todos los contactos (CTAs)" full>
           <input className={inputCls} value={local.todos_los_ctas ?? ''} placeholder="Lista de todos los CTAs del lead"
             onChange={e => set('todos_los_ctas', e.target.value || null)} />
         </Field>
+        <LinkField label="Link al perfil" field="link_perfil" />
 
         <SectionHead>Llamada</SectionHead>
-        <Field label="Fecha de agenda">
-          <input type="date" className={inputCls + ' [color-scheme:dark]'} value={local.fecha_agenda ?? ''}
-            onChange={e => set('fecha_agenda', e.target.value || null)} />
-        </Field>
-        <Field label="Closer">
-          <input className={inputCls} value={local.closer ?? ''} placeholder="Nombre del closer"
-            onChange={e => set('closer', e.target.value || null)} />
-        </Field>
         <LinkField label="Link a la reunión" field="link_reunion" />
         <LinkField label="Link al reporte" field="link_reporte" />
 
         <SectionHead>Resultado</SectionHead>
-        <Field label="Estado">
-          <select className={selectCls} value={local.estado ?? ''} onChange={e => set('estado', e.target.value || null)}>
-            <option value="">Sin estado</option>
-            {ESTADO_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </Field>
         <Field label="Facturación actual del lead">
           <input type="number" className={inputCls} value={local.facturacion_actual ?? ''} placeholder="0"
             onChange={e => set('facturacion_actual', e.target.value ? +e.target.value : null)} />
@@ -247,14 +227,6 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
             {FORMA_CIERRE_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
         </Field>
-        <Field label="Monto Facturación">
-          <input type="number" className={inputCls} value={local.monto_facturacion ?? ''} placeholder="0"
-            onChange={e => set('monto_facturacion', e.target.value ? +e.target.value : null)} />
-        </Field>
-        <Field label="Monto Upfront">
-          <input type="number" className={inputCls} value={local.monto_upfront ?? ''} placeholder="0"
-            onChange={e => set('monto_upfront', e.target.value ? +e.target.value : null)} />
-        </Field>
         <Field label="Razón de compra" full>
           <input className={inputCls} value={local.razon_de_compra ?? ''} placeholder="¿Por qué decidió comprar?"
             onChange={e => set('razon_de_compra', e.target.value || null)} />
@@ -265,18 +237,21 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
           <textarea className={inputCls} rows={3} value={local.comentarios ?? ''} placeholder="Notas adicionales..."
             onChange={e => set('comentarios', e.target.value || null)} />
         </Field>
-
       </div>
     </Modal>
   )
 }
 
+// ── Inline editable cell helpers ──────────────────────────────────────────────
+
+type EditingCell = { id: string; field: string } | null
+
+const cellInput = 'w-full bg-transparent text-inherit focus:outline-none placeholder:text-zinc-700'
+const cellBase = 'px-0 py-0 h-full w-full flex items-center cursor-text text-inherit hover:bg-white/[0.03] rounded transition-colors'
+
 // ── Main component ────────────────────────────────────────────────────────────
 
-const HEADERS = [
-  'Fecha', 'Nombre', 'Avatar', 'CTA', 'Closer', 'Estado',
-  'Facturación', 'Upfront', 'T. Compra', '',
-]
+const HEADERS = ['Fecha', 'Nombre', 'Avatar', 'CTA', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
 
 export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: string; customAvatars?: string[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
@@ -285,7 +260,10 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
   const [month, setMonth]   = useState(now.getMonth() + 1)
   const [records, setRecords] = useState<AgendaRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [editing, setEditing] = useState<AgendaRecord | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [editingCell, setEditingCell] = useState<EditingCell>(null)
+  const [editValue, setEditValue] = useState('')
+  const [newRowId, setNewRowId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -295,25 +273,52 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
 
   useEffect(() => { load() }, [clientId, year, month])
 
+  function sortRecords(recs: AgendaRecord[]) {
+    return [...recs].sort((a, b) => (a.fecha_agenda ?? '').localeCompare(b.fecha_agenda ?? ''))
+  }
+
+  async function saveCell(id: string, field: string, value: string | number | null) {
+    await updateAgendaRecord(id, { [field]: value } as AgendaRecordFields)
+    setRecords(prev => sortRecords(prev.map(r => r.id === id ? { ...r, [field]: value } : r)))
+  }
+
+  function startEdit(id: string, field: string, value: string) {
+    setEditingCell({ id, field })
+    setEditValue(value)
+  }
+
+  async function commitEdit(id: string, field: string, rawValue: string) {
+    setEditingCell(null)
+    const trimmed = rawValue.trim()
+    const value = trimmed || null
+    await saveCell(id, field, value)
+  }
+
+  async function commitNumeric(id: string, field: string, rawValue: string) {
+    setEditingCell(null)
+    const num = parseFloat(rawValue)
+    await saveCell(id, field, isNaN(num) ? null : num)
+  }
+
   async function handleAdd() {
     const today = new Date()
     const fecha = (year === today.getFullYear() && month === today.getMonth() + 1)
       ? today.toISOString().split('T')[0]
       : `${year}-${String(month).padStart(2, '0')}-01`
     const created = await createAgendaRecord(clientId, { fecha_agenda: fecha })
-    setRecords(prev => [...prev, created].sort((a, b) => (a.fecha_agenda ?? '').localeCompare(b.fecha_agenda ?? '')))
-    setEditing(created)
+    setRecords(prev => sortRecords([...prev, created]))
+    setNewRowId(created.id)
+    setEditingCell({ id: created.id, field: 'nombre_lead' })
+    setEditValue('')
   }
 
   function handleUpdated(id: string, fields: AgendaRecordFields) {
-    setRecords(prev =>
-      prev.map(r => r.id === id ? { ...r, ...fields } : r)
-          .sort((a, b) => (a.fecha_agenda ?? '').localeCompare(b.fecha_agenda ?? ''))
-    )
+    setRecords(prev => sortRecords(prev.map(r => r.id === id ? { ...r, ...fields } : r)))
   }
 
   function handleDeleted(id: string) {
     setRecords(prev => prev.filter(r => r.id !== id))
+    if (expandedId === id) setExpandedId(null)
   }
 
   async function handleDeleteRow(id: string, e: React.MouseEvent) {
@@ -335,12 +340,176 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
   const grandUpfront = records.reduce((s, r) => s + (r.monto_upfront ?? 0), 0)
   const grandCierres = records.filter(r => r.estado === 'Cerrado').length
 
+  // ── Per-row render helper ─────────────────────────────────────────────────
+
+  function renderRow(r: AgendaRecord) {
+    const isNew = r.id === newRowId
+    const ec = editingCell
+
+    function textCell(field: string, value: string | null, placeholder: string, cls: string) {
+      const active = ec?.id === r.id && ec?.field === field
+      if (active) {
+        return (
+          <input
+            autoFocus
+            value={editValue}
+            placeholder={placeholder}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={() => commitEdit(r.id, field, editValue)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.currentTarget.blur() }
+              if (e.key === 'Escape') { setEditingCell(null) }
+            }}
+            className={`${cellInput} ${cls}`}
+          />
+        )
+      }
+      return (
+        <span
+          onClick={() => startEdit(r.id, field, value ?? '')}
+          className={`${cellBase} ${cls} ${!value ? 'text-zinc-700' : ''} px-1`}
+        >
+          {value || placeholder}
+        </span>
+      )
+    }
+
+    function numCell(field: string, value: number | null, placeholder: string) {
+      const active = ec?.id === r.id && ec?.field === field
+      if (active) {
+        return (
+          <input
+            autoFocus
+            type="number"
+            value={editValue}
+            placeholder={placeholder}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={() => commitNumeric(r.id, field, editValue)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.currentTarget.blur() }
+              if (e.key === 'Escape') { setEditingCell(null) }
+            }}
+            className={`${cellInput} text-right font-mono text-xs text-zinc-200`}
+          />
+        )
+      }
+      return (
+        <span
+          onClick={() => startEdit(r.id, field, value != null ? String(value) : '')}
+          className={`${cellBase} justify-end font-mono text-xs cursor-text px-1 ${value ? 'text-zinc-200' : 'text-zinc-700'}`}
+        >
+          {value != null ? formatCurrency(value) : placeholder}
+        </span>
+      )
+    }
+
+    function dateCell() {
+      const active = ec?.id === r.id && ec?.field === 'fecha_agenda'
+      if (active) {
+        return (
+          <input
+            autoFocus
+            type="date"
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={() => commitEdit(r.id, 'fecha_agenda', editValue)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setEditingCell(null)
+            }}
+            className={`${cellInput} text-xs [color-scheme:dark] text-zinc-300`}
+          />
+        )
+      }
+      return (
+        <span
+          onClick={() => startEdit(r.id, 'fecha_agenda', r.fecha_agenda ?? '')}
+          className={`${cellBase} text-xs px-1 ${r.fecha_agenda ? 'text-zinc-300' : 'text-zinc-700'}`}
+        >
+          {r.fecha_agenda ? fmtDate(r.fecha_agenda) : 'Fecha'}
+        </span>
+      )
+    }
+
+    function avatarCell() {
+      return (
+        <select
+          value={r.avatar ?? ''}
+          onChange={e => saveCell(r.id, 'avatar', e.target.value || null)}
+          className="w-full bg-transparent text-xs text-zinc-400 focus:outline-none cursor-pointer [&>option]:bg-zinc-900 border-0"
+        >
+          <option value="">— Avatar —</option>
+          {avatarList.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+      )
+    }
+
+    function estadoCell() {
+      const val = r.estado ?? ''
+      const color = estadoColor[val] ?? 'text-zinc-600'
+      const bg = estadoBg[val] ?? 'bg-transparent border-transparent'
+      return (
+        <select
+          value={val}
+          onChange={e => saveCell(r.id, 'estado', e.target.value || null)}
+          className={`w-full rounded px-1.5 py-0.5 text-xs font-medium border focus:outline-none cursor-pointer [&>option]:bg-zinc-900 ${color} ${bg}`}
+        >
+          <option value="">— Estado —</option>
+          {ESTADO_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      )
+    }
+
+    return (
+      <tr
+        key={r.id}
+        className={`group border-b border-white/[0.04] transition-colors ${isNew ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
+      >
+        <td className="px-2 py-1.5 text-xs w-[90px]">{dateCell()}</td>
+        <td className="px-2 py-1.5 text-xs font-medium text-zinc-100 min-w-[130px] max-w-[180px]">
+          {textCell('nombre_lead', r.nombre_lead, 'Nombre', 'text-sm font-medium text-zinc-100')}
+        </td>
+        <td className="px-2 py-1.5 text-xs w-[110px]">{avatarCell()}</td>
+        <td className="px-2 py-1.5 text-xs min-w-[100px] max-w-[140px]">
+          {textCell('de_donde_vino', r.de_donde_vino, 'CTA', 'text-xs text-zinc-400')}
+        </td>
+        <td className="px-2 py-1.5 text-xs w-[110px]">
+          {textCell('closer', r.closer, 'Closer', 'text-xs text-zinc-400')}
+        </td>
+        <td className="px-2 py-1.5 text-xs w-[120px]">{estadoCell()}</td>
+        <td className="px-2 py-1.5 text-xs w-[110px] text-right">{numCell('monto_facturacion', r.monto_facturacion, '—')}</td>
+        <td className="px-2 py-1.5 text-xs w-[100px] text-right">{numCell('monto_upfront', r.monto_upfront, '—')}</td>
+        <td className="px-2 py-1.5 text-xs font-mono text-right text-zinc-600 w-[70px] whitespace-nowrap">
+          {tiempoDeCompra(r.fecha_agenda, r.fecha_1er_contacto)}
+        </td>
+        <td className="px-2 py-1.5 w-[56px]">
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={e => { e.stopPropagation(); setExpandedId(r.id) }}
+              title="Ver todos los campos"
+              className="text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+            <button
+              onClick={e => handleDeleteRow(r.id, e)}
+              className="text-zinc-700 hover:text-red-400 transition-colors"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    )
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
-        <button onClick={handleAdd}
-          className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors">
+        <button
+          onClick={handleAdd}
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
+        >
           <Plus className="h-3.5 w-3.5" /> Agregar lead
         </button>
       </div>
@@ -357,7 +526,6 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
                 ))}
               </tr>
             </thead>
-
             <tbody>
               {loading ? (
                 <tr><td colSpan={HEADERS.length} className="py-12 text-center text-zinc-600 text-xs">
@@ -368,99 +536,61 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
                   Sin registros — agregá el primer lead agendado
                 </td></tr>
               ) : (
-                <>
-                  {Array.from(weeks.entries()).sort(([a], [b]) => a - b).map(([week, recs]) => {
-                    const wFact = recs.reduce((s, r) => s + (r.monto_facturacion ?? 0), 0)
-                    const wUp   = recs.reduce((s, r) => s + (r.monto_upfront ?? 0), 0)
-                    return (
-                      <tbody key={week}>
-                        {/* Week label */}
-                        <tr className="bg-white/[0.015]">
-                          <td colSpan={HEADERS.length} className="px-3 py-1">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Semana {week}</span>
-                          </td>
-                        </tr>
-
-                        {/* Records */}
-                        {recs.map(r => (
-                          <tr key={r.id} onClick={() => setEditing(r)}
-                            className="group border-b border-white/[0.04] hover:bg-white/[0.03] cursor-pointer transition-colors">
-                            <td className="px-2 py-2 text-xs text-zinc-300 whitespace-nowrap">{fmtDate(r.fecha_agenda)}</td>
-                            <td className="px-2 py-2 text-xs text-zinc-100 max-w-[140px] truncate">{r.nombre_lead || '—'}</td>
-                            <td className="px-2 py-2 text-xs text-zinc-400 whitespace-nowrap">{r.avatar || '—'}</td>
-                            <td className="px-2 py-2 text-xs text-zinc-500 max-w-[120px] truncate">{r.de_donde_vino || '—'}</td>
-                            <td className="px-2 py-2 text-xs text-zinc-400 whitespace-nowrap">{r.closer || '—'}</td>
-                            <td className="px-2 py-2 text-xs whitespace-nowrap">
-                              <span className={estadoColor[r.estado ?? ''] ?? 'text-zinc-500'}>{r.estado || '—'}</span>
-                            </td>
-                            <td className="px-2 py-2 text-xs font-mono text-right text-zinc-200 whitespace-nowrap">
-                              {r.monto_facturacion ? formatCurrency(r.monto_facturacion) : '—'}
-                            </td>
-                            <td className="px-2 py-2 text-xs font-mono text-right text-zinc-400 whitespace-nowrap">
-                              {r.monto_upfront ? formatCurrency(r.monto_upfront) : '—'}
-                            </td>
-                            <td className="px-2 py-2 text-xs font-mono text-right text-zinc-600 whitespace-nowrap">
-                              {tiempoDeCompra(r.fecha_agenda, r.fecha_1er_contacto)}
-                            </td>
-                            <td className="px-2 py-2">
-                              <button onClick={e => handleDeleteRow(r.id, e)}
-                                className="opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-400 transition-all">
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-
-                        {/* Week total */}
-                        <tr className="border-b border-white/[0.06] bg-white/[0.01]">
-                          <td colSpan={6} className="px-3 py-1.5">
-                            <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Total semana {week}</span>
-                          </td>
-                          <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-400 whitespace-nowrap">
-                            {wFact > 0 ? formatCurrency(wFact) : '—'}
-                          </td>
-                          <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-300 whitespace-nowrap">
-                            {wUp > 0 ? formatCurrency(wUp) : '—'}
-                          </td>
-                          <td colSpan={2} />
-                        </tr>
-                      </tbody>
-                    )
-                  })}
-
-                  {/* Grand total */}
-                  <tbody>
-                    <tr className="border-t border-white/[0.1] bg-white/[0.02]">
-                      <td colSpan={5} className="px-3 py-2">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
-                          Total Mes · {grandCierres} cierre{grandCierres !== 1 ? 's' : ''}
-                        </span>
+                Array.from(weeks.entries()).sort(([a], [b]) => a - b).flatMap(([week, recs]) => {
+                  const wFact = recs.reduce((s, r) => s + (r.monto_facturacion ?? 0), 0)
+                  const wUp   = recs.reduce((s, r) => s + (r.monto_upfront ?? 0), 0)
+                  return [
+                    <tr key={`week-${week}`} className="bg-white/[0.015]">
+                      <td colSpan={HEADERS.length} className="px-3 py-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">Semana {week}</span>
                       </td>
-                      <td />
-                      <td className="px-2 py-2 text-xs font-mono font-bold text-right text-emerald-400 whitespace-nowrap">
-                        {formatCurrency(grandFact)}
+                    </tr>,
+                    ...recs.map(r => renderRow(r)),
+                    <tr key={`wtotal-${week}`} className="border-b border-white/[0.06] bg-white/[0.01]">
+                      <td colSpan={6} className="px-3 py-1.5">
+                        <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Total semana {week}</span>
                       </td>
-                      <td className="px-2 py-2 text-xs font-mono font-bold text-right text-emerald-300 whitespace-nowrap">
-                        {formatCurrency(grandUpfront)}
+                      <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-400 whitespace-nowrap">
+                        {wFact > 0 ? formatCurrency(wFact) : '—'}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-300 whitespace-nowrap">
+                        {wUp > 0 ? formatCurrency(wUp) : '—'}
                       </td>
                       <td colSpan={2} />
-                    </tr>
-                  </tbody>
-                </>
+                    </tr>,
+                  ]
+                })
+              )}
+              {records.length > 0 && (
+                <tr className="border-t border-white/[0.1] bg-white/[0.02]">
+                  <td colSpan={5} className="px-3 py-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                      Total Mes · {grandCierres} cierre{grandCierres !== 1 ? 's' : ''}
+                    </span>
+                  </td>
+                  <td />
+                  <td className="px-2 py-2 text-xs font-mono font-bold text-right text-emerald-400 whitespace-nowrap">
+                    {formatCurrency(grandFact)}
+                  </td>
+                  <td className="px-2 py-2 text-xs font-mono font-bold text-right text-emerald-300 whitespace-nowrap">
+                    {formatCurrency(grandUpfront)}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      <p className="text-[11px] text-zinc-700">Click en un lead para editar todos los campos · Los cambios se guardan automáticamente</p>
+      <p className="text-[11px] text-zinc-700">Click en cualquier celda para editar · Los cambios se guardan al confirmar · <Maximize2 className="h-2.5 w-2.5 inline" /> para ver todos los campos</p>
 
-      {editing && (
+      {expandedId && (
         <AgendaRecordModal
-          key={editing.id}
-          record={records.find(r => r.id === editing.id) ?? editing}
+          key={expandedId}
+          record={records.find(r => r.id === expandedId)!}
           avatarList={avatarList}
-          onClose={() => setEditing(null)}
+          onClose={() => setExpandedId(null)}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
         />
