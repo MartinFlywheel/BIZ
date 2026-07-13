@@ -21,17 +21,19 @@ export function ContentPieceForm({ clientId, onClose }: Props) {
         e.preventDefault()
         setLoading(true)
         setError(null)
-        try {
-            const formData = new FormData(e.currentTarget)
-            formData.set('client_id', clientId)
-            await createContentAction(formData)
-            router.refresh()
-            onClose()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Error al crear la pieza')
-        } finally {
-            setLoading(false)
+        const formData = new FormData(e.currentTarget)
+        formData.set('client_id', clientId)
+        const result = await createContentAction(formData).catch(e => ({
+            success: false as const,
+            error: e instanceof Error ? e.message : 'Error inesperado',
+        }))
+        setLoading(false)
+        if (!result.success) {
+            setError(result.error)
+            return
         }
+        router.refresh()
+        onClose()
     }
 
     return (

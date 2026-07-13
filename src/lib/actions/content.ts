@@ -51,9 +51,9 @@ export async function createContentAction(formData: FormData) {
     metrics_updated_at: new Date().toISOString(),
   })
 
-  if (error) throw error
-  revalidatePath('/content')
-  revalidatePath(`/clients/${clientId}`)
+  if (error) return { success: false as const, error: error.message }
+  try { revalidatePath('/content'); revalidatePath(`/clients/${clientId}`) } catch {}
+  return { success: true as const }
 }
 
 async function extractIgThumbnail(permalink: string): Promise<string | null> {
