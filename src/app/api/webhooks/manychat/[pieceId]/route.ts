@@ -108,7 +108,6 @@ export async function POST(
           email,
           phone,
           stage: 'nuevo_contacto',
-          source: 'manychat_keyword',
           first_touch_content_id: contentId,
           first_touch_at: new Date().toISOString(),
           first_touch_type: `manychat:${pieceId}`,
