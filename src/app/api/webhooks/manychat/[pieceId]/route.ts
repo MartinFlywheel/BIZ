@@ -14,17 +14,24 @@ export async function POST(
   try {
     const payload = await request.json()
 
+    // ManyChat Full Contact Data uses various field names depending on version
     const igUsername = (
       payload.ig_username ||
+      payload.instagram_user_handle ||
       payload.username ||
+      payload.instagram_username ||
       ''
     ).replace(/^@/, '').trim()
 
     const fullName = (
       payload.full_name ||
       payload.name ||
+      (payload.first_name ? `${payload.first_name} ${payload.last_name || ''}`.trim() : '') ||
       ''
     ).trim() || null
+
+    const email = payload.email || null
+    const phone = payload.phone || payload.phone_number || null
 
     const subscriberId = (
       payload.subscriber_id ||
@@ -96,9 +103,12 @@ export async function POST(
         .from('leads')
         .insert({
           client_id: clientId,
-          ig_username: igUsername,
+          ig_username: igUsername || null,
           full_name: fullName,
+          email,
+          phone,
           stage: 'nuevo_contacto',
+          source: 'manychat_keyword',
           first_touch_content_id: contentId,
           first_touch_at: new Date().toISOString(),
           first_touch_type: `manychat:${pieceId}`,
