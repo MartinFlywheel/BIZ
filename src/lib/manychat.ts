@@ -203,6 +203,7 @@ export async function handlePieceWebhook(
           email,
           phone,
           stage: 'nuevo_contacto',
+          content_id: contentId,
           first_touch_content_id: contentId,
           first_touch_at: new Date().toISOString(),
           first_touch_type: `manychat:${pieceId}`,

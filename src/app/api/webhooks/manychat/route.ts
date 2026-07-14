@@ -160,6 +160,7 @@ export async function POST(request: Request) {
           phone,
           email,
           stage: 'new',
+          content_id: contentId,
           first_touch_content_id: contentId,
           first_touch_at: new Date().toISOString(),
           first_touch_type: payloadId ? 'manychat_keyword' : 'manychat_direct',
