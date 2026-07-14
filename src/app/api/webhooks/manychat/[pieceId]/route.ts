@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveClassification, upsertInteraction } from '@/lib/manychat'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -121,18 +122,18 @@ export async function POST(
       leadId = newLead.id
     }
 
-    // Register interaction
-    await supabase.from('interactions').insert({
-      client_id: clientId,
-      content_id: contentId,
-      ig_username: igUsername,
-      prospect_name: fullName,
-      classification: 'chat_abierto',
-      source: 'manychat',
-      manychat_subscriber_id: subscriberId,
-      keyword_used: pieceId,
-      bot_triggered_at: new Date().toISOString(),
-      promoted_to_lead: true,
+    // Register interaction — classification comes from an explicit field in
+    // the payload when the ManyChat flow sends one (e.g. this same URL called
+    // again after the prospect replies), defaulting to chat_abierto otherwise.
+    const classification = resolveClassification(payload)
+    await upsertInteraction(supabase, {
+      clientId,
+      contentId,
+      igUsername,
+      fullName,
+      subscriberId,
+      keywordUsed: pieceId,
+      classification,
     })
 
     // Increment chats on content_metrics

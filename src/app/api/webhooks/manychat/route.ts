@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resolveClassification, upsertInteraction } from '@/lib/manychat'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -176,33 +177,21 @@ export async function POST(request: Request) {
     }
 
     // ── Step 5: Register interaction ─────────────────────────────
-    const tags = payload.tags || []
-    const isQualified = tags.includes('qualified') ||
-      tags.includes('conversacion_real') ||
-      customFields.qualified === true
+    const classification = resolveClassification(payload)
 
-    const classification = isQualified ? 'conversacion_real' as const : 'chat_abierto' as const
-
-    const { error: interactionError } = await supabase
-      .from('interactions')
-      .insert({
-        client_id: clientId,
-        content_id: contentId,
-        ig_username: igUsername,
-        prospect_name: fullName,
+    try {
+      await upsertInteraction(supabase, {
+        clientId,
+        contentId,
+        igUsername,
+        fullName,
+        subscriberId,
+        keywordUsed: payloadId || null,
         classification,
-        source: 'manychat',
-        manychat_subscriber_id: subscriberId,
-        keyword_used: payloadId || null,
-        bot_triggered_at: new Date().toISOString(),
-        prospect_responded_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
-        qualified_at: classification === 'conversacion_real' ? new Date().toISOString() : null,
-        promoted_to_lead: true,
-        prequalification_data: customFields,
+        customFields,
       })
-
-    if (interactionError) {
-      console.error('[ManyChat] Interaction insert error:', interactionError.message)
+    } catch (err) {
+      console.error('[ManyChat] Interaction upsert error:', err)
     }
 
     // ── Step 6: Update content_metrics chats count ────────────────

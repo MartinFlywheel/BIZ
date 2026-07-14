@@ -9,7 +9,11 @@ export interface PeriodMetrics {
   views_reels: number
   views_historias: number
   chats_abiertos: number
+  chats_abiertos_reel: number
+  chats_abiertos_historia: number
   conversaciones: number
+  conversaciones_reel: number
+  conversaciones_historia: number
   agendas: number
   llamadas: number
   llamadas_no_calificadas: number
@@ -30,7 +34,11 @@ function emptyMetrics(): PeriodMetrics {
     views_reels: 0,
     views_historias: 0,
     chats_abiertos: 0,
+    chats_abiertos_reel: 0,
+    chats_abiertos_historia: 0,
     conversaciones: 0,
+    conversaciones_reel: 0,
+    conversaciones_historia: 0,
     agendas: 0,
     llamadas: 0,
     llamadas_no_calificadas: 0,
@@ -65,7 +73,7 @@ export async function getLiveMetricsBuckets(
       .lte('published_at', `${rangeEnd}T23:59:59Z`),
     supabase
       .from('interactions')
-      .select('classification, bot_triggered_at')
+      .select('classification, bot_triggered_at, content_id')
       .eq('client_id', clientId)
       .gte('bot_triggered_at', `${rangeStart}T00:00:00Z`)
       .lte('bot_triggered_at', `${rangeEnd}T23:59:59Z`),
@@ -79,6 +87,19 @@ export async function getLiveMetricsBuckets(
 
   function bucketFor(dateStr: string): DateBucket | undefined {
     return buckets.find((b) => dateStr >= b.start && dateStr <= b.end)
+  }
+
+  // Resolve reel-vs-historia origin for interactions via their content_id
+  const interactionContentIds = Array.from(
+    new Set((interactionsRes.data || []).map((i) => i.content_id).filter((id): id is string => !!id))
+  )
+  let contentTypeById: Record<string, string> = {}
+  if (interactionContentIds.length > 0) {
+    const { data: piecesForType } = await supabase
+      .from('content_pieces')
+      .select('id, content_type')
+      .in('id', interactionContentIds)
+    contentTypeById = Object.fromEntries((piecesForType || []).map((p) => [p.id, p.content_type as string]))
   }
 
   for (const p of piecesRes.data || []) {
@@ -97,8 +118,17 @@ export async function getLiveMetricsBuckets(
     const b = bucketFor(date)
     if (!b) continue
     const r = result[b.key]
+    const contentType = i.content_id ? contentTypeById[i.content_id as string] : undefined
+
     r.chats_abiertos += 1
-    if (i.classification === 'conversacion_real') r.conversaciones += 1
+    if (contentType === 'reel') r.chats_abiertos_reel += 1
+    else if (contentType === 'story') r.chats_abiertos_historia += 1
+
+    if (i.classification === 'conversacion_real') {
+      r.conversaciones += 1
+      if (contentType === 'reel') r.conversaciones_reel += 1
+      else if (contentType === 'story') r.conversaciones_historia += 1
+    }
   }
 
   for (const a of agendaRes.data || []) {
