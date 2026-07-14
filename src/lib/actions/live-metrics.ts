@@ -30,6 +30,9 @@ export interface DateBucket {
   end: string   // YYYY-MM-DD, inclusive
 }
 
+// Matches content_pieces.content_type. "story" is labeled "Historia" in the UI.
+export type ContentTypeFilter = 'reel' | 'story'
+
 function emptyMetrics(): PeriodMetrics {
   return {
     views_reels: 0,
@@ -51,10 +54,16 @@ function emptyMetrics(): PeriodMetrics {
 }
 
 // Computes live metrics for a client across arbitrary date buckets in a single
-// pass (3 queries total, regardless of bucket count).
+// pass. When contentType is given, every stage (views, chats, conversaciones,
+// agendas/shows/cierres/facturación) is scoped to that content type — Agendas
+// onward are attributed via agenda_records.lead_id -> leads.first_touch_content_id
+// -> content_pieces.content_type, so only bookings made after that link was
+// added (lead_id populated by the Calendly webhook) can be attributed; older
+// agenda_records rows have no lead_id and are excluded from a filtered view.
 export async function getLiveMetricsBuckets(
   clientId: string,
   buckets: DateBucket[],
+  contentType?: ContentTypeFilter,
 ): Promise<Record<string, PeriodMetrics>> {
   const result: Record<string, PeriodMetrics> = {}
   for (const b of buckets) result[b.key] = emptyMetrics()
@@ -80,7 +89,7 @@ export async function getLiveMetricsBuckets(
       .lte('bot_triggered_at', `${rangeEnd}T23:59:59Z`),
     supabase
       .from('agenda_records')
-      .select('fecha_agenda, estado, monto_facturacion, monto_upfront')
+      .select('fecha_agenda, estado, monto_facturacion, monto_upfront, lead_id')
       .eq('client_id', clientId)
       .gte('fecha_agenda', rangeStart)
       .lte('fecha_agenda', rangeEnd),
@@ -103,7 +112,40 @@ export async function getLiveMetricsBuckets(
     contentTypeById = Object.fromEntries((piecesForType || []).map((p) => [p.id, p.content_type as string]))
   }
 
+  // Resolve reel-vs-historia origin for agenda_records via lead_id -> leads.first_touch_content_id
+  let agendaContentTypeByLeadId: Record<string, string> = {}
+  if (contentType) {
+    const leadIds = Array.from(
+      new Set((agendaRes.data || []).map((a) => a.lead_id).filter((id): id is string => !!id))
+    )
+    if (leadIds.length > 0) {
+      const { data: leadsData } = await supabase
+        .from('leads')
+        .select('id, first_touch_content_id')
+        .in('id', leadIds)
+
+      const touchContentIds = Array.from(
+        new Set((leadsData || []).map((l) => l.first_touch_content_id).filter((id): id is string => !!id))
+      )
+      let touchTypeById: Record<string, string> = {}
+      if (touchContentIds.length > 0) {
+        const { data: touchPieces } = await supabase
+          .from('content_pieces')
+          .select('id, content_type')
+          .in('id', touchContentIds)
+        touchTypeById = Object.fromEntries((touchPieces || []).map((p) => [p.id, p.content_type as string]))
+      }
+
+      agendaContentTypeByLeadId = Object.fromEntries(
+        (leadsData || [])
+          .filter((l) => l.first_touch_content_id)
+          .map((l) => [l.id as string, touchTypeById[l.first_touch_content_id as string]])
+      )
+    }
+  }
+
   for (const p of piecesRes.data || []) {
+    if (contentType && p.content_type !== contentType) continue
     const date = (p.published_at as string | null)?.slice(0, 10)
     if (!date) continue
     const b = bucketFor(date)
@@ -114,25 +156,30 @@ export async function getLiveMetricsBuckets(
   }
 
   for (const i of interactionsRes.data || []) {
+    const interactionType = i.content_id ? contentTypeById[i.content_id as string] : undefined
+    if (contentType && interactionType !== contentType) continue
     const date = (i.bot_triggered_at as string | null)?.slice(0, 10)
     if (!date) continue
     const b = bucketFor(date)
     if (!b) continue
     const r = result[b.key]
-    const contentType = i.content_id ? contentTypeById[i.content_id as string] : undefined
 
     r.chats_abiertos += 1
-    if (contentType === 'reel') r.chats_abiertos_reel += 1
-    else if (contentType === 'story') r.chats_abiertos_historia += 1
+    if (interactionType === 'reel') r.chats_abiertos_reel += 1
+    else if (interactionType === 'story') r.chats_abiertos_historia += 1
 
     if (i.classification === 'conversacion_real') {
       r.conversaciones += 1
-      if (contentType === 'reel') r.conversaciones_reel += 1
-      else if (contentType === 'story') r.conversaciones_historia += 1
+      if (interactionType === 'reel') r.conversaciones_reel += 1
+      else if (interactionType === 'story') r.conversaciones_historia += 1
     }
   }
 
   for (const a of agendaRes.data || []) {
+    if (contentType) {
+      const agendaType = a.lead_id ? agendaContentTypeByLeadId[a.lead_id as string] : undefined
+      if (agendaType !== contentType) continue
+    }
     const date = a.fecha_agenda as string | null
     if (!date) continue
     const b = bucketFor(date)
@@ -158,8 +205,9 @@ export async function getLiveMetricsForRange(
   clientId: string,
   start: string,
   end: string,
+  contentType?: ContentTypeFilter,
 ): Promise<PeriodMetrics> {
-  const buckets = await getLiveMetricsBuckets(clientId, [{ key: 'range', start, end }])
+  const buckets = await getLiveMetricsBuckets(clientId, [{ key: 'range', start, end }], contentType)
   return buckets.range
 }
 
@@ -180,12 +228,30 @@ function dailyBucketsFor(start: string, end: string): DateBucket[] {
 // shows up everywhere (Analítica KPIs, the sales funnel, health alerts),
 // not just in that one spreadsheet. Corrections entered at Semanal/Mensual
 // granularity are NOT included here (they only affect that spreadsheet view).
+//
+// Overrides have no content-type dimension (a Diario correction is a whole-day
+// number, not split by reel/historia), so a contentType-filtered view skips
+// overrides entirely and returns pure live data for that type.
 export async function getEffectiveMetricsForRange(
   clientId: string,
   start: string,
   end: string,
+  contentType?: ContentTypeFilter,
 ): Promise<PeriodMetrics> {
   const dayBuckets = dailyBucketsFor(start, end)
+
+  if (contentType) {
+    const liveByDay = await getLiveMetricsBuckets(clientId, dayBuckets, contentType)
+    const total = emptyMetrics()
+    for (const day of dayBuckets) {
+      const live = liveByDay[day.key]
+      for (const key of Object.keys(total) as (keyof PeriodMetrics)[]) {
+        total[key] += live[key]
+      }
+    }
+    return total
+  }
+
   const supabase = await createClient()
 
   const [liveByDay, overridesRes] = await Promise.all([

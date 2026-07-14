@@ -2,10 +2,12 @@ import { Suspense } from 'react'
 import { getClients } from '@/lib/actions/clients'
 import { checkHealthAlerts, calculateFunnel } from '@/lib/actions/funnel'
 import { getDashboardMetrics, getBenchmarkAlerts } from '@/lib/actions/metrics'
+import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
 import { ClientSelector } from '@/components/dashboard/client-selector'
+import { ContentTypeToggle } from '@/components/dashboard/content-type-toggle'
 import { Card } from '@/components/ui/card'
 import { formatNumber, formatPercent } from '@/lib/utils'
 
@@ -94,16 +96,18 @@ function FunnelSkeleton() {
 async function ClientDetail({
   clientId,
   clients,
+  contentType,
 }: {
   clientId: string
   clients: Awaited<ReturnType<typeof getClients>>
+  contentType?: ContentTypeFilter
 }) {
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
   // Run both queries in parallel
   const [funnel, liveMetrics] = await Promise.all([
-    calculateFunnel(clientId, 'weekly'),
+    calculateFunnel(clientId, 'weekly', undefined, contentType),
     getDashboardMetrics(clientId),
   ])
 
@@ -114,13 +118,17 @@ async function ClientDetail({
     // fade-rise is defined in globals.css
     <div className="space-y-8" style={{ animation: 'fade-rise 0.38s cubic-bezier(0.22,1,0.36,1) both' }}>
       {funnel ? (
-        <FunnelView funnel={funnel} clientName={selectedClient.name} />
+        <FunnelView funnel={funnel} clientName={selectedClient.name} contentType={contentType} />
       ) : (
         <Card>
           <div className="flex h-32 items-center justify-center text-center text-sm text-zinc-500">
-            {selectedClient.name} aún no tiene métricas semanales cargadas.
-            <br />
-            Cárgalas desde la ficha del cliente → pestaña Métricas.
+            {selectedClient.name} aún no tiene {contentType ? 'actividad' : 'métricas semanales'} para mostrar.
+            {!contentType && (
+              <>
+                <br />
+                Cárgalas desde la ficha del cliente → pestaña Métricas.
+              </>
+            )}
           </div>
         </Card>
       )}
@@ -166,9 +174,10 @@ async function ClientDetail({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>
+  searchParams: Promise<{ client?: string; type?: string }>
 }) {
-  const { client: clientId } = await searchParams
+  const { client: clientId, type } = await searchParams
+  const contentType: ContentTypeFilter | undefined = type === 'reel' || type === 'story' ? type : undefined
 
   // These two queries are fast — run them in the page shell
   const [clients, healthAlerts] = await Promise.all([
@@ -183,7 +192,10 @@ export default async function DashboardPage({
           <h1 className="text-2xl font-semibold tracking-tight text-white/90">Dashboard</h1>
           <p className="mt-1 text-sm text-zinc-400">Salud del funnel y métricas de conversión</p>
         </div>
-        <ClientSelector clients={clients} selectedId={clientId} />
+        <div className="flex items-center gap-2">
+          <ContentTypeToggle selected={type} />
+          <ClientSelector clients={clients} selectedId={clientId} />
+        </div>
       </div>
 
       {/* Agency-wide health overview — always visible */}
@@ -191,8 +203,8 @@ export default async function DashboardPage({
 
       {/* Per-client: streams in behind a skeleton, key resets on client switch */}
       {clientId && (
-        <Suspense key={clientId} fallback={<FunnelSkeleton />}>
-          <ClientDetail clientId={clientId} clients={clients} />
+        <Suspense key={`${clientId}-${type || 'all'}`} fallback={<FunnelSkeleton />}>
+          <ClientDetail clientId={clientId} clients={clients} contentType={contentType} />
         </Suspense>
       )}
     </div>

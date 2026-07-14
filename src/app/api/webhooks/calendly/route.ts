@@ -179,11 +179,12 @@ export async function POST(request: Request) {
       if (existingAgenda) {
         await supabase
           .from('agenda_records')
-          .update({ nombre_lead: inviteeName, fecha_agenda: fechaAgenda, link_reunion: meetingUrl })
+          .update({ nombre_lead: inviteeName, fecha_agenda: fechaAgenda, link_reunion: meetingUrl, lead_id: leadId })
           .eq('id', existingAgenda.id)
       } else {
         await supabase.from('agenda_records').insert({
           client_id: clientId,
+          lead_id: leadId,
           nombre_lead: inviteeName,
           fecha_agenda: fechaAgenda,
           link_reunion: meetingUrl,

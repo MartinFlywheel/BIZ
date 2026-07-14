@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
-import { getLiveMetricsBuckets, getEffectiveMetricsForRange } from './live-metrics'
+import { getLiveMetricsBuckets, getEffectiveMetricsForRange, type ContentTypeFilter } from './live-metrics'
 import { OVERRIDABLE_FIELDS, type OverridableField } from '@/lib/metrics-types'
 
 
@@ -61,10 +61,11 @@ function periodBounds(
 export async function calculateFunnel(
   clientId: string,
   periodType: 'daily' | 'weekly' | 'monthly' = 'weekly',
-  periodStart?: string
+  periodStart?: string,
+  contentType?: ContentTypeFilter
 ): Promise<FunnelResult | null> {
   const { start, end } = periodBounds(periodType, periodStart)
-  const data = await getEffectiveMetricsForRange(clientId, start, end)
+  const data = await getEffectiveMetricsForRange(clientId, start, end, contentType)
 
   const {
     views_reels,

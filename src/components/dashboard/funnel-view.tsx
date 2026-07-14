@@ -39,9 +39,15 @@ function rateCls(stage: FunnelStage): string {
 interface Props {
   funnel: FunnelResult
   clientName: string
+  contentType?: string
 }
 
-export function FunnelView({ funnel, clientName }: Props) {
+const CONTENT_TYPE_LABEL: Record<string, string> = {
+  reel: 'Reels',
+  story: 'Historias',
+}
+
+export function FunnelView({ funnel, clientName, contentType }: Props) {
   const { stages, bottleneck, bottleneck_drop, period, raw } = funnel
   const n = stages.length
 
@@ -53,10 +59,20 @@ export function FunnelView({ funnel, clientName }: Props) {
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-white/90">
             Funnel — {clientName}
+            {contentType && (
+              <span className="ml-2 text-sm font-normal text-zinc-500">
+                · {CONTENT_TYPE_LABEL[contentType] || contentType}
+              </span>
+            )}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500">
             {period.type} · {formatDate(period.start)} — {formatDate(period.end)}
           </p>
+          {contentType && (
+            <p className="mt-1 text-[11px] text-amber-500/70">
+              Agendas/Shows/Cierres solo incluyen reservas hechas después de activar esta atribución — las anteriores no tienen origen registrado.
+            </p>
+          )}
         </div>
         {bottleneck && (
           <div className="flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/[0.06] px-3 py-1.5">
