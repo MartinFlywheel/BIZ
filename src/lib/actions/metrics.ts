@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
-import { getLiveMetricsForRange } from './live-metrics'
+import { getEffectiveMetricsForRange } from './live-metrics'
 
 export async function getDashboardMetrics(
   clientId: string,
@@ -96,7 +96,7 @@ export async function getClientFunnelTotals(clientId: string) {
 
   const [viewsRes, live] = await Promise.all([
     supabase.from('content_pieces').select('views').eq('client_id', clientId),
-    getLiveMetricsForRange(clientId, start, end),
+    getEffectiveMetricsForRange(clientId, start, end),
   ])
 
   const views = (viewsRes.data || []).reduce((s, cp) => s + (cp.views || 0), 0)

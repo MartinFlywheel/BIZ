@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { getLiveMetricsForRange } from './live-metrics'
+import { getEffectiveMetricsForRange } from './live-metrics'
 
 export type ClientAnalyticsPeriod = {
   period: {
@@ -90,8 +90,8 @@ export async function getClientAnalyticsByPeriod(
       .gte('published_at', prevStartIso)
       .lt('published_at', periodStartIso),
 
-    getLiveMetricsForRange(clientId, periodStartDate, todayDate),
-    getLiveMetricsForRange(clientId, prevStartDate, prevEndDate),
+    getEffectiveMetricsForRange(clientId, periodStartDate, todayDate),
+    getEffectiveMetricsForRange(clientId, prevStartDate, prevEndDate),
   ])
 
   const cur = curPiecesRes.data || []

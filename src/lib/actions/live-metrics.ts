@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { OVERRIDABLE_FIELDS } from '@/lib/metrics-types'
 
 // Live funnel metrics — no manual entry. Sourced from the systems that already
 // write these events in real time: content_pieces (Meta sync), interactions
@@ -160,4 +161,61 @@ export async function getLiveMetricsForRange(
 ): Promise<PeriodMetrics> {
   const buckets = await getLiveMetricsBuckets(clientId, [{ key: 'range', start, end }])
   return buckets.range
+}
+
+function dailyBucketsFor(start: string, end: string): DateBucket[] {
+  const buckets: DateBucket[] = []
+  const cursor = new Date(`${start}T12:00:00Z`)
+  const endDate = new Date(`${end}T12:00:00Z`)
+  while (cursor <= endDate) {
+    const date = cursor.toISOString().slice(0, 10)
+    buckets.push({ key: date, start: date, end: date })
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return buckets
+}
+
+// Same as getLiveMetricsForRange, but rolls in any manual per-day corrections
+// entered in the "Diario" tab of the Contenido register — a fix made there
+// shows up everywhere (Analítica KPIs, the sales funnel, health alerts),
+// not just in that one spreadsheet. Corrections entered at Semanal/Mensual
+// granularity are NOT included here (they only affect that spreadsheet view).
+export async function getEffectiveMetricsForRange(
+  clientId: string,
+  start: string,
+  end: string,
+): Promise<PeriodMetrics> {
+  const dayBuckets = dailyBucketsFor(start, end)
+  const supabase = await createClient()
+
+  const [liveByDay, overridesRes] = await Promise.all([
+    getLiveMetricsBuckets(clientId, dayBuckets),
+    supabase
+      .from('client_metrics')
+      .select('period_start, views_reels, views_historias, chats_abiertos, conversaciones, agendas, shows, cierres, facturacion, cash_collected')
+      .eq('client_id', clientId)
+      .eq('period_type', 'daily')
+      .gte('period_start', start)
+      .lte('period_start', end),
+  ])
+
+  const overridesByDay = new Map(
+    (overridesRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
+  )
+
+  const total = emptyMetrics()
+
+  for (const day of dayBuckets) {
+    const live = liveByDay[day.key]
+    const override = overridesByDay.get(day.key)
+
+    for (const key of Object.keys(total) as (keyof PeriodMetrics)[]) {
+      const overrideValue = OVERRIDABLE_FIELDS.includes(key as typeof OVERRIDABLE_FIELDS[number])
+        ? (override?.[key] as number | null | undefined)
+        : undefined
+      total[key] += (overrideValue ?? live[key]) as number
+    }
+  }
+
+  return total
 }
