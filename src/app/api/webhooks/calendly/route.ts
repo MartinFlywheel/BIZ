@@ -105,9 +105,20 @@ export async function POST(request: Request) {
           break
         }
       }
-      if (!clientId) {
+      // Only safe to guess when exactly one client has Calendly connected —
+      // with two or more, an unmatched org URI must not be silently
+      // attributed to an arbitrary client (would mix up their CRM data).
+      if (!clientId && clientsWithCalendly.length === 1) {
         clientId = clientsWithCalendly[0].id
       }
+    }
+
+    if (!clientId) {
+      await markLog(supabase, webhookLogId, true, `No client matched for Calendly org URI in event ${calendlyEventUri || 'unknown'}`)
+      return NextResponse.json({
+        received: true,
+        warning: 'No client matched — logged for manual review',
+      })
     }
 
     // ── Find matching lead ──
