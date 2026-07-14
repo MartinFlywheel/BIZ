@@ -270,62 +270,106 @@ export async function getComputedClientMetrics(
   count = 12
 ): Promise<ComputedMetricsRow[]> {
   const periods = recentPeriods(periodType, count)
-  const buckets = periods.map((p) => ({ key: p.start, start: p.start, end: p.end }))
 
   const supabase = await createClient()
 
-  const [live, manualRes] = await Promise.all([
-    getLiveMetricsBuckets(clientId, buckets),
-    supabase
-      .from('client_metrics')
-      .select('period_start, followers_gained, notes, views_reels, views_historias, chats_abiertos, conversaciones, agendas, shows, cierres, facturacion, cash_collected')
-      .eq('client_id', clientId)
-      .eq('period_type', periodType)
-      .in('period_start', periods.map((p) => p.start)),
+  // Notes / Seguidores+ stay editable at whatever granularity is on screen —
+  // fetch those regardless of periodType.
+  const manualResPromise = supabase
+    .from('client_metrics')
+    .select('period_start, followers_gained, notes, views_reels, views_historias, chats_abiertos, conversaciones, agendas, shows, cierres, facturacion, cash_collected')
+    .eq('client_id', clientId)
+    .eq('period_type', periodType)
+    .in('period_start', periods.map((p) => p.start))
+
+  if (periodType === 'daily') {
+    // Daily is the source of truth for overrides — direct one-row-per-day
+    // lookup, editable in the UI.
+    const buckets = periods.map((p) => ({ key: p.start, start: p.start, end: p.end }))
+    const [live, manualRes] = await Promise.all([getLiveMetricsBuckets(clientId, buckets), manualResPromise])
+    const manualByStart = new Map(
+      (manualRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
+    )
+
+    return periods.map((p) => {
+      const manual = manualByStart.get(p.start)
+      const liveRow = live[p.start]
+
+      const overrides: Partial<Record<OverridableField, number>> = {}
+      for (const field of OVERRIDABLE_FIELDS) {
+        const value = manual?.[field]
+        if (value !== null && value !== undefined) overrides[field] = value as number
+      }
+
+      const liveFields: Record<OverridableField, number> = {
+        views_reels: liveRow.views_reels,
+        views_historias: liveRow.views_historias,
+        chats_abiertos: liveRow.chats_abiertos,
+        conversaciones: liveRow.conversaciones,
+        agendas: liveRow.agendas,
+        shows: liveRow.shows,
+        cierres: liveRow.cierres,
+        facturacion: liveRow.facturacion,
+        cash_collected: liveRow.cash_collected,
+      }
+
+      return {
+        period_start: p.start,
+        period_end: p.end,
+        live: liveFields,
+        views_reels: overrides.views_reels ?? liveRow.views_reels,
+        views_historias: overrides.views_historias ?? liveRow.views_historias,
+        chats_abiertos: overrides.chats_abiertos ?? liveRow.chats_abiertos,
+        conversaciones: overrides.conversaciones ?? liveRow.conversaciones,
+        agendas: overrides.agendas ?? liveRow.agendas,
+        shows: overrides.shows ?? liveRow.shows,
+        cierres: overrides.cierres ?? liveRow.cierres,
+        facturacion: overrides.facturacion ?? liveRow.facturacion,
+        cash_collected: overrides.cash_collected ?? liveRow.cash_collected,
+        followers_gained: (manual?.followers_gained as number) ?? 0,
+        notes: (manual?.notes as string) ?? null,
+        overrides,
+      }
+    })
+  }
+
+  // Weekly/monthly — pure rollups of the daily effective numbers (live, with
+  // any Diario overrides already folded in). Not independently editable: a
+  // week-level number can't be split back into days unambiguously, so these
+  // rows carry no overrides of their own.
+  const [effectiveRows, manualRes] = await Promise.all([
+    Promise.all(periods.map((p) => getEffectiveMetricsForRange(clientId, p.start, p.end))),
+    manualResPromise,
   ])
 
   const manualByStart = new Map(
     (manualRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
   )
 
-  return periods.map((p) => {
+  return periods.map((p, i) => {
     const manual = manualByStart.get(p.start)
-    const liveRow = live[p.start]
-
-    const overrides: Partial<Record<OverridableField, number>> = {}
-    for (const field of OVERRIDABLE_FIELDS) {
-      const value = manual?.[field]
-      if (value !== null && value !== undefined) overrides[field] = value as number
-    }
+    const effective = effectiveRows[i]
 
     const liveFields: Record<OverridableField, number> = {
-      views_reels: liveRow.views_reels,
-      views_historias: liveRow.views_historias,
-      chats_abiertos: liveRow.chats_abiertos,
-      conversaciones: liveRow.conversaciones,
-      agendas: liveRow.agendas,
-      shows: liveRow.shows,
-      cierres: liveRow.cierres,
-      facturacion: liveRow.facturacion,
-      cash_collected: liveRow.cash_collected,
+      views_reels: effective.views_reels,
+      views_historias: effective.views_historias,
+      chats_abiertos: effective.chats_abiertos,
+      conversaciones: effective.conversaciones,
+      agendas: effective.agendas,
+      shows: effective.shows,
+      cierres: effective.cierres,
+      facturacion: effective.facturacion,
+      cash_collected: effective.cash_collected,
     }
 
     return {
       period_start: p.start,
       period_end: p.end,
       live: liveFields,
-      views_reels: overrides.views_reels ?? liveRow.views_reels,
-      views_historias: overrides.views_historias ?? liveRow.views_historias,
-      chats_abiertos: overrides.chats_abiertos ?? liveRow.chats_abiertos,
-      conversaciones: overrides.conversaciones ?? liveRow.conversaciones,
-      agendas: overrides.agendas ?? liveRow.agendas,
-      shows: overrides.shows ?? liveRow.shows,
-      cierres: overrides.cierres ?? liveRow.cierres,
-      facturacion: overrides.facturacion ?? liveRow.facturacion,
-      cash_collected: overrides.cash_collected ?? liveRow.cash_collected,
+      ...liveFields,
       followers_gained: (manual?.followers_gained as number) ?? 0,
       notes: (manual?.notes as string) ?? null,
-      overrides,
+      overrides: {},
     }
   })
 }

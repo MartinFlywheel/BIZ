@@ -27,12 +27,21 @@ function fmtPeriod(start: string, end: string, type: PeriodType): string {
 // value by default; typing a number overrides it (amber); clearing the
 // input reverts to the live value. ─────────────────────────────────────────
 
-function OverrideCell({ value, isOverride, onChange, currency = false }: {
+function OverrideCell({ value, isOverride, onChange, currency = false, editable = true }: {
   value: number
   isOverride: boolean
   onChange: (v: string) => void
   currency?: boolean
+  editable?: boolean
 }) {
+  if (!editable) {
+    return (
+      <td className="px-2 py-1.5 text-right bg-white/[0.008]">
+        <span className="text-xs font-mono text-zinc-400">{currency ? formatCurrency(value) : value}</span>
+      </td>
+    )
+  }
+
   return (
     <td className="px-1 py-1">
       <input
@@ -115,6 +124,7 @@ function SpreadsheetRow({ clientId, periodType, row }: {
   }
 
   const displayValue = (field: OverridableField) => overrides[field] ?? row.live[field]
+  const editable = periodType === 'daily'
 
   const pctResp = pct(displayValue('chats_abiertos'), displayValue('views_reels'))
   const pctSeg  = pct(followers, displayValue('views_reels'))
@@ -126,16 +136,16 @@ function SpreadsheetRow({ clientId, periodType, row }: {
         <span className="text-xs font-mono text-zinc-300">{fmtPeriod(row.period_start, row.period_end, periodType)}</span>
       </td>
 
-      <OverrideCell value={displayValue('views_reels')} isOverride={'views_reels' in overrides} onChange={(v) => setField('views_reels', v)} />
-      <OverrideCell value={displayValue('views_historias')} isOverride={'views_historias' in overrides} onChange={(v) => setField('views_historias', v)} />
+      <OverrideCell value={displayValue('views_reels')} isOverride={'views_reels' in overrides} onChange={(v) => setField('views_reels', v)} editable={editable} />
+      <OverrideCell value={displayValue('views_historias')} isOverride={'views_historias' in overrides} onChange={(v) => setField('views_historias', v)} editable={editable} />
       <EditCell value={followers} onChange={(v) => { const n = parseFloat(v) || 0; setFollowers(n); persist({ followers_gained: n }) }} />
-      <OverrideCell value={displayValue('chats_abiertos')} isOverride={'chats_abiertos' in overrides} onChange={(v) => setField('chats_abiertos', v)} />
-      <OverrideCell value={displayValue('conversaciones')} isOverride={'conversaciones' in overrides} onChange={(v) => setField('conversaciones', v)} />
-      <OverrideCell value={displayValue('agendas')} isOverride={'agendas' in overrides} onChange={(v) => setField('agendas', v)} />
-      <OverrideCell value={displayValue('shows')} isOverride={'shows' in overrides} onChange={(v) => setField('shows', v)} />
-      <OverrideCell value={displayValue('cierres')} isOverride={'cierres' in overrides} onChange={(v) => setField('cierres', v)} />
-      <OverrideCell value={displayValue('facturacion')} isOverride={'facturacion' in overrides} onChange={(v) => setField('facturacion', v)} currency />
-      <OverrideCell value={displayValue('cash_collected')} isOverride={'cash_collected' in overrides} onChange={(v) => setField('cash_collected', v)} currency />
+      <OverrideCell value={displayValue('chats_abiertos')} isOverride={'chats_abiertos' in overrides} onChange={(v) => setField('chats_abiertos', v)} editable={editable} />
+      <OverrideCell value={displayValue('conversaciones')} isOverride={'conversaciones' in overrides} onChange={(v) => setField('conversaciones', v)} editable={editable} />
+      <OverrideCell value={displayValue('agendas')} isOverride={'agendas' in overrides} onChange={(v) => setField('agendas', v)} editable={editable} />
+      <OverrideCell value={displayValue('shows')} isOverride={'shows' in overrides} onChange={(v) => setField('shows', v)} editable={editable} />
+      <OverrideCell value={displayValue('cierres')} isOverride={'cierres' in overrides} onChange={(v) => setField('cierres', v)} editable={editable} />
+      <OverrideCell value={displayValue('facturacion')} isOverride={'facturacion' in overrides} onChange={(v) => setField('facturacion', v)} currency editable={editable} />
+      <OverrideCell value={displayValue('cash_collected')} isOverride={'cash_collected' in overrides} onChange={(v) => setField('cash_collected', v)} currency editable={editable} />
 
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctResp}</span></td>
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctSeg}</span></td>
@@ -316,8 +326,9 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
       </div>
 
       <p className="text-[11px] text-zinc-700">
-        Datos en vivo desde ManyChat, Calendly y Meta · Cualquier celda se puede corregir a mano
-        (<span className="text-amber-400">ámbar</span> = corregido) — dejala vacía para volver al cálculo automático
+        Datos en vivo desde ManyChat, Calendly y Meta · Las correcciones se hacen desde{' '}
+        <span className="text-zinc-500">Diario</span> (<span className="text-amber-400">ámbar</span> = corregido,
+        vacío = automático) — Semanal y Mensual son la suma de esos días
       </p>
     </div>
   )
