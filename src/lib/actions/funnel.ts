@@ -241,6 +241,13 @@ function recentPeriods(
   return periods
 }
 
+export const OVERRIDABLE_FIELDS = [
+  'views_reels', 'views_historias', 'chats_abiertos', 'conversaciones',
+  'agendas', 'shows', 'cierres', 'facturacion', 'cash_collected',
+] as const
+
+export type OverridableField = typeof OVERRIDABLE_FIELDS[number]
+
 export interface ComputedMetricsRow {
   period_start: string
   period_end: string
@@ -255,6 +262,12 @@ export interface ComputedMetricsRow {
   cash_collected: number
   followers_gained: number
   notes: string | null
+  // Fields present here were manually corrected — the value above is the
+  // override, not the live-computed number.
+  overrides: Partial<Record<OverridableField, number>>
+  // The raw live-computed numbers, before overrides — lets the UI revert a
+  // field back to "auto" without a refetch.
+  live: Record<OverridableField, number>
 }
 
 export async function getComputedClientMetrics(
@@ -271,32 +284,64 @@ export async function getComputedClientMetrics(
     getLiveMetricsBuckets(clientId, buckets),
     supabase
       .from('client_metrics')
-      .select('period_start, followers_gained, notes')
+      .select('period_start, followers_gained, notes, views_reels, views_historias, chats_abiertos, conversaciones, agendas, shows, cierres, facturacion, cash_collected')
       .eq('client_id', clientId)
       .eq('period_type', periodType)
       .in('period_start', periods.map((p) => p.start)),
   ])
 
-  const manualByStart = new Map((manualRes.data || []).map((r) => [r.period_start as string, r]))
+  const manualByStart = new Map(
+    (manualRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
+  )
 
   return periods.map((p) => {
     const manual = manualByStart.get(p.start)
+    const liveRow = live[p.start]
+
+    const overrides: Partial<Record<OverridableField, number>> = {}
+    for (const field of OVERRIDABLE_FIELDS) {
+      const value = manual?.[field]
+      if (value !== null && value !== undefined) overrides[field] = value as number
+    }
+
+    const liveFields: Record<OverridableField, number> = {
+      views_reels: liveRow.views_reels,
+      views_historias: liveRow.views_historias,
+      chats_abiertos: liveRow.chats_abiertos,
+      conversaciones: liveRow.conversaciones,
+      agendas: liveRow.agendas,
+      shows: liveRow.shows,
+      cierres: liveRow.cierres,
+      facturacion: liveRow.facturacion,
+      cash_collected: liveRow.cash_collected,
+    }
+
     return {
       period_start: p.start,
       period_end: p.end,
-      ...live[p.start],
-      followers_gained: manual?.followers_gained ?? 0,
-      notes: manual?.notes ?? null,
+      live: liveFields,
+      views_reels: overrides.views_reels ?? liveRow.views_reels,
+      views_historias: overrides.views_historias ?? liveRow.views_historias,
+      chats_abiertos: overrides.chats_abiertos ?? liveRow.chats_abiertos,
+      conversaciones: overrides.conversaciones ?? liveRow.conversaciones,
+      agendas: overrides.agendas ?? liveRow.agendas,
+      shows: overrides.shows ?? liveRow.shows,
+      cierres: overrides.cierres ?? liveRow.cierres,
+      facturacion: overrides.facturacion ?? liveRow.facturacion,
+      cash_collected: overrides.cash_collected ?? liveRow.cash_collected,
+      followers_gained: (manual?.followers_gained as number) ?? 0,
+      notes: (manual?.notes as string) ?? null,
+      overrides,
     }
   })
 }
 
-export async function saveMetricsNotes(
+export async function saveMetricsOverrides(
   clientId: string,
   periodType: 'daily' | 'weekly' | 'monthly',
   periodStart: string,
   periodEnd: string,
-  fields: { followers_gained?: number; notes?: string | null }
+  fields: Partial<Record<OverridableField, number | null>> & { followers_gained?: number; notes?: string | null }
 ) {
   const supabase = await createClient()
 

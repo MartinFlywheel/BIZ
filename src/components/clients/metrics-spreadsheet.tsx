@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Loader2 } from 'lucide-react'
-import { getComputedClientMetrics, saveMetricsNotes, type ComputedMetricsRow } from '@/lib/actions/funnel'
+import { getComputedClientMetrics, saveMetricsOverrides, type ComputedMetricsRow, type OverridableField } from '@/lib/actions/funnel'
 import { formatCurrency } from '@/lib/utils'
 
 type PeriodType = 'weekly' | 'monthly' | 'daily'
@@ -22,18 +22,36 @@ function fmtPeriod(start: string, end: string, type: PeriodType): string {
   return `${s.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`
 }
 
-// ── Read-only cell (computed live) ──────────────────────────────────────────
+// ── Computed cell — editable to allow a manual correction. Shows the live
+// value by default; typing a number overrides it (amber); clearing the
+// input reverts to the live value. ─────────────────────────────────────────
 
-function ReadCell({ value, currency = false, dim = false }: { value: number; currency?: boolean; dim?: boolean }) {
-  const display = currency ? formatCurrency(value) : String(value)
+function OverrideCell({ value, isOverride, onChange, currency = false }: {
+  value: number
+  isOverride: boolean
+  onChange: (v: string) => void
+  currency?: boolean
+}) {
   return (
-    <td className="px-2 py-1.5 text-right bg-white/[0.008]">
-      <span className={`text-xs font-mono ${dim ? 'text-zinc-600' : 'text-zinc-400'}`}>{display}</span>
+    <td className="px-1 py-1">
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        title={isOverride ? 'Corregido a mano — borrá el valor para volver al cálculo automático' : 'Calculado automáticamente'}
+        className={`w-full rounded-md px-2 py-1 text-right text-xs font-mono outline-none transition-colors
+          hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1
+          ${isOverride
+            ? 'text-amber-400 bg-amber-500/[0.06] focus:ring-amber-500/30'
+            : 'text-zinc-400 bg-white/[0.008] focus:ring-white/[0.12]'}`}
+        min={0}
+        step={currency ? 0.01 : 1}
+      />
     </td>
   )
 }
 
-// ── Editable cell (Seguidores + / Notas — the only manual inputs left) ─────
+// ── Editable cell (Seguidores + / Notas — the only fields with no live source) ─
 
 function EditCell({ value, onChange, type = 'number', placeholder = '0' }: {
   value: number | string | null
@@ -65,27 +83,41 @@ function SpreadsheetRow({ clientId, periodType, row }: {
   periodType: PeriodType
   row: ComputedMetricsRow
 }) {
+  const [overrides, setOverrides] = useState<Partial<Record<OverridableField, number>>>(row.overrides)
   const [followers, setFollowers] = useState(row.followers_gained)
   const [notes, setNotes] = useState(row.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const persist = useCallback((fields: { followers_gained?: number; notes?: string | null }) => {
+  const persist = useCallback((fields: Partial<Record<OverridableField, number | null>> & { followers_gained?: number; notes?: string | null }) => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
       setSaving(true); setSaved(false)
       try {
-        await saveMetricsNotes(clientId, periodType, row.period_start, row.period_end, fields)
+        await saveMetricsOverrides(clientId, periodType, row.period_start, row.period_end, fields)
         setSaved(true); setTimeout(() => setSaved(false), 2000)
       } catch {}
       setSaving(false)
     }, 600)
   }, [clientId, periodType, row.period_start, row.period_end])
 
-  const pctResp = pct(row.chats_abiertos, row.views_reels)
-  const pctSeg  = pct(followers, row.views_reels)
-  const pctConv = pct(row.conversaciones, row.chats_abiertos)
+  function setField(field: OverridableField, raw: string) {
+    if (raw === '') {
+      setOverrides((o) => { const next = { ...o }; delete next[field]; return next })
+      persist({ [field]: null })
+    } else {
+      const n = parseFloat(raw) || 0
+      setOverrides((o) => ({ ...o, [field]: n }))
+      persist({ [field]: n })
+    }
+  }
+
+  const displayValue = (field: OverridableField) => overrides[field] ?? row.live[field]
+
+  const pctResp = pct(displayValue('chats_abiertos'), displayValue('views_reels'))
+  const pctSeg  = pct(followers, displayValue('views_reels'))
+  const pctConv = pct(displayValue('conversaciones'), displayValue('chats_abiertos'))
 
   return (
     <tr className="group border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
@@ -93,20 +125,16 @@ function SpreadsheetRow({ clientId, periodType, row }: {
         <span className="text-xs font-mono text-zinc-300">{fmtPeriod(row.period_start, row.period_end, periodType)}</span>
       </td>
 
-      <ReadCell value={row.views_reels} />
-      <ReadCell value={row.views_historias} />
+      <OverrideCell value={displayValue('views_reels')} isOverride={'views_reels' in overrides} onChange={(v) => setField('views_reels', v)} />
+      <OverrideCell value={displayValue('views_historias')} isOverride={'views_historias' in overrides} onChange={(v) => setField('views_historias', v)} />
       <EditCell value={followers} onChange={(v) => { const n = parseFloat(v) || 0; setFollowers(n); persist({ followers_gained: n }) }} />
-      <ReadCell value={row.chats_abiertos} />
-      <ReadCell value={row.conversaciones} />
-      <ReadCell value={row.agendas} />
-      <ReadCell value={row.shows} />
-      <ReadCell value={row.cierres} />
-      <td className="px-2 py-1.5 text-right bg-white/[0.008]">
-        <span className="text-xs font-mono text-emerald-500/70">{formatCurrency(row.facturacion)}</span>
-      </td>
-      <td className="px-2 py-1.5 text-right bg-white/[0.008]">
-        <span className="text-xs font-mono text-emerald-500/70">{formatCurrency(row.cash_collected)}</span>
-      </td>
+      <OverrideCell value={displayValue('chats_abiertos')} isOverride={'chats_abiertos' in overrides} onChange={(v) => setField('chats_abiertos', v)} />
+      <OverrideCell value={displayValue('conversaciones')} isOverride={'conversaciones' in overrides} onChange={(v) => setField('conversaciones', v)} />
+      <OverrideCell value={displayValue('agendas')} isOverride={'agendas' in overrides} onChange={(v) => setField('agendas', v)} />
+      <OverrideCell value={displayValue('shows')} isOverride={'shows' in overrides} onChange={(v) => setField('shows', v)} />
+      <OverrideCell value={displayValue('cierres')} isOverride={'cierres' in overrides} onChange={(v) => setField('cierres', v)} />
+      <OverrideCell value={displayValue('facturacion')} isOverride={'facturacion' in overrides} onChange={(v) => setField('facturacion', v)} currency />
+      <OverrideCell value={displayValue('cash_collected')} isOverride={'cash_collected' in overrides} onChange={(v) => setField('cash_collected', v)} currency />
 
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctResp}</span></td>
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctSeg}</span></td>
@@ -287,7 +315,8 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
       </div>
 
       <p className="text-[11px] text-zinc-700">
-        Datos en vivo desde ManyChat, Calendly y Meta · Solo Seguidores+ y Notas son manuales
+        Datos en vivo desde ManyChat, Calendly y Meta · Cualquier celda se puede corregir a mano
+        (<span className="text-amber-400">ámbar</span> = corregido) — dejala vacía para volver al cálculo automático
       </p>
     </div>
   )
