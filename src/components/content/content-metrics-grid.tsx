@@ -21,28 +21,51 @@ const WEBHOOK_PATH = '/api/webhooks/manychat'
 const PAYLOAD_EXAMPLE = `{
   "ig_username": "usuario_ig",
   "full_name": "Nombre Apellido",
-  "subscriber_id": "manychat_subscriber_id",
-  "payload_id": "C_21_04"
+  "subscriber_id": "manychat_subscriber_id"
 }`
 
-function WebhookBanner() {
+function WebhookUrlRow({ label, hint, url }: { label: string; hint: string; url: string }) {
     const [copied, setCopied] = useState(false)
-    const [expanded, setExpanded] = useState(false)
-
-    const baseUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}${WEBHOOK_PATH}`
-        : WEBHOOK_PATH
-    const webhookUrl = `${baseUrl}/{keyword_trigger}`
 
     async function handleCopy() {
         try {
-            await navigator.clipboard.writeText(webhookUrl)
+            await navigator.clipboard.writeText(url)
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
         } catch {
             // fallback: select text
         }
     }
+
+    return (
+        <div className="space-y-1.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">{label}</p>
+            <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                <code className="flex-1 text-xs text-zinc-300 font-mono truncate">{url}</code>
+                <button
+                    onClick={handleCopy}
+                    className="flex-shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
+                    title="Copiar URL"
+                >
+                    {copied
+                        ? <Check className="h-3.5 w-3.5 text-emerald-400" />
+                        : <Copy className="h-3.5 w-3.5" />
+                    }
+                </button>
+            </div>
+            <p className="text-[11px] text-zinc-600 leading-snug">{hint}</p>
+        </div>
+    )
+}
+
+function WebhookBanner() {
+    const [expanded, setExpanded] = useState(false)
+
+    const baseUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}${WEBHOOK_PATH}`
+        : WEBHOOK_PATH
+    const chatAbiertoUrl = `${baseUrl}/{keyword_trigger}`
+    const conversacionUrl = `${baseUrl}/{keyword_trigger}/conversacion`
 
     return (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
@@ -66,43 +89,30 @@ function WebhookBanner() {
             {/* Expanded content */}
             {expanded && (
                 <div className="px-4 pb-4 space-y-3 border-t border-zinc-800">
-                    {/* Webhook URL */}
-                    <div className="mt-3 space-y-1.5">
-                        <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">
-                            URL del Webhook
-                        </p>
-                        <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-                            <code className="flex-1 text-xs text-zinc-300 font-mono truncate">
-                                {webhookUrl}
-                            </code>
-                            <button
-                                onClick={handleCopy}
-                                className="flex-shrink-0 text-zinc-500 hover:text-zinc-200 transition-colors"
-                                title="Copiar URL"
-                            >
-                                {copied
-                                    ? <Check className="h-3.5 w-3.5 text-emerald-400" />
-                                    : <Copy className="h-3.5 w-3.5" />
-                                }
-                            </button>
-                        </div>
-                        <p className="text-[11px] text-zinc-600 leading-snug">
-                            Reemplazá <span className="font-mono text-zinc-500">{'{keyword_trigger}'}</span> con el ID de la pieza (ej: C_21_04, R_19_04). Cada pieza tiene su propia URL.
-                        </p>
-                    </div>
+                    <p className="mt-3 text-[11px] text-zinc-600 leading-snug">
+                        Reemplazá <span className="font-mono text-zinc-500">{'{keyword_trigger}'}</span> con el ID de la pieza (ej: C_21_04, R_19_04, H_13_07). Cada pieza tiene sus dos propias URLs — la que uses depende de dónde pongas el nodo &ldquo;Solicitud externa&rdquo; en el flujo de ManyChat, no del contenido del body.
+                    </p>
+
+                    <WebhookUrlRow
+                        label="1. Chat abierto (nodo junto al disparador/CTA)"
+                        hint="Poné este nodo apenas entra al flujo — cada llamado cuenta como un chat abierto."
+                        url={chatAbiertoUrl}
+                    />
+
+                    <WebhookUrlRow
+                        label="2. Conversación real (nodo después de que responda)"
+                        hint="Poné este nodo solo en la rama donde el prospecto ya respondió — promueve el chat abierto a conversación real, no lo duplica."
+                        url={conversacionUrl}
+                    />
 
                     {/* Payload structure */}
                     <div className="space-y-1.5">
                         <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-600">
-                            Estructura del Payload (JSON)
+                            Estructura del Payload (JSON) — igual para ambas URLs
                         </p>
                         <pre className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-[11px] font-mono text-zinc-400 overflow-x-auto leading-relaxed">
                             {PAYLOAD_EXAMPLE}
                         </pre>
-                        <p className="text-[11px] text-zinc-600 leading-snug">
-                            El campo <span className="font-mono text-zinc-500">payload_id</span> debe coincidir con el{' '}
-                            <span className="font-mono text-zinc-500">keyword_trigger</span> de la pieza de contenido.
-                        </p>
                     </div>
                 </div>
             )}
