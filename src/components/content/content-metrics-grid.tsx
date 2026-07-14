@@ -171,6 +171,14 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
     { key: 'comments', label: 'Comentarios' },
 ]
 
+type TypeFilter = 'all' | 'reel' | 'story'
+
+const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
+    { key: 'all', label: 'Todo' },
+    { key: 'reel', label: 'Reels' },
+    { key: 'story', label: 'Historias' },
+]
+
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
@@ -178,6 +186,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     const [quickAdding, setQuickAdding] = useState(false)
     const [quickAddToast, setQuickAddToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [sortBy, setSortBy] = useState<SortKey>('recent')
+    const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
     const router = useRouter()
 
     async function handleQuickAdd() {
@@ -221,8 +230,12 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         metricsMap.set(m.content_id, m)
     }
 
-    // Sort pieces client-side
-    const sortedPieces = [...contentPieces].sort((a, b) => {
+    // Filter by content type, then sort client-side
+    const filteredPieces = typeFilter === 'all'
+        ? contentPieces
+        : contentPieces.filter((cp) => cp.content_type === typeFilter)
+
+    const sortedPieces = [...filteredPieces].sort((a, b) => {
         if (sortBy === 'views') return (b.views || 0) - (a.views || 0)
         if (sortBy === 'comments') return (b.comments || 0) - (a.comments || 0)
         if (sortBy === 'revenue') {
@@ -330,21 +343,38 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                 {/* ── LEFT: Reels grid (2/3) ── */}
                 <div className="flex-[2] min-w-0 space-y-3">
-                    {/* Sort controls */}
-                    <div className="flex items-center gap-1.5">
-                        <ArrowUpDown className="h-3.5 w-3.5 text-zinc-600 flex-shrink-0" />
-                        {SORT_OPTIONS.map((opt) => (
-                            <button
-                                key={opt.key}
-                                onClick={() => setSortBy(opt.key)}
-                                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${sortBy === opt.key
-                                    ? 'bg-white/[0.08] text-zinc-100 border border-white/[0.12]'
-                                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
-                                    }`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
+                    {/* Type filter + sort controls */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                            {TYPE_FILTER_OPTIONS.map((opt) => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => setTypeFilter(opt.key)}
+                                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${typeFilter === opt.key
+                                        ? 'bg-white/[0.08] text-zinc-100 border border-white/[0.12]'
+                                        : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                                        }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="h-4 w-px bg-zinc-800" />
+                        <div className="flex items-center gap-1.5">
+                            <ArrowUpDown className="h-3.5 w-3.5 text-zinc-600 flex-shrink-0" />
+                            {SORT_OPTIONS.map((opt) => (
+                                <button
+                                    key={opt.key}
+                                    onClick={() => setSortBy(opt.key)}
+                                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${sortBy === opt.key
+                                        ? 'bg-white/[0.08] text-zinc-100 border border-white/[0.12]'
+                                        : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                                        }`}
+                                >
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {sortedPieces.length === 0 ? (
