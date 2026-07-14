@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
+import { getLiveMetricsForRange, getLiveMetricsBuckets } from './live-metrics'
 
 
 // =====================================================
@@ -16,28 +17,53 @@ function safeRate(numerator: number, denominator: number): number {
   return (numerator / denominator) * 100
 }
 
+function mondayOf(d: Date): Date {
+  const copy = new Date(d)
+  const day = copy.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  copy.setDate(copy.getDate() + diff)
+  return copy
+}
+
+function toDateStr(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+// Resolves [start, end] date-string bounds for a period, anchored on
+// periodStart when given, otherwise the current period.
+function periodBounds(
+  periodType: 'daily' | 'weekly' | 'monthly',
+  periodStart?: string
+): { start: string; end: string } {
+  const anchor = periodStart ? new Date(`${periodStart}T12:00:00Z`) : new Date()
+
+  if (periodType === 'daily') {
+    const start = periodStart || toDateStr(anchor)
+    return { start, end: start }
+  }
+
+  if (periodType === 'monthly') {
+    const start = periodStart
+      ? `${periodStart.slice(0, 7)}-01`
+      : `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}-01`
+    const end = new Date(`${start}T12:00:00Z`)
+    end.setMonth(end.getMonth() + 1, 0)
+    return { start, end: toDateStr(end) }
+  }
+
+  const monday = mondayOf(anchor)
+  const sunday = new Date(monday)
+  sunday.setDate(sunday.getDate() + 6)
+  return { start: toDateStr(monday), end: toDateStr(sunday) }
+}
+
 export async function calculateFunnel(
   clientId: string,
   periodType: 'daily' | 'weekly' | 'monthly' = 'weekly',
   periodStart?: string
 ): Promise<FunnelResult | null> {
-  const supabase = await createClient()
-
-  let query = supabase
-    .from('client_metrics')
-    .select('*')
-    .eq('client_id', clientId)
-    .eq('period_type', periodType)
-    .order('period_start', { ascending: false })
-    .limit(1)
-
-  if (periodStart) {
-    query = query.eq('period_start', periodStart)
-  }
-
-  const { data, error } = await query.maybeSingle()
-
-  if (error || !data) return null
+  const { start, end } = periodBounds(periodType, periodStart)
+  const data = await getLiveMetricsForRange(clientId, start, end)
 
   const {
     views_reels,
@@ -50,6 +76,10 @@ export async function calculateFunnel(
     facturacion,
     cash_collected,
   } = data
+
+  // No activity at all in this period — treat as "no data" rather than a
+  // failing funnel (avoids flagging brand-new/inactive clients as critical).
+  if (views_reels + views_historias + chats_abiertos + agendas === 0) return null
 
   const rates = {
     respuesta_reel: safeRate(chats_abiertos, views_reels),
@@ -111,9 +141,9 @@ export async function calculateFunnel(
     bottleneck: bottleneckId,
     bottleneck_drop: Math.round(worstDrop * 100) / 100,
     period: {
-      start: data.period_start,
-      end: data.period_end,
-      type: data.period_type,
+      start,
+      end,
+      type: periodType,
     },
     raw: {
       views_reels,
@@ -188,26 +218,109 @@ export async function checkHealthAlerts(
 }
 
 // =====================================================
-// CRUD for client_metrics
+// Computed period metrics (Contenido y Métricas → "Registro de métricas")
+// Everything except Seguidores + and Notas is live from source tables —
+// only those two fields still live in client_metrics.
 // =====================================================
 
-export async function getClientMetrics(
+function recentPeriods(
+  periodType: 'daily' | 'weekly' | 'monthly',
+  count: number
+): { start: string; end: string }[] {
+  const periods: { start: string; end: string }[] = []
+  let anchorStr: string | undefined
+
+  for (let i = 0; i < count; i++) {
+    const { start, end } = periodBounds(periodType, anchorStr)
+    periods.push({ start, end })
+    const prev = new Date(`${start}T12:00:00Z`)
+    prev.setDate(prev.getDate() - 1)
+    anchorStr = toDateStr(prev)
+  }
+
+  return periods
+}
+
+export interface ComputedMetricsRow {
+  period_start: string
+  period_end: string
+  views_reels: number
+  views_historias: number
+  chats_abiertos: number
+  conversaciones: number
+  agendas: number
+  shows: number
+  cierres: number
+  facturacion: number
+  cash_collected: number
+  followers_gained: number
+  notes: string | null
+}
+
+export async function getComputedClientMetrics(
   clientId: string,
   periodType: 'daily' | 'weekly' | 'monthly' = 'weekly',
-  limit = 12
+  count = 12
+): Promise<ComputedMetricsRow[]> {
+  const periods = recentPeriods(periodType, count)
+  const buckets = periods.map((p) => ({ key: p.start, start: p.start, end: p.end }))
+
+  const supabase = await createClient()
+
+  const [live, manualRes] = await Promise.all([
+    getLiveMetricsBuckets(clientId, buckets),
+    supabase
+      .from('client_metrics')
+      .select('period_start, followers_gained, notes')
+      .eq('client_id', clientId)
+      .eq('period_type', periodType)
+      .in('period_start', periods.map((p) => p.start)),
+  ])
+
+  const manualByStart = new Map((manualRes.data || []).map((r) => [r.period_start as string, r]))
+
+  return periods.map((p) => {
+    const manual = manualByStart.get(p.start)
+    return {
+      period_start: p.start,
+      period_end: p.end,
+      ...live[p.start],
+      followers_gained: manual?.followers_gained ?? 0,
+      notes: manual?.notes ?? null,
+    }
+  })
+}
+
+export async function saveMetricsNotes(
+  clientId: string,
+  periodType: 'daily' | 'weekly' | 'monthly',
+  periodStart: string,
+  periodEnd: string,
+  fields: { followers_gained?: number; notes?: string | null }
 ) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+
+  const { error } = await supabase
     .from('client_metrics')
-    .select('*')
-    .eq('client_id', clientId)
-    .eq('period_type', periodType)
-    .order('period_start', { ascending: false })
-    .limit(limit)
+    .upsert(
+      {
+        client_id: clientId,
+        period_type: periodType,
+        period_start: periodStart,
+        period_end: periodEnd,
+        ...fields,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'client_id,period_start,period_type' }
+    )
 
   if (error) throw error
-  return data
+  revalidatePath(`/clients/${clientId}`)
 }
+
+// =====================================================
+// Legacy manual form (kept for the standalone metrics-entry modal)
+// =====================================================
 
 export async function upsertClientMetrics(formData: FormData) {
   const supabase = await createClient()
@@ -242,50 +355,4 @@ export async function upsertClientMetrics(formData: FormData) {
   revalidatePath('/dashboard')
 }
 
-// ── Direct row save (used by the inline spreadsheet component) ──
-
-export interface MetricsRow {
-  client_id: string
-  period_type: 'daily' | 'weekly' | 'monthly'
-  period_start: string
-  period_end: string
-  views_reels: number
-  views_historias: number
-  followers_gained: number
-  chats_abiertos: number
-  conversaciones: number
-  agendas: number
-  shows: number
-  cierres: number
-  facturacion: number
-  cash_collected: number
-  notes: string | null
-}
-
-export async function saveMetricsRow(row: MetricsRow) {
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('client_metrics')
-    .upsert({ ...row, updated_at: new Date().toISOString() }, {
-      onConflict: 'client_id,period_start,period_type',
-    })
-
-  if (error) throw error
-  revalidatePath(`/clients/${row.client_id}`)
-}
-
-export async function deleteMetricsRow(clientId: string, periodStart: string, periodType: string) {
-  const supabase = await createClient()
-
-  const { error } = await supabase
-    .from('client_metrics')
-    .delete()
-    .eq('client_id', clientId)
-    .eq('period_start', periodStart)
-    .eq('period_type', periodType)
-
-  if (error) throw error
-  revalidatePath(`/clients/${clientId}`)
-}
 

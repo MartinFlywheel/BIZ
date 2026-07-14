@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getLiveMetricsForRange } from './live-metrics'
 
 export type ClientAnalyticsPeriod = {
   period: {
@@ -65,13 +66,16 @@ export async function getClientAnalyticsByPeriod(
   const now = new Date()
   const periodStart = new Date(now.getTime() - days * 86_400_000)
   const prevStart = new Date(periodStart.getTime() - days * 86_400_000)
+  const prevEnd = new Date(periodStart.getTime() - 86_400_000)
 
   const periodStartIso = periodStart.toISOString()
   const prevStartIso = prevStart.toISOString()
+  const todayDate = now.toISOString().split('T')[0]
   const periodStartDate = periodStartIso.split('T')[0]
   const prevStartDate = prevStartIso.split('T')[0]
+  const prevEndDate = prevEnd.toISOString().split('T')[0]
 
-  const [curPiecesRes, prevPiecesRes, curMetRes, prevMetRes] = await Promise.all([
+  const [curPiecesRes, prevPiecesRes, curLive, prevLive] = await Promise.all([
     supabase
       .from('content_pieces')
       .select('id, views, likes, comments, saves, reach, published_at')
@@ -86,37 +90,24 @@ export async function getClientAnalyticsByPeriod(
       .gte('published_at', prevStartIso)
       .lt('published_at', periodStartIso),
 
-    supabase
-      .from('client_metrics')
-      .select('chats_abiertos, conversaciones, views_historias, facturacion, cash_collected, cierres')
-      .eq('client_id', clientId)
-      .gte('period_start', periodStartDate),
-
-    supabase
-      .from('client_metrics')
-      .select('chats_abiertos, conversaciones, views_historias, facturacion, cash_collected, cierres')
-      .eq('client_id', clientId)
-      .gte('period_start', prevStartDate)
-      .lt('period_start', periodStartDate),
+    getLiveMetricsForRange(clientId, periodStartDate, todayDate),
+    getLiveMetricsForRange(clientId, prevStartDate, prevEndDate),
   ])
 
   const cur = curPiecesRes.data || []
   const prev = prevPiecesRes.data || []
-  const curMet = curMetRes.data || []
-  const prevMet = prevMetRes.data || []
-
   const totals = {
     views: sum(cur, 'views'),
     likes: sum(cur, 'likes'),
     comments: sum(cur, 'comments'),
     saves: sum(cur, 'saves'),
     reach: sum(cur, 'reach'),
-    chats_abiertos: sum(curMet, 'chats_abiertos'),
-    conversaciones: sum(curMet, 'conversaciones'),
-    views_historias: sum(curMet, 'views_historias'),
-    facturacion: sum(curMet, 'facturacion'),
-    cash_collected: sum(curMet, 'cash_collected'),
-    cierres: sum(curMet, 'cierres'),
+    chats_abiertos: curLive.chats_abiertos,
+    conversaciones: curLive.conversaciones,
+    views_historias: curLive.views_historias,
+    facturacion: curLive.facturacion,
+    cash_collected: curLive.cash_collected,
+    cierres: curLive.cierres,
   }
 
   const prevTotals = {
@@ -125,9 +116,9 @@ export async function getClientAnalyticsByPeriod(
     comments: sum(prev, 'comments'),
     saves: sum(prev, 'saves'),
     reach: sum(prev, 'reach'),
-    chats_abiertos: sum(prevMet, 'chats_abiertos'),
-    facturacion: sum(prevMet, 'facturacion'),
-    cash_collected: sum(prevMet, 'cash_collected'),
+    chats_abiertos: prevLive.chats_abiertos,
+    facturacion: prevLive.facturacion,
+    cash_collected: prevLive.cash_collected,
   }
 
   // Build daily time series

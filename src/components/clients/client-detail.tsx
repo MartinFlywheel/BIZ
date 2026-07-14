@@ -21,7 +21,6 @@ import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Comp
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
-import { ChatMetricsSpreadsheet } from './chat-metrics-spreadsheet'
 
 interface AgencyUser {
   id: string
@@ -106,13 +105,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
         {(activeTab) => (
           <>
             {activeTab === 'analytics' && (
-              <div className="space-y-10">
-                <ClientAnalyticsDashboard clientId={client.id} />
-                <div>
-                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-zinc-600">Registro de Métricas Diarias</p>
-                  <ChatMetricsSpreadsheet clientId={client.id} />
-                </div>
-              </div>
+              <ClientAnalyticsDashboard clientId={client.id} />
             )}
 
             {activeTab === 'content_metrics' && (

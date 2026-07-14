@@ -248,7 +248,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     })
 
     // Funnel data from the real sources: views from content_pieces,
-    // chats/convs/agendas from daily_chat_metrics, shows/cierres from agenda_records
+    // chats/convs/agendas from interactions, shows/cierres from agenda_records
     const totalViews = funnelTotals.views || contentPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
 
     const selectedMetric = selectedPiece ? (metricsMap.get(selectedPiece.id) ?? null) : null

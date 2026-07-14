@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Plus, Trash2, Check, Loader2 } from 'lucide-react'
-import { getClientMetrics, saveMetricsRow, deleteMetricsRow, type MetricsRow } from '@/lib/actions/funnel'
+import { Check, Loader2 } from 'lucide-react'
+import { getComputedClientMetrics, saveMetricsNotes, type ComputedMetricsRow } from '@/lib/actions/funnel'
 import { formatCurrency } from '@/lib/utils'
 
 type PeriodType = 'weekly' | 'monthly' | 'daily'
@@ -14,30 +14,6 @@ function pct(num: number, den: number): string {
   return `${((num / den) * 100).toFixed(1)}%`
 }
 
-function mondayOf(date: Date): string {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = (day === 0 ? -6 : 1 - day)
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
-}
-
-function sundayOf(mondayStr: string): string {
-  const d = new Date(mondayStr + 'T12:00:00Z')
-  d.setDate(d.getDate() + 6)
-  return d.toISOString().split('T')[0]
-}
-
-function firstOfMonth(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`
-}
-
-function lastOfMonth(firstStr: string): string {
-  const d = new Date(firstStr + 'T12:00:00Z')
-  d.setMonth(d.getMonth() + 1, 0)
-  return d.toISOString().split('T')[0]
-}
-
 function fmtPeriod(start: string, end: string, type: PeriodType): string {
   const s = new Date(start + 'T12:00:00Z')
   if (type === 'daily') return s.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
@@ -46,68 +22,35 @@ function fmtPeriod(start: string, end: string, type: PeriodType): string {
   return `${s.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`
 }
 
-function newPeriodDates(type: PeriodType): { start: string; end: string } {
-  const now = new Date()
-  if (type === 'daily') {
-    const d = now.toISOString().split('T')[0]
-    return { start: d, end: d }
-  }
-  if (type === 'monthly') {
-    const start = firstOfMonth(now)
-    return { start, end: lastOfMonth(start) }
-  }
-  const start = mondayOf(now)
-  return { start, end: sundayOf(start) }
+// ── Read-only cell (computed live) ──────────────────────────────────────────
+
+function ReadCell({ value, currency = false, dim = false }: { value: number; currency?: boolean; dim?: boolean }) {
+  const display = currency ? formatCurrency(value) : String(value)
+  return (
+    <td className="px-2 py-1.5 text-right bg-white/[0.008]">
+      <span className={`text-xs font-mono ${dim ? 'text-zinc-600' : 'text-zinc-400'}`}>{display}</span>
+    </td>
+  )
 }
 
-// ── Editable cell ─────────────────────────────────────────────────────────────
+// ── Editable cell (Seguidores + / Notas — the only manual inputs left) ─────
 
-function Cell({
-  value,
-  onChange,
-  type = 'number',
-  placeholder = '0',
-  currency = false,
-  readOnly = false,
-  dim = false,
-}: {
+function EditCell({ value, onChange, type = 'number', placeholder = '0' }: {
   value: number | string | null
-  onChange?: (v: string) => void
+  onChange: (v: string) => void
   type?: 'number' | 'text'
   placeholder?: string
-  currency?: boolean
-  readOnly?: boolean
-  dim?: boolean
 }) {
-  const display = readOnly
-    ? currency
-      ? formatCurrency(Number(value) || 0)
-      : String(value ?? '—')
-    : undefined
-
-  if (readOnly) {
-    return (
-      <td className="px-2 py-1.5 text-right">
-        <span className={`text-xs font-mono ${dim ? 'text-zinc-600' : 'text-zinc-400'}`}>
-          {display}
-        </span>
-      </td>
-    )
-  }
-
   return (
     <td className="px-1 py-1">
       <input
         type={type}
         value={value ?? ''}
         placeholder={placeholder}
-        onChange={(e) => onChange?.(e.target.value)}
-        className={`w-full rounded-md bg-transparent px-2 py-1 text-right text-xs font-mono outline-none transition-colors
-          placeholder:text-zinc-700
-          hover:bg-white/[0.04]
-          focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12]
-          ${type === 'text' ? 'text-left' : 'text-right'}
-          text-zinc-200`}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full rounded-md bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors
+          placeholder:text-zinc-700 hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12]
+          ${type === 'text' ? 'text-left' : 'text-right'} text-zinc-200`}
         min={0}
         step={type === 'number' ? 1 : undefined}
       />
@@ -117,143 +60,64 @@ function Cell({
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-type RowState = Omit<MetricsRow, 'client_id' | 'period_type'>
-
-function DateCell({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
-  return (
-    <input
-      type="date"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-md bg-transparent px-1.5 py-1 text-xs font-mono text-zinc-300 outline-none
-        hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1 focus:ring-white/[0.12]
-        [color-scheme:dark] transition-colors"
-    />
-  )
-}
-
-function SpreadsheetRow({
-  clientId,
-  periodType,
-  initialData,
-  onDelete,
-}: {
+function SpreadsheetRow({ clientId, periodType, row }: {
   clientId: string
   periodType: PeriodType
-  initialData: RowState
-  onDelete: () => void
+  row: ComputedMetricsRow
 }) {
-  const [row, setRow] = useState<RowState>(initialData)
-  // Track original key so we can delete-then-insert when dates change
-  const originalStartRef = useRef(initialData.period_start)
+  const [followers, setFollowers] = useState(row.followers_gained)
+  const [notes, setNotes] = useState(row.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const persist = useCallback((next: RowState) => {
+  const persist = useCallback((fields: { followers_gained?: number; notes?: string | null }) => {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
-      setSaving(true)
-      setSaved(false)
+      setSaving(true); setSaved(false)
       try {
-        // If period_start changed, delete old record first
-        if (next.period_start !== originalStartRef.current) {
-          await deleteMetricsRow(clientId, originalStartRef.current, periodType)
-          originalStartRef.current = next.period_start
-        }
-        await saveMetricsRow({ client_id: clientId, period_type: periodType, ...next })
-        setSaved(true)
-        setTimeout(() => setSaved(false), 2000)
+        await saveMetricsNotes(clientId, periodType, row.period_start, row.period_end, fields)
+        setSaved(true); setTimeout(() => setSaved(false), 2000)
       } catch {}
       setSaving(false)
     }, 600)
-  }, [clientId, periodType])
-
-  function set(field: keyof RowState, raw: string) {
-    const isNum = ['views_reels','views_historias','followers_gained','chats_abiertos',
-      'conversaciones','agendas','shows','cierres'].includes(field as string)
-    const isCur = ['facturacion','cash_collected'].includes(field as string)
-    const parsed = isNum || isCur ? (parseFloat(raw) || 0) : (raw || null)
-
-    const next = { ...row, [field]: parsed }
-
-    // Auto-fill period_end when start changes
-    if (field === 'period_start' && raw) {
-      if (periodType === 'daily') next.period_end = raw
-      else if (periodType === 'weekly') next.period_end = sundayOf(raw)
-      else if (periodType === 'monthly') next.period_end = lastOfMonth(raw)
-    }
-
-    setRow(next)
-    persist(next)
-  }
-
-  async function handleDelete() {
-    if (!confirm('¿Eliminar este período?')) return
-    await deleteMetricsRow(clientId, originalStartRef.current, periodType)
-    onDelete()
-  }
+  }, [clientId, periodType, row.period_start, row.period_end])
 
   const pctResp = pct(row.chats_abiertos, row.views_reels)
-  const pctSeg  = pct(row.followers_gained, row.views_reels)
+  const pctSeg  = pct(followers, row.views_reels)
   const pctConv = pct(row.conversaciones, row.chats_abiertos)
 
   return (
     <tr className="group border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
-      {/* Período — editable date inputs */}
-      <td className="px-1 py-1 whitespace-nowrap">
-        <div className="flex items-center gap-1">
-          <DateCell value={row.period_start} onChange={(v) => set('period_start', v)} />
-          {periodType !== 'daily' && (
-            <>
-              <span className="text-zinc-700 text-xs">–</span>
-              <DateCell value={row.period_end} onChange={(v) => set('period_end', v)} />
-            </>
-          )}
-        </div>
+      <td className="px-2 py-1.5 whitespace-nowrap">
+        <span className="text-xs font-mono text-zinc-300">{fmtPeriod(row.period_start, row.period_end, periodType)}</span>
       </td>
 
-      <Cell value={row.views_reels}     onChange={(v) => set('views_reels', v)} />
-      <Cell value={row.views_historias} onChange={(v) => set('views_historias', v)} />
-      <Cell value={row.followers_gained} onChange={(v) => set('followers_gained', v)} />
-      <Cell value={row.chats_abiertos}  onChange={(v) => set('chats_abiertos', v)} />
-      <Cell value={row.conversaciones}  onChange={(v) => set('conversaciones', v)} />
-      <Cell value={row.agendas}         onChange={(v) => set('agendas', v)} />
-      <Cell value={row.shows}           onChange={(v) => set('shows', v)} />
-      <Cell value={row.cierres}         onChange={(v) => set('cierres', v)} />
-      <Cell value={row.facturacion}     onChange={(v) => set('facturacion', v)} currency />
-      <Cell value={row.cash_collected}  onChange={(v) => set('cash_collected', v)} currency />
-
-      {/* Auto-calculated */}
-      <td className="px-2 py-1.5 text-right">
-        <span className="text-xs font-mono text-zinc-500">{pctResp}</span>
+      <ReadCell value={row.views_reels} />
+      <ReadCell value={row.views_historias} />
+      <EditCell value={followers} onChange={(v) => { const n = parseFloat(v) || 0; setFollowers(n); persist({ followers_gained: n }) }} />
+      <ReadCell value={row.chats_abiertos} />
+      <ReadCell value={row.conversaciones} />
+      <ReadCell value={row.agendas} />
+      <ReadCell value={row.shows} />
+      <ReadCell value={row.cierres} />
+      <td className="px-2 py-1.5 text-right bg-white/[0.008]">
+        <span className="text-xs font-mono text-emerald-500/70">{formatCurrency(row.facturacion)}</span>
       </td>
-      <td className="px-2 py-1.5 text-right">
-        <span className="text-xs font-mono text-zinc-500">{pctSeg}</span>
-      </td>
-      <td className="px-2 py-1.5 text-right">
-        <span className="text-xs font-mono text-zinc-500">{pctConv}</span>
+      <td className="px-2 py-1.5 text-right bg-white/[0.008]">
+        <span className="text-xs font-mono text-emerald-500/70">{formatCurrency(row.cash_collected)}</span>
       </td>
 
-      <Cell value={row.notes ?? ''} onChange={(v) => set('notes', v)} type="text" placeholder="Notas..." />
+      <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctResp}</span></td>
+      <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctSeg}</span></td>
+      <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctConv}</span></td>
 
-      {/* Actions */}
+      <EditCell value={notes} onChange={(v) => { setNotes(v); persist({ notes: v || null }) }} type="text" placeholder="Notas..." />
+
       <td className="px-2 py-1.5">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {saving  && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
+          {saving && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
           {saved && !saving && <Check className="h-3 w-3 text-emerald-400" />}
-          <button
-            onClick={handleDelete}
-            className="rounded p-0.5 text-zinc-600 hover:text-red-400 transition-colors"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
         </div>
       </td>
     </tr>
@@ -262,8 +126,8 @@ function SpreadsheetRow({
 
 // ── Totals row ────────────────────────────────────────────────────────────────
 
-function TotalsRow({ rows }: { rows: RowState[] }) {
-  const sum = (key: keyof RowState) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0)
+function TotalsRow({ rows }: { rows: ComputedMetricsRow[] }) {
+  const sum = (key: keyof ComputedMetricsRow) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0)
   const vr = sum('views_reels')
   const ch = sum('chats_abiertos')
   const fg = sum('followers_gained')
@@ -336,71 +200,24 @@ const HEADERS = [
 
 export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
   const [periodType, setPeriodType] = useState<PeriodType>('weekly')
-  const [rows, setRows] = useState<RowState[]>([])
+  const [rows, setRows] = useState<ComputedMetricsRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  async function load(type: PeriodType) {
-    setLoading(true)
-    try {
-      const data = await getClientMetrics(clientId, type, 52)
-      setRows(
-        (data || []).map((d: Record<string, unknown>) => ({
-          period_start: d.period_start as string,
-          period_end: d.period_end as string,
-          views_reels: (d.views_reels as number) || 0,
-          views_historias: (d.views_historias as number) || 0,
-          followers_gained: (d.followers_gained as number) || 0,
-          chats_abiertos: (d.chats_abiertos as number) || 0,
-          conversaciones: (d.conversaciones as number) || 0,
-          agendas: (d.agendas as number) || 0,
-          shows: (d.shows as number) || 0,
-          cierres: (d.cierres as number) || 0,
-          facturacion: (d.facturacion as number) || 0,
-          cash_collected: (d.cash_collected as number) || 0,
-          notes: (d.notes as string) || null,
-        }))
-      )
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true)
+      const data = await getComputedClientMetrics(clientId, periodType, 12)
+      if (!cancelled) { setRows(data); setLoading(false) }
     }
-  }
+    load()
+    return () => { cancelled = true }
+  }, [clientId, periodType])
 
-  useEffect(() => { load(periodType) }, [clientId, periodType])
-
-  function handlePeriodChange(type: PeriodType) {
-    setPeriodType(type)
-  }
-
-  function addRow() {
-    const { start, end } = newPeriodDates(periodType)
-    const exists = rows.some((r) => r.period_start === start)
-    if (exists) return
-
-    const newRow: RowState = {
-      period_start: start,
-      period_end: end,
-      views_reels: 0,
-      views_historias: 0,
-      followers_gained: 0,
-      chats_abiertos: 0,
-      conversaciones: 0,
-      agendas: 0,
-      shows: 0,
-      cierres: 0,
-      facturacion: 0,
-      cash_collected: 0,
-      notes: null,
-    }
-
-    setRows((prev) => [newRow, ...prev])
-
-    // Save immediately so it exists in DB
-    saveMetricsRow({ client_id: clientId, period_type: periodType, ...newRow } as MetricsRow).catch(() => {})
-  }
-
-  function removeRow(periodStart: string) {
-    setRows((prev) => prev.filter((r) => r.period_start !== periodStart))
-  }
+  // Only show periods with some activity — a wall of empty rows is just noise
+  const activeRows = rows.filter((r) =>
+    r.views_reels + r.views_historias + r.chats_abiertos + r.agendas + r.followers_gained > 0 || r.notes
+  )
 
   return (
     <div className="space-y-3">
@@ -410,7 +227,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
           {PERIOD_OPTIONS.map((p) => (
             <button
               key={p.value}
-              onClick={() => handlePeriodChange(p.value)}
+              onClick={() => setPeriodType(p.value)}
               className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
                 periodType === p.value
                   ? 'bg-white/[0.1] text-zinc-100'
@@ -421,21 +238,12 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
-
-        <button
-          onClick={addRow}
-          className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Agregar período
-        </button>
       </div>
 
       {/* Grid */}
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] border-collapse">
-            {/* Column headers */}
             <thead>
               <tr className="border-b border-white/[0.06] bg-white/[0.02]">
                 {HEADERS.map((h, i) => (
@@ -459,24 +267,18 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
                     Cargando...
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : activeRows.length === 0 ? (
                 <tr>
                   <td colSpan={HEADERS.length} className="py-12 text-center">
-                    <p className="text-zinc-600 text-xs">Sin datos — agregá el primer período</p>
+                    <p className="text-zinc-600 text-xs">Sin actividad en los últimos períodos</p>
                   </td>
                 </tr>
               ) : (
                 <>
-                  {rows.map((row) => (
-                    <SpreadsheetRow
-                      key={row.period_start}
-                      clientId={clientId}
-                      periodType={periodType}
-                      initialData={row}
-                      onDelete={() => removeRow(row.period_start)}
-                    />
+                  {activeRows.map((row) => (
+                    <SpreadsheetRow key={row.period_start} clientId={clientId} periodType={periodType} row={row} />
                   ))}
-                  <TotalsRow rows={rows} />
+                  <TotalsRow rows={activeRows} />
                 </>
               )}
             </tbody>
@@ -485,7 +287,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
       </div>
 
       <p className="text-[11px] text-zinc-700">
-        Los cambios se guardan automáticamente · Las columnas en gris se calculan solas
+        Datos en vivo desde ManyChat, Calendly y Meta · Solo Seguidores+ y Notas son manuales
       </p>
     </div>
   )
