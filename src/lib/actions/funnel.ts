@@ -82,9 +82,12 @@ export async function calculateFunnel(
   // failing funnel (avoids flagging brand-new/inactive clients as critical).
   if (views_reels + views_historias + chats_abiertos + agendas === 0) return null
 
+  // Combined views (reel + historia) — a client whose CTA lives in Historias
+  // shouldn't show a phantom 0% "chats" rate just because views_reels is 0.
+  const totalViews = views_reels + views_historias
+
   const rates = {
-    respuesta_reel: safeRate(chats_abiertos, views_reels),
-    respuesta_historia: safeRate(chats_abiertos, views_historias),
+    respuesta: safeRate(chats_abiertos, totalViews),
     conversion: safeRate(conversaciones, chats_abiertos),
     agendamiento: safeRate(agendas, conversaciones),
     show_up: safeRate(shows, agendas),
@@ -93,6 +96,8 @@ export async function calculateFunnel(
 
   // Each stage shows the OUTPUT count at that level (how many reached here),
   // and the rate is the conversion FROM the previous stage TO this one.
+  // `denominator` is that previous stage's count — when it's 0, nobody has
+  // reached this stage yet, so its rate is meaningless (not a real deficit).
   const stagesDef: Array<{
     id: string
     label: string
@@ -100,23 +105,28 @@ export async function calculateFunnel(
     rate: number
     min: number
     max: number
+    denominator: number
   }> = [
     // ── Marketing ──────────────────────────────────────────────────────────
-    { id: 'vistas',        label: 'Vistas Reels',   value: views_reels,     rate: 0,                       min: 0,  max: 0   },
-    { id: 'chats',         label: 'Chats',           value: chats_abiertos,  rate: rates.respuesta_reel,    min: 1,  max: 3   },
-    { id: 'conversaciones',label: 'Conversaciones',  value: conversaciones,  rate: rates.conversion,        min: 70, max: 100 },
+    { id: 'vistas',        label: 'Vistas Reels',   value: views_reels,     rate: 0,                 min: 0,  max: 0,   denominator: 1 },
+    { id: 'chats',         label: 'Chats',           value: chats_abiertos,  rate: rates.respuesta,   min: 1,  max: 3,   denominator: totalViews },
+    { id: 'conversaciones',label: 'Conversaciones',  value: conversaciones,  rate: rates.conversion,  min: 70, max: 100, denominator: chats_abiertos },
     // ── Ventas ─────────────────────────────────────────────────────────────
-    { id: 'agendas',       label: 'Agendas',         value: agendas,         rate: rates.agendamiento,      min: 8,  max: 12  },
-    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,           min: 70, max: 100 },
-    { id: 'cierres',       label: 'Cierres',         value: cierres,         rate: rates.cierre,            min: 30, max: 60  },
+    { id: 'agendas',       label: 'Agendas',         value: agendas,         rate: rates.agendamiento,min: 8,  max: 12,  denominator: conversaciones },
+    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,     min: 70, max: 100, denominator: agendas },
+    { id: 'cierres',       label: 'Cierres',         value: cierres,         rate: rates.cierre,      min: 30, max: 60,  denominator: shows },
   ]
 
-  // Find bottleneck: stage with the biggest shortfall below benchmark
+  // Find bottleneck: stage with the biggest shortfall below benchmark —
+  // only among stages that actually received traffic (denominator > 0).
+  // A stage nobody has reached yet (e.g. Shows when Agendas is 0) can't be
+  // diagnosed as "underperforming"; the real problem is further upstream.
   let worstDrop = 0
   let bottleneckId: string | null = null
 
   for (const s of stagesDef) {
-    if (s.min === 0) continue   // skip entry stage
+    if (s.min === 0) continue        // skip entry stage
+    if (s.denominator === 0) continue // no traffic reached this stage — nothing to diagnose
     if (s.rate < s.min) {
       const drop = s.min - s.rate
       if (drop > worstDrop) {
@@ -133,7 +143,7 @@ export async function calculateFunnel(
     rate: Math.round(s.rate * 100) / 100,
     benchmark_min: s.min,
     benchmark_max: s.max,
-    status: s.min === 0 ? 'healthy' : s.rate >= s.min ? 'healthy' : 'critical',
+    status: s.min === 0 || s.denominator === 0 ? 'healthy' : s.rate >= s.min ? 'healthy' : 'critical',
     is_bottleneck: s.id === bottleneckId,
   }))
 
