@@ -37,13 +37,15 @@ export function ClientForm({ client, onClose }: ClientFormProps) {
     const formData = new FormData(e.currentTarget)
 
     try {
-      if (client) {
-        await updateClientAction(client.id, formData)
-      } else {
-        await createClientAction(formData)
-      }
+      const result = client
+        ? await updateClientAction(client.id, formData)
+        : await createClientAction(formData)
       router.refresh()
-      onClose()
+      if (result.calendlyError) {
+        setError(`Cliente guardado, pero Calendly falló: ${result.calendlyError}`)
+      } else {
+        onClose()
+      }
     } catch {
       setError('Error al guardar el cliente')
     } finally {

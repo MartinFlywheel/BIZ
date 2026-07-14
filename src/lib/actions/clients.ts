@@ -28,7 +28,7 @@ export async function getClient(id: string) {
   return data
 }
 
-export async function createClientAction(formData: FormData) {
+export async function createClientAction(formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
@@ -47,14 +47,16 @@ export async function createClientAction(formData: FormData) {
 
   if (error) throw error
 
+  let calendlyError: string | null = null
   if (calendlyToken && client) {
-    await registerCalendlyWebhook(supabase, client.id, calendlyToken)
+    calendlyError = await registerCalendlyWebhook(supabase, client.id, calendlyToken)
   }
 
   revalidatePath('/clients')
+  return { calendlyError }
 }
 
-export async function updateClientAction(id: string, formData: FormData) {
+export async function updateClientAction(id: string, formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
@@ -83,12 +85,14 @@ export async function updateClientAction(id: string, formData: FormData) {
 
   if (error) throw error
 
+  let calendlyError: string | null = null
+
   const tokenChanged = calendlyToken && calendlyToken !== existing?.calendly_token
   if (tokenChanged) {
     if (existing?.calendly_webhook_id && existing?.calendly_token) {
       await unregisterCalendlyWebhook(existing.calendly_token, existing.calendly_webhook_id)
     }
-    await registerCalendlyWebhook(supabase, id, calendlyToken)
+    calendlyError = await registerCalendlyWebhook(supabase, id, calendlyToken)
   }
 
   if (!calendlyToken && existing?.calendly_webhook_id && existing?.calendly_token) {
@@ -101,6 +105,7 @@ export async function updateClientAction(id: string, formData: FormData) {
 
   revalidatePath('/clients')
   revalidatePath(`/clients/${id}`)
+  return { calendlyError }
 }
 
 export async function updateClientAvatars(clientId: string, avatars: string[]) {
@@ -139,20 +144,29 @@ export async function deleteClientAction(id: string) {
   revalidatePath('/clients')
 }
 
+// Returns null on success, or a user-facing error message on failure — the
+// client record itself still saves either way, but the caller surfaces this
+// so a bad/expired token doesn't fail silently (previously only logged
+// server-side, so a client could go weeks with zero Calendly data and no
+// one would know why).
 async function registerCalendlyWebhook(
   supabase: Awaited<ReturnType<typeof createClient>>,
   clientId: string,
   token: string
-) {
+): Promise<string | null> {
   try {
     const meRes = await fetch('https://api.calendly.com/users/me', {
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!meRes.ok) return
+    if (!meRes.ok) {
+      return `Calendly rechazó el token (HTTP ${meRes.status}). Verificá que esté copiado completo desde calendly.com/integrations/api_webhooks y no haya expirado.`
+    }
 
     const meData = await meRes.json()
     const orgUri = meData.resource?.current_organization
-    if (!orgUri) return
+    if (!orgUri) {
+      return 'El token es válido pero Calendly no devolvió una organización asociada a la cuenta.'
+    }
 
     const appUrl = getAppUrl()
     const callbackUrl = `${appUrl}/api/webhooks/calendly`
@@ -174,7 +188,7 @@ async function registerCalendlyWebhook(
     if (!subRes.ok) {
       const errBody = await subRes.text()
       console.error('[Calendly] Webhook registration failed:', errBody)
-      return
+      return `Calendly rechazó la suscripción al webhook: ${errBody.slice(0, 200)}`
     }
 
     const subData = await subRes.json()
@@ -189,8 +203,11 @@ async function registerCalendlyWebhook(
       .eq('id', clientId)
 
     console.log('[Calendly] Webhook registered for client:', clientId)
+    return null
   } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Error desconocido'
     console.error('[Calendly] Registration error:', err)
+    return `Error de red al conectar con Calendly: ${msg}`
   }
 }
 
