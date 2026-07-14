@@ -64,8 +64,8 @@ function WebhookBanner() {
     const baseUrl = typeof window !== 'undefined'
         ? `${window.location.origin}${WEBHOOK_PATH}`
         : WEBHOOK_PATH
-    const chatAbiertoUrl = `${baseUrl}/{keyword_trigger}`
-    const conversacionUrl = `${baseUrl}/{keyword_trigger}/conversacion`
+    const conversacionUrl = `${baseUrl}/{keyword_trigger}`
+    const chatAbiertoUrl = `${baseUrl}/{keyword_trigger}/chat-abierto`
 
     return (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
@@ -94,15 +94,15 @@ function WebhookBanner() {
                     </p>
 
                     <WebhookUrlRow
-                        label="1. Chat abierto (nodo junto al disparador/CTA)"
-                        hint="Poné este nodo apenas entra al flujo — cada llamado cuenta como un chat abierto."
-                        url={chatAbiertoUrl}
+                        label="1. Conversación real (nodo existente, después de que responda)"
+                        hint="Es la URL que ya tenías configurada en la rama donde el prospecto responde — sigue igual, no hay que tocarla."
+                        url={conversacionUrl}
                     />
 
                     <WebhookUrlRow
-                        label="2. Conversación real (nodo después de que responda)"
-                        hint="Poné este nodo solo en la rama donde el prospecto ya respondió — promueve el chat abierto a conversación real, no lo duplica."
-                        url={conversacionUrl}
+                        label="2. Chat abierto (nodo nuevo, junto al disparador/CTA)"
+                        hint="Agregá este nodo apenas entra al flujo — cada llamado cuenta como un chat abierto."
+                        url={chatAbiertoUrl}
                     />
 
                     {/* Payload structure */}

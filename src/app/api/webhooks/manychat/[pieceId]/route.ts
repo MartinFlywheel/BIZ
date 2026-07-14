@@ -4,13 +4,13 @@ import { handlePieceWebhook } from '@/lib/manychat'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// Place this node at the CTA/trigger in the ManyChat flow — every call
-// registers a chat_abierto (unless the payload itself carries an explicit
-// classification field).
+// The original webhook URL — already wired in ManyChat to the "Solicitud
+// externa" node that only fires after the prospect replies. Every call
+// registers (or promotes) a conversacion_real.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ pieceId: string }> }
 ) {
   const { pieceId } = await params
-  return handlePieceWebhook(request, pieceId)
+  return handlePieceWebhook(request, pieceId, 'conversacion_real')
 }

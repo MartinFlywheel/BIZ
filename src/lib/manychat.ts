@@ -96,8 +96,8 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
 // Two ManyChat "External Request" nodes call the same logic with a different
 // forced classification, so which node fires depends only on where it sits
 // in the flow — no JSON body editing required on the ManyChat side:
-//   /api/webhooks/manychat/{pieceId}               → chat_abierto (place at the CTA/trigger)
-//   /api/webhooks/manychat/{pieceId}/conversacion   → conversacion_real (place after the reply)
+//   /api/webhooks/manychat/{pieceId}                → conversacion_real (existing node, after the reply)
+//   /api/webhooks/manychat/{pieceId}/chat-abierto    → chat_abierto (new node, at the CTA/trigger)
 
 export async function handlePieceWebhook(
   request: Request,

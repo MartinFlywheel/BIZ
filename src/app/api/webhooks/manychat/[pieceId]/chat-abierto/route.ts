@@ -4,13 +4,12 @@ import { handlePieceWebhook } from '@/lib/manychat'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
-// Place this node after the prospect actually replies in the ManyChat flow —
-// every call registers (or promotes) a conversacion_real, regardless of the
-// payload body.
+// New URL — place this node at the CTA/trigger in the ManyChat flow. Every
+// call registers a chat_abierto.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ pieceId: string }> }
 ) {
   const { pieceId } = await params
-  return handlePieceWebhook(request, pieceId, 'conversacion_real')
+  return handlePieceWebhook(request, pieceId, 'chat_abierto')
 }
