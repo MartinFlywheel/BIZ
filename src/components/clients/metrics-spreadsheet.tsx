@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Check, Loader2 } from 'lucide-react'
-import { getComputedClientMetrics, saveMetricsOverrides, type ComputedMetricsRow, type OverridableField } from '@/lib/actions/funnel'
+import { getComputedClientMetrics, saveMetricsOverrides, type ComputedMetricsRow } from '@/lib/actions/funnel'
+import type { OverridableField } from '@/lib/metrics-types'
 import { formatCurrency } from '@/lib/utils'
 
 type PeriodType = 'weekly' | 'monthly' | 'daily'

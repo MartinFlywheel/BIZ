@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
 import { getLiveMetricsForRange, getLiveMetricsBuckets } from './live-metrics'
+import { OVERRIDABLE_FIELDS, type OverridableField } from '@/lib/metrics-types'
 
 
 // =====================================================
@@ -240,13 +241,6 @@ function recentPeriods(
 
   return periods
 }
-
-export const OVERRIDABLE_FIELDS = [
-  'views_reels', 'views_historias', 'chats_abiertos', 'conversaciones',
-  'agendas', 'shows', 'cierres', 'facturacion', 'cash_collected',
-] as const
-
-export type OverridableField = typeof OVERRIDABLE_FIELDS[number]
 
 export interface ComputedMetricsRow {
   period_start: string
