@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -11,11 +11,30 @@ import { deleteSopAction } from '@/lib/actions/sops'
 import { formatDate, cn } from '@/lib/utils'
 import { SOP_TAGS } from '@/lib/types'
 import type { Sop, OnboardingTemplate } from '@/lib/types'
-import { Plus, Trash2, FileText } from 'lucide-react'
+import { Plus, Trash2, FileText, ChevronDown } from 'lucide-react'
 
 interface Props {
   sops: Sop[]
   templates: OnboardingTemplate[]
+}
+
+// Deterministic color per tag — works for the predefined SOP_TAGS and any
+// custom category a user adds, no maintenance needed as new ones show up.
+const TAG_PALETTE = [
+  { text: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/25', solid: 'bg-violet-400' },
+  { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/25', solid: 'bg-blue-400' },
+  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', solid: 'bg-emerald-400' },
+  { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/25', solid: 'bg-amber-400' },
+  { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/25', solid: 'bg-rose-400' },
+  { text: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/25', solid: 'bg-cyan-400' },
+  { text: 'text-fuchsia-400', bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/25', solid: 'bg-fuchsia-400' },
+  { text: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/25', solid: 'bg-orange-400' },
+]
+
+function tagColor(tag: string) {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) >>> 0
+  return TAG_PALETTE[hash % TAG_PALETTE.length]
 }
 
 
@@ -25,7 +44,18 @@ export function SopsList({ sops, templates }: Props) {
   const [editingSop, setEditingSop] = useState<Sop | null>(null)
 
   const [activeTag, setActiveTag] = useState<string>('all')
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+
+  useEffect(() => {
+    if (!filterOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [filterOpen])
 
   const tabs = [
     { id: 'sops', label: 'SOPs', count: sops.length },
@@ -38,7 +68,7 @@ export function SopsList({ sops, templates }: Props) {
   const filterTags = ['all', ...SOP_TAGS, ...legacyCategories]
 
   const visibleSops = activeTag === 'all' ? sops : sops.filter((s) => s.category === activeTag)
-  const categories = [...new Set(visibleSops.map((s) => s.category).filter(Boolean))]
+  const categories = [...new Set(visibleSops.map((s) => s.category).filter((c): c is string => !!c))]
 
 
   return (
@@ -58,21 +88,45 @@ export function SopsList({ sops, templates }: Props) {
             {activeTab === 'sops' && (
               <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {filterTags.map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => setActiveTag(tag)}
-                        className={cn(
-                          'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                          activeTag === tag
-                            ? 'border-zinc-50 bg-zinc-50 text-zinc-950'
-                            : 'border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
-                        )}
-                      >
-                        {tag === 'all' ? 'Todos' : tag}
-                      </button>
-                    ))}
+                  <div ref={filterRef} className="relative">
+                    <button
+                      onClick={() => setFilterOpen((v) => !v)}
+                      className={cn(
+                        'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                        activeTag === 'all'
+                          ? 'border-zinc-700 text-zinc-300 hover:border-zinc-600'
+                          : `${tagColor(activeTag).border} ${tagColor(activeTag).bg} ${tagColor(activeTag).text}`
+                      )}
+                    >
+                      {activeTag !== 'all' && <span className={`h-1.5 w-1.5 rounded-full ${tagColor(activeTag).solid}`} />}
+                      {activeTag === 'all' ? 'Todos' : activeTag}
+                      <ChevronDown className={cn('h-3 w-3 transition-transform', filterOpen && 'rotate-180')} />
+                    </button>
+
+                    {filterOpen && (
+                      <div className="absolute top-full left-0 mt-1.5 flex flex-wrap gap-1.5 rounded-xl border border-zinc-800 bg-zinc-900 p-2 shadow-xl z-10 w-max max-w-sm">
+                        {filterTags.map((tag) => {
+                          const c = tag === 'all' ? null : tagColor(tag)
+                          return (
+                            <button
+                              key={tag}
+                              onClick={() => { setActiveTag(tag); setFilterOpen(false) }}
+                              className={cn(
+                                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                                activeTag === tag
+                                  ? c
+                                    ? `${c.border} ${c.bg} ${c.text}`
+                                    : 'border-zinc-50 bg-zinc-50 text-zinc-950'
+                                  : 'border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                              )}
+                            >
+                              {c && <span className={`h-1.5 w-1.5 rounded-full ${c.solid}`} />}
+                              {tag === 'all' ? 'Todos' : tag}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                   <Button size="sm" onClick={() => setShowSopForm(true)}>
                     <Plus className="h-3.5 w-3.5" /> Nuevo SOP
@@ -86,7 +140,10 @@ export function SopsList({ sops, templates }: Props) {
                     {categories.length > 0 ? (
                       categories.map((cat) => (
                         <div key={cat}>
-                          <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-3">{cat}</h3>
+                          <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider mb-3">
+                            <span className={`h-1.5 w-1.5 rounded-full ${tagColor(cat).solid}`} />
+                            <span className={tagColor(cat).text}>{cat}</span>
+                          </h3>
                           <div className="space-y-2">
                             {visibleSops.filter((s) => s.category === cat).map((sop) => (
 

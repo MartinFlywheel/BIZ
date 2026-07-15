@@ -80,11 +80,17 @@ interface Props {
   onClose: () => void
 }
 
+const CUSTOM_CATEGORY = '__custom__'
+
 export function SopForm({ sop, onClose }: Props) {
   const [loading, setLoading]       = useState(false)
   const [urlInput, setUrlInput]     = useState('')
   const [attachments, setAttachments] = useState<SopAttachment[]>(sop?.attachments ?? [])
   const [expandedEmbed, setExpandedEmbed] = useState<string | null>(null)
+
+  const initialIsCustom = !!sop?.category && !(SOP_TAGS as readonly string[]).includes(sop.category)
+  const [categorySelect, setCategorySelect] = useState(sop?.category || '')
+  const [customCategory, setCustomCategory] = useState('')
 
   function addAttachment() {
     const raw = urlInput.trim()
@@ -116,6 +122,9 @@ export function SopForm({ sop, onClose }: Props) {
     setLoading(true)
     const formData = new FormData(e.currentTarget)
     formData.set('attachments', JSON.stringify(attachments))
+    if (categorySelect === CUSTOM_CATEGORY) {
+      formData.set('category', customCategory.trim())
+    }
     if (sop) {
       await updateSopAction(sop.id, formData)
     } else {
@@ -151,14 +160,26 @@ export function SopForm({ sop, onClose }: Props) {
           <select
             id="category"
             name="category"
-            defaultValue={sop?.category || ''}
+            value={categorySelect}
+            onChange={(e) => setCategorySelect(e.target.value)}
             className="flex h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 [&>option]:bg-zinc-900"
           >
             <option value="">Sin categoría</option>
             {SOP_TAGS.map((tag) => (
               <option key={tag} value={tag}>{tag}</option>
             ))}
+            {initialIsCustom && <option value={sop!.category!}>{sop!.category}</option>}
+            <option value={CUSTOM_CATEGORY}>+ Nueva categoría...</option>
           </select>
+          {categorySelect === CUSTOM_CATEGORY && (
+            <input
+              autoFocus
+              value={customCategory}
+              onChange={(e) => setCustomCategory(e.target.value)}
+              placeholder="Nombre de la nueva categoría"
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500"
+            />
+          )}
         </div>
 
         <div className="space-y-1.5">
