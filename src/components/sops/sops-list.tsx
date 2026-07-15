@@ -62,11 +62,13 @@ export function SopsList({ sops, templates }: Props) {
     { id: 'templates', label: 'Templates de Onboarding', count: templates.length },
   ]
 
-  // Predefined tag filter (BIZ areas) + keep any legacy/custom categories present in data
-  const legacyCategories = ([...new Set(sops.map((s) => s.category).filter(Boolean))] as string[])
-    .filter((c) => !(SOP_TAGS as readonly string[]).includes(c))
-  const allCategories = [...SOP_TAGS, ...legacyCategories]
-  const filterTags = ['all', ...allCategories]
+  // Filter bar only shows categories actually in use — a "deleted" category
+  // (predefined or custom) drops off on its own once no SOP has it anymore,
+  // no separate tracking needed. The create/edit form still offers the
+  // predefined SOP_TAGS as suggestions even before anything uses them.
+  const categoriesInUse = [...new Set(sops.map((s) => s.category).filter((c): c is string => !!c))]
+  const filterTags = ['all', ...categoriesInUse]
+  const allCategories = [...new Set([...SOP_TAGS, ...categoriesInUse])]
 
   const visibleSops = activeTag === 'all' ? sops : sops.filter((s) => s.category === activeTag)
   const categories = [...new Set(visibleSops.map((s) => s.category).filter((c): c is string => !!c))]
