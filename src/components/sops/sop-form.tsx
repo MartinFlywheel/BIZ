@@ -77,18 +77,22 @@ const TYPE_CONFIG: Record<SopAttachment['type'], { label: string; icon: React.El
 
 interface Props {
   sop?: Sop
+  existingCategories?: string[]
   onClose: () => void
 }
 
 const CUSTOM_CATEGORY = '__custom__'
 
-export function SopForm({ sop, onClose }: Props) {
+export function SopForm({ sop, existingCategories, onClose }: Props) {
   const [loading, setLoading]       = useState(false)
   const [urlInput, setUrlInput]     = useState('')
   const [attachments, setAttachments] = useState<SopAttachment[]>(sop?.attachments ?? [])
   const [expandedEmbed, setExpandedEmbed] = useState<string | null>(null)
 
-  const initialIsCustom = !!sop?.category && !(SOP_TAGS as readonly string[]).includes(sop.category)
+  const categoryOptions: string[] = existingCategories && existingCategories.length > 0
+    ? existingCategories
+    : [...SOP_TAGS]
+  const initialIsCustom = !!sop?.category && !categoryOptions.includes(sop.category)
   const [categorySelect, setCategorySelect] = useState(sop?.category || '')
   const [customCategory, setCustomCategory] = useState('')
 
@@ -165,7 +169,7 @@ export function SopForm({ sop, onClose }: Props) {
             className="flex h-9 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 [&>option]:bg-zinc-900"
           >
             <option value="">Sin categoría</option>
-            {SOP_TAGS.map((tag) => (
+            {categoryOptions.map((tag) => (
               <option key={tag} value={tag}>{tag}</option>
             ))}
             {initialIsCustom && <option value={sop!.category!}>{sop!.category}</option>}

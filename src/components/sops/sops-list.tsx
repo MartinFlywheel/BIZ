@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card'
 import { Tabs } from '@/components/ui/tabs'
 import { SopForm } from './sop-form'
 import { OnboardingTemplateForm } from './onboarding-template-form'
-import { deleteSopAction } from '@/lib/actions/sops'
+import { deleteSopAction, deleteCategoryAction } from '@/lib/actions/sops'
 import { formatDate, cn } from '@/lib/utils'
 import { SOP_TAGS } from '@/lib/types'
 import type { Sop, OnboardingTemplate } from '@/lib/types'
@@ -62,13 +62,26 @@ export function SopsList({ sops, templates }: Props) {
     { id: 'templates', label: 'Templates de Onboarding', count: templates.length },
   ]
 
-  // Predefined tag filter (BIZ areas) + keep any legacy categories present in data
+  // Predefined tag filter (BIZ areas) + keep any legacy/custom categories present in data
   const legacyCategories = ([...new Set(sops.map((s) => s.category).filter(Boolean))] as string[])
     .filter((c) => !(SOP_TAGS as readonly string[]).includes(c))
-  const filterTags = ['all', ...SOP_TAGS, ...legacyCategories]
+  const allCategories = [...SOP_TAGS, ...legacyCategories]
+  const filterTags = ['all', ...allCategories]
 
   const visibleSops = activeTag === 'all' ? sops : sops.filter((s) => s.category === activeTag)
   const categories = [...new Set(visibleSops.map((s) => s.category).filter((c): c is string => !!c))]
+
+  async function handleDeleteCategory(e: React.MouseEvent, cat: string) {
+    e.stopPropagation()
+    const count = sops.filter((s) => s.category === cat).length
+    const msg = count > 0
+      ? `¿Eliminar la categoría "${cat}"? Se le va a quitar la categoría a ${count} SOP${count !== 1 ? 's' : ''} (no se borran los SOPs).`
+      : `¿Eliminar la categoría "${cat}"?`
+    if (!confirm(msg)) return
+    await deleteCategoryAction(cat)
+    if (activeTag === cat) setActiveTag('all')
+    router.refresh()
+  }
 
 
   return (
@@ -108,11 +121,14 @@ export function SopsList({ sops, templates }: Props) {
                         {filterTags.map((tag) => {
                           const c = tag === 'all' ? null : tagColor(tag)
                           return (
-                            <button
+                            <div
                               key={tag}
+                              role="button"
+                              tabIndex={0}
                               onClick={() => { setActiveTag(tag); setFilterOpen(false) }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { setActiveTag(tag); setFilterOpen(false) } }}
                               className={cn(
-                                'flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                                'flex items-center gap-1.5 rounded-full border pl-3 pr-1.5 py-1 text-xs font-medium transition-colors cursor-pointer',
                                 activeTag === tag
                                   ? c
                                     ? `${c.border} ${c.bg} ${c.text}`
@@ -122,7 +138,17 @@ export function SopsList({ sops, templates }: Props) {
                             >
                               {c && <span className={`h-1.5 w-1.5 rounded-full ${c.solid}`} />}
                               {tag === 'all' ? 'Todos' : tag}
-                            </button>
+                              {tag !== 'all' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteCategory(e, tag)}
+                                  title={`Eliminar categoría "${tag}"`}
+                                  className="ml-0.5 rounded-full p-0.5 text-current opacity-50 hover:opacity-100 hover:bg-black/20 transition-opacity"
+                                >
+                                  <Trash2 className="h-2.5 w-2.5" />
+                                </button>
+                              )}
+                            </div>
                           )
                         })}
                       </div>
@@ -239,8 +265,8 @@ export function SopsList({ sops, templates }: Props) {
         )}
       </Tabs>
 
-      {showSopForm && <SopForm onClose={() => { setShowSopForm(false); router.refresh() }} />}
-      {editingSop && <SopForm sop={editingSop} onClose={() => { setEditingSop(null); router.refresh() }} />}
+      {showSopForm && <SopForm existingCategories={allCategories} onClose={() => { setShowSopForm(false); router.refresh() }} />}
+      {editingSop && <SopForm sop={editingSop} existingCategories={allCategories} onClose={() => { setEditingSop(null); router.refresh() }} />}
       {showTemplateForm && <OnboardingTemplateForm sops={sops} onClose={() => { setShowTemplateForm(false); router.refresh() }} />}
     </>
   )

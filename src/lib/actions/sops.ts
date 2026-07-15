@@ -83,3 +83,17 @@ export async function deleteSopAction(id: string) {
   if (error) throw error
   revalidatePath('/sops')
 }
+
+// Categories are just a free-text field on each SOP (no separate table) —
+// "deleting" one un-tags every SOP that had it, so it stops showing up
+// anywhere without deleting any SOP content.
+export async function deleteCategoryAction(category: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('sops')
+    .update({ category: null, updated_at: new Date().toISOString() })
+    .eq('category', category)
+
+  if (error) throw error
+  revalidatePath('/sops')
+}
