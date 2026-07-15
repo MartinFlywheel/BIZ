@@ -17,6 +17,7 @@ function detectType(url: string): SopAttachment['type'] {
   if (/drive\.google\.com|docs\.google\.com\/drive/i.test(url)) return 'google_drive'
   if (/miro\.com/i.test(url)) return 'miro'
   if (/youtube\.com|youtu\.be/i.test(url)) return 'youtube'
+  if (/vimeo\.com/i.test(url)) return 'vimeo'
   if (/notion\.so/i.test(url)) return 'notion'
   return 'link'
 }
@@ -43,6 +44,13 @@ function getEmbedUrl(url: string, type: SopAttachment['type']): string | undefin
       const id = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&/?]+)/)?.[1]
       return id ? `https://www.youtube.com/embed/${id}` : undefined
     }
+    case 'vimeo': {
+      // player.vimeo.com/video/{id} URLs are already the embeddable form;
+      // plain vimeo.com/{id} links get rewritten to the player URL.
+      if (/player\.vimeo\.com\/video\//i.test(url)) return url
+      const id = url.match(/vimeo\.com\/(\d+)/)?.[1]
+      return id ? `https://player.vimeo.com/video/${id}` : undefined
+    }
     default:
       return undefined
   }
@@ -55,6 +63,7 @@ function autoTitle(url: string, type: SopAttachment['type']): string {
     google_drive: 'Archivo en Drive',
     miro: 'Tablero Miro',
     youtube: 'Video YouTube',
+    vimeo: 'Video Vimeo',
     notion: 'Página Notion',
     link: (() => { try { return new URL(url).hostname.replace('www.', '') } catch { return 'Enlace' } })(),
   }
@@ -69,6 +78,7 @@ const TYPE_CONFIG: Record<SopAttachment['type'], { label: string; icon: React.El
   google_drive: { label: 'Drive',       icon: FileText,   color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
   miro:         { label: 'Miro',        icon: Layout,     color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
   youtube:      { label: 'YouTube',     icon: Play,       color: 'text-red-400 bg-red-500/10 border-red-500/20' },
+  vimeo:        { label: 'Vimeo',       icon: Play,       color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20' },
   notion:       { label: 'Notion',      icon: FileText,   color: 'text-zinc-300 bg-zinc-500/10 border-zinc-500/20' },
   link:         { label: 'Enlace',      icon: Link2,      color: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20' },
 }

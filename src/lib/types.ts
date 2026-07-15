@@ -378,7 +378,7 @@ export interface ClientMetrics {
 
 export interface SopAttachment {
   id: string
-  type: 'loom' | 'google_doc' | 'google_drive' | 'miro' | 'youtube' | 'notion' | 'link'
+  type: 'loom' | 'google_doc' | 'google_drive' | 'miro' | 'youtube' | 'vimeo' | 'notion' | 'link'
   url: string
   title: string
   embed_url?: string
