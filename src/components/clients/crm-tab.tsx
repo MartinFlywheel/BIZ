@@ -82,20 +82,35 @@ function dtFromDate(d: string) {
 
 // ── Inline Stage Select ───────────────────────────────────────────────────────
 
+const AGENDA_STAGES = new Set<LeadStage>(['agendado', 'agenda_set'])
+
 function StageSelect({ lead }: { lead: Lead }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [stage, setStage] = useState<LeadStage>(lead.stage)
+  const [pendingAgendaStage, setPendingAgendaStage] = useState<LeadStage | null>(null)
+  const [agendaDate, setAgendaDate] = useState('')
   const dot = STAGE_DOT[stage] ?? 'bg-zinc-400'
   const text = STAGE_TEXT[stage] ?? 'text-zinc-400'
 
-  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value as LeadStage
+  function commitStage(next: LeadStage, date?: string) {
     setStage(next)
     startTransition(async () => {
-      await updateLeadStageAction(lead.id, next)
+      await updateLeadStageAction(lead.id, next, date)
       router.refresh()
     })
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value as LeadStage
+    if (AGENDA_STAGES.has(next) && next !== stage) {
+      // Ask for the actual call date instead of silently stamping today —
+      // that's what makes "día X tuvimos X llamadas" in Agendas accurate.
+      setAgendaDate(new Date().toISOString().split('T')[0])
+      setPendingAgendaStage(next)
+      return
+    }
+    commitStage(next)
   }
 
   return (
@@ -115,6 +130,42 @@ function StageSelect({ lead }: { lead: Lead }) {
         ))}
       </select>
       <ChevronDown className="absolute right-0 h-3 w-3 text-zinc-600 pointer-events-none" />
+
+      <Dialog
+        open={pendingAgendaStage !== null}
+        onClose={() => setPendingAgendaStage(null)}
+        title="¿Para qué fecha es la llamada?"
+        description={`${lead.full_name || 'Este lead'} va a aparecer en Agendas con esta fecha.`}
+      >
+        <div className="space-y-4" onClick={e => e.stopPropagation()}>
+          <input
+            type="date"
+            value={agendaDate}
+            onChange={e => setAgendaDate(e.target.value)}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-1 focus:ring-violet-500 [color-scheme:dark]"
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              type="button"
+              onClick={() => setPendingAgendaStage(null)}
+              className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (pendingAgendaStage) commitStage(pendingAgendaStage, agendaDate)
+                setPendingAgendaStage(null)
+              }}
+              disabled={!agendaDate}
+              className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:opacity-40 transition-colors"
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }

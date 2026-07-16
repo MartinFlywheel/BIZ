@@ -20,7 +20,7 @@ export async function getLeads(clientId?: string) {
   return data
 }
 
-export async function updateLeadStageAction(id: string, stage: LeadStage) {
+export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string) {
   const supabase = await createClient()
 
   const updates: Record<string, unknown> = {
@@ -43,9 +43,11 @@ export async function updateLeadStageAction(id: string, stage: LeadStage) {
   // No Calendly (or not yet configured) still needs the booking to show up
   // in Agendas and roll into the funnel — create the linked record once,
   // pre-filled with what we already know, so only the call outcome is left
-  // to fill in manually.
+  // to fill in manually. fecha_agenda is the date the CALL is scheduled
+  // for, not today — the caller must supply it (asked at the moment the
+  // stage changes) so "calls due on day X" stays accurate.
   if (isAgendaStage && lead) {
-    await ensureAgendaRecordForLead(supabase, lead)
+    await ensureAgendaRecordForLead(supabase, lead, agendaDate || new Date().toISOString().split('T')[0])
   }
 
   revalidatePath('/leads')
@@ -54,7 +56,8 @@ export async function updateLeadStageAction(id: string, stage: LeadStage) {
 
 async function ensureAgendaRecordForLead(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  lead: { id: string; client_id: string; full_name: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null }
+  lead: { id: string; client_id: string; full_name: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null },
+  agendaDate: string
 ) {
   const { data: existing } = await supabase
     .from('agenda_records')
@@ -84,7 +87,7 @@ async function ensureAgendaRecordForLead(
     lead_id: lead.id,
     nombre_lead: lead.full_name,
     avatar: lead.lead_avatar,
-    fecha_agenda: new Date().toISOString().split('T')[0],
+    fecha_agenda: agendaDate,
     fecha_1er_contacto: lead.first_touch_at ? lead.first_touch_at.split('T')[0] : null,
     primer_cta: keyword,
     // The visible "CTA" column in Agendas reads de_donde_vino, not primer_cta

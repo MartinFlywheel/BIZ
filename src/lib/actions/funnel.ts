@@ -73,6 +73,7 @@ export async function calculateFunnel(
     chats_abiertos,
     conversaciones,
     agendas,
+    llamadas,
     shows,
     cierres,
     facturacion,
@@ -91,7 +92,10 @@ export async function calculateFunnel(
     respuesta: safeRate(chats_abiertos, totalViews),
     conversion: safeRate(conversaciones, chats_abiertos),
     agendamiento: safeRate(agendas, conversaciones),
-    show_up: safeRate(shows, agendas),
+    // Against llamadas (agendas whose call already happened), not raw
+    // agendas — a "Pendiente" booking hasn't had the chance to show yet,
+    // it isn't a no-show.
+    show_up: safeRate(shows, llamadas),
     cierre: safeRate(cierres, shows),
   }
 
@@ -114,7 +118,7 @@ export async function calculateFunnel(
     { id: 'conversaciones',label: 'Conversaciones',  value: conversaciones,  rate: rates.conversion,  min: 70, max: 100, denominator: chats_abiertos },
     // ── Ventas ─────────────────────────────────────────────────────────────
     { id: 'agendas',       label: 'Agendas',         value: agendas,         rate: rates.agendamiento,min: 8,  max: 12,  denominator: conversaciones },
-    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,     min: 70, max: 100, denominator: agendas },
+    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,     min: 70, max: 100, denominator: llamadas },
     { id: 'cierres',       label: 'Cierres',         value: cierres,         rate: rates.cierre,      min: 30, max: 60,  denominator: shows },
   ]
 
