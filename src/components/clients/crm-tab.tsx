@@ -96,7 +96,10 @@ function StageSelect({ lead }: { lead: Lead }) {
   function commitStage(next: LeadStage, date?: string) {
     setStage(next)
     startTransition(async () => {
-      await updateLeadStageAction(lead.id, next, date)
+      const { agendaError } = await updateLeadStageAction(lead.id, next, date)
+      if (agendaError) {
+        alert(`El lead se movió a "${LEAD_STAGES.find(s => s.id === next)?.label ?? next}", pero no se pudo crear el registro en Agendas: ${agendaError}\n\nAgregalo a mano desde la pestaña Agendas.`)
+      }
       router.refresh()
     })
   }
@@ -486,6 +489,11 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
   const [dateTo, setDateTo] = useState('')
   const filtersRef = useRef<HTMLDivElement>(null)
 
+  // Rendering 1000+ rows at once is what was making the CRM feel slow —
+  // page the already-filtered list instead of dumping every row into the DOM.
+  const PAGE_SIZE = 50
+  const [page, setPage] = useState(1)
+
   useEffect(() => {
     if (!filtersOpen) return
     function handleClickOutside(e: MouseEvent) {
@@ -559,6 +567,13 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
     [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, dateFrom, dateTo]
   )
 
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const paginated = useMemo(
+    () => filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filtered, currentPage]
+  )
+
   function handleUpdated(updated: Lead) {
     setLocalLeads(prev => prev.map(l => l.id === updated.id ? updated : l))
     setOpenLead(updated)
@@ -581,7 +596,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
             type="text"
             placeholder="Buscar por nombre, IG, email, teléfono..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 pl-9 pr-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
           />
         </div>
@@ -616,12 +631,12 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                         <input
                           type="checkbox"
                           checked={stageFilter.has(stage.id)}
-                          onChange={() => setStageFilter(prev => {
+                          onChange={() => { setStageFilter(prev => {
                             const next = new Set(prev)
                             if (next.has(stage.id)) next.delete(stage.id)
                             else next.add(stage.id)
                             return next
-                          })}
+                          }); setPage(1) }}
                           className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
                         />
                         <span className={`h-1.5 w-1.5 rounded-full ${STAGE_DOT[stage.id] ?? 'bg-zinc-400'}`} />
@@ -643,12 +658,12 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                         <input
                           type="checkbox"
                           checked={interactionFilter.has(opt.id)}
-                          onChange={() => setInteractionFilter(prev => {
+                          onChange={() => { setInteractionFilter(prev => {
                             const next = new Set(prev)
                             if (next.has(opt.id)) next.delete(opt.id)
                             else next.add(opt.id)
                             return next
-                          })}
+                          }); setPage(1) }}
                           className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
                         />
                         {opt.label}
@@ -664,14 +679,14 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                     <input
                       type="date"
                       value={dateFrom}
-                      onChange={e => setDateFrom(e.target.value)}
+                      onChange={e => { setDateFrom(e.target.value); setPage(1) }}
                       className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-violet-500 [color-scheme:dark]"
                     />
                     <span className="text-zinc-600 text-xs">–</span>
                     <input
                       type="date"
                       value={dateTo}
-                      onChange={e => setDateTo(e.target.value)}
+                      onChange={e => { setDateTo(e.target.value); setPage(1) }}
                       className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-violet-500 [color-scheme:dark]"
                     />
                   </div>
@@ -687,12 +702,12 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                           <input
                             type="checkbox"
                             checked={ctaFilter.has(contentId)}
-                            onChange={() => setCtaFilter(prev => {
+                            onChange={() => { setCtaFilter(prev => {
                               const next = new Set(prev)
                               if (next.has(contentId)) next.delete(contentId)
                               else next.add(contentId)
                               return next
-                            })}
+                            }); setPage(1) }}
                             className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
                           />
                           <span className="font-mono text-[11px]">{keyword}</span>
@@ -705,7 +720,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
 
               <div className="border-t border-zinc-800 p-2">
                 <button
-                  onClick={() => { setStageFilter(new Set()); setCtaFilter(new Set()); setInteractionFilter(new Set()); setDateFrom(''); setDateTo('') }}
+                  onClick={() => { setStageFilter(new Set()); setCtaFilter(new Set()); setInteractionFilter(new Set()); setDateFrom(''); setDateTo(''); setPage(1) }}
                   disabled={activeFilterCount === 0}
                   className="w-full rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
@@ -746,7 +761,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                   </td>
                 </tr>
               ) : (
-                filtered.map((lead, idx) => {
+                paginated.map((lead, idx) => {
                   const cp = lead.content_id ? contentMap.get(lead.content_id) : null
                   const setterName = lead.assigned_to ? userMap.get(lead.assigned_to) : null
                   const source = lead.first_touch_type
@@ -759,7 +774,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                       onClick={() => setOpenLead(lead)}
                       className="group border-b border-white/[0.04] hover:bg-white/[0.02] cursor-pointer transition-colors"
                     >
-                      <td className="pl-3 pr-2 py-2.5 text-[11px] text-zinc-600 font-mono select-none">{idx + 1}</td>
+                      <td className="pl-3 pr-2 py-2.5 text-[11px] text-zinc-600 font-mono select-none">{(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
                       <td className="px-2 py-2.5 max-w-[140px]">
                         <span className="text-xs font-medium text-zinc-100 truncate block">
                           {lead.full_name || <span className="text-zinc-600 italic font-normal">Sin nombre</span>}
@@ -821,9 +836,32 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
         </div>
       </div>
 
-      <p className="text-[11px] text-zinc-700">
-        {filtered.length} lead{filtered.length !== 1 ? 's' : ''} · Click en un lead para editar · Estado editable directamente en la tabla
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-zinc-700">
+          {filtered.length} lead{filtered.length !== 1 ? 's' : ''} · Click en un lead para editar · Estado editable directamente en la tabla
+        </p>
+        {pageCount > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Anterior
+            </button>
+            <span className="text-[11px] text-zinc-500 whitespace-nowrap">
+              Página {currentPage} de {pageCount}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+              disabled={currentPage === pageCount}
+              className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
+      </div>
 
       {openLead && (
         <LeadDrawer

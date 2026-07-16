@@ -20,7 +20,7 @@ export async function getLeads(clientId?: string) {
   return data
 }
 
-export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string) {
+export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string): Promise<{ agendaError: string | null }> {
   const supabase = await createClient()
 
   const updates: Record<string, unknown> = {
@@ -46,12 +46,21 @@ export async function updateLeadStageAction(id: string, stage: LeadStage, agenda
   // to fill in manually. fecha_agenda is the date the CALL is scheduled
   // for, not today — the caller must supply it (asked at the moment the
   // stage changes) so "calls due on day X" stays accurate.
+  // The stage change itself already committed above — a failure here is
+  // reported back, not thrown, so it can't silently swallow the fact that
+  // the lead's pipeline stage did change.
+  let agendaError: string | null = null
   if (isAgendaStage && lead) {
-    await ensureAgendaRecordForLead(supabase, lead, agendaDate || new Date().toISOString().split('T')[0])
+    try {
+      await ensureAgendaRecordForLead(supabase, lead, agendaDate || new Date().toISOString().split('T')[0])
+    } catch (err) {
+      agendaError = err instanceof Error ? err.message : 'No se pudo crear el registro en Agendas'
+    }
   }
 
   revalidatePath('/leads')
   revalidatePath('/dashboard')
+  return { agendaError }
 }
 
 async function ensureAgendaRecordForLead(
@@ -59,11 +68,15 @@ async function ensureAgendaRecordForLead(
   lead: { id: string; client_id: string; full_name: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null },
   agendaDate: string
 ) {
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from('agenda_records')
     .select('id')
     .eq('lead_id', lead.id)
     .maybeSingle()
+  if (existingError) {
+    console.error('[ensureAgendaRecordForLead] lookup failed:', existingError.message)
+    throw existingError
+  }
   if (existing) return
 
   let keyword: string | null = null
@@ -82,7 +95,7 @@ async function ensureAgendaRecordForLead(
     keyword = lead.first_touch_type.match(/^manychat:(.+)$/)?.[1] || null
   }
 
-  await supabase.from('agenda_records').insert({
+  const { error: insertError } = await supabase.from('agenda_records').insert({
     client_id: lead.client_id,
     lead_id: lead.id,
     nombre_lead: lead.full_name,
@@ -94,6 +107,10 @@ async function ensureAgendaRecordForLead(
     de_donde_vino: keyword,
     estado: 'Pendiente',
   })
+  if (insertError) {
+    console.error('[ensureAgendaRecordForLead] insert failed:', insertError.message, insertError.details)
+    throw insertError
+  }
 }
 
 export async function updateLeadAvatarAction(id: string, avatar: string | null) {
