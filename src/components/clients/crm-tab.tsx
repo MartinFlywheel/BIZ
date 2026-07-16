@@ -4,7 +4,7 @@ import { useState, useMemo, useTransition, useEffect, useRef, useCallback } from
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
-import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings } from 'lucide-react'
+import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
 import {
@@ -426,6 +426,22 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
   const [localLeads, setLocalLeads] = useState<Lead[]>(initialLeads)
   const [showNewForm, setShowNewForm] = useState(false)
 
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [stageFilter, setStageFilter] = useState<Set<string>>(new Set())
+  const [ctaFilter, setCtaFilter] = useState<Set<string>>(new Set())
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const filtersRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!filtersOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (filtersRef.current && !filtersRef.current.contains(e.target as Node)) setFiltersOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [filtersOpen])
+
   const avatarList: readonly string[] =
     customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
 
@@ -441,18 +457,37 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
     return m
   }, [agencyUsers])
 
+  // CTAs actually used by this client's leads — not every content piece ever created
+  const ctaOptions = useMemo(() => {
+    const seen = new Map<string, string>() // content_id -> keyword_trigger
+    for (const l of localLeads) {
+      if (!l.content_id || seen.has(l.content_id)) continue
+      const kw = contentMap.get(l.content_id)?.keyword_trigger
+      if (kw) seen.set(l.content_id, kw)
+    }
+    return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [localLeads, contentMap])
+
+  const activeFilterCount = stageFilter.size + ctaFilter.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
+
   const filtered = useMemo(() =>
     localLeads.filter(l => {
-      if (!search) return true
-      const s = search.toLowerCase()
-      return (
-        l.full_name?.toLowerCase().includes(s) ||
-        l.ig_username?.toLowerCase().includes(s) ||
-        l.email?.toLowerCase().includes(s) ||
-        l.phone?.includes(s)
-      )
+      if (search) {
+        const s = search.toLowerCase()
+        const matchesSearch =
+          l.full_name?.toLowerCase().includes(s) ||
+          l.ig_username?.toLowerCase().includes(s) ||
+          l.email?.toLowerCase().includes(s) ||
+          l.phone?.includes(s)
+        if (!matchesSearch) return false
+      }
+      if (stageFilter.size > 0 && !stageFilter.has(l.stage)) return false
+      if (ctaFilter.size > 0 && (!l.content_id || !ctaFilter.has(l.content_id))) return false
+      if (dateFrom && l.created_at < dateFrom) return false
+      if (dateTo && l.created_at.slice(0, 10) > dateTo) return false
+      return true
     }),
-    [localLeads, search]
+    [localLeads, search, stageFilter, ctaFilter, dateFrom, dateTo]
   )
 
   function handleUpdated(updated: Lead) {
@@ -481,6 +516,110 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
             className="w-full rounded-lg border border-zinc-800 bg-zinc-900 pl-9 pr-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
           />
         </div>
+        <div ref={filtersRef} className="relative">
+          <button
+            onClick={() => setFiltersOpen(v => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors whitespace-nowrap ${
+              activeFilterCount > 0
+                ? 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+                : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            <Filter className="h-3.5 w-3.5" />
+            Filtros
+            {activeFilterCount > 0 && (
+              <span className="rounded-full bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown className={`h-3 w-3 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {filtersOpen && (
+            <div className="absolute top-full right-0 mt-1.5 w-72 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 max-h-[70vh] overflow-y-auto">
+              <div className="p-3 space-y-4">
+                {/* Estado del pipeline */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Estado del pipeline</p>
+                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                    {LEAD_STAGES.map(stage => (
+                      <label key={stage.id} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
+                        <input
+                          type="checkbox"
+                          checked={stageFilter.has(stage.id)}
+                          onChange={() => setStageFilter(prev => {
+                            const next = new Set(prev)
+                            if (next.has(stage.id)) next.delete(stage.id)
+                            else next.add(stage.id)
+                            return next
+                          })}
+                          className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
+                        />
+                        <span className={`h-1.5 w-1.5 rounded-full ${STAGE_DOT[stage.id] ?? 'bg-zinc-400'}`} />
+                        {stage.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Fecha de ingreso */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Fecha de ingreso</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={e => setDateFrom(e.target.value)}
+                      className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-violet-500 [color-scheme:dark]"
+                    />
+                    <span className="text-zinc-600 text-xs">–</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={e => setDateTo(e.target.value)}
+                      className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-violet-500 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                {/* CTA */}
+                {ctaOptions.length > 0 && (
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">CTA</p>
+                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                      {ctaOptions.map(([contentId, keyword]) => (
+                        <label key={contentId} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
+                          <input
+                            type="checkbox"
+                            checked={ctaFilter.has(contentId)}
+                            onChange={() => setCtaFilter(prev => {
+                              const next = new Set(prev)
+                              if (next.has(contentId)) next.delete(contentId)
+                              else next.add(contentId)
+                              return next
+                            })}
+                            className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
+                          />
+                          <span className="font-mono text-[11px]">{keyword}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-zinc-800 p-2">
+                <button
+                  onClick={() => { setStageFilter(new Set()); setCtaFilter(new Set()); setDateFrom(''); setDateTo('') }}
+                  disabled={activeFilterCount === 0}
+                  className="w-full rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <button
           onClick={() => setShowNewForm(true)}
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors whitespace-nowrap"
@@ -506,8 +645,8 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={HEADERS.length} className="py-14 text-center text-zinc-600 text-xs">
-                    {search
-                      ? 'Sin resultados para la búsqueda'
+                    {search || activeFilterCount > 0
+                      ? 'Sin resultados para la búsqueda / filtros aplicados'
                       : 'Sin leads · se crean automáticamente vía ManyChat o manualmente'}
                   </td>
                 </tr>
