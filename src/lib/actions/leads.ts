@@ -72,6 +72,12 @@ async function ensureAgendaRecordForLead(
       .maybeSingle()
     keyword = cp?.keyword_trigger || null
   }
+  // Fallback: piece-based ManyChat webhooks stamp first_touch_type as
+  // "manychat:{pieceId}" — pull the keyword out of that if content_id
+  // itself never resolved (older leads, or the lookup above came up empty).
+  if (!keyword && lead.first_touch_type) {
+    keyword = lead.first_touch_type.match(/^manychat:(.+)$/)?.[1] || null
+  }
 
   await supabase.from('agenda_records').insert({
     client_id: lead.client_id,
@@ -81,7 +87,8 @@ async function ensureAgendaRecordForLead(
     fecha_agenda: new Date().toISOString().split('T')[0],
     fecha_1er_contacto: lead.first_touch_at ? lead.first_touch_at.split('T')[0] : null,
     primer_cta: keyword,
-    de_donde_vino: lead.first_touch_type,
+    // The visible "CTA" column in Agendas reads de_donde_vino, not primer_cta
+    de_donde_vino: keyword,
     estado: 'Pendiente',
   })
 }
