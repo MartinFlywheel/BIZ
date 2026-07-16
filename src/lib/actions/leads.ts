@@ -28,14 +28,62 @@ export async function updateLeadStageAction(id: string, stage: LeadStage) {
     updated_at: new Date().toISOString(),
   }
 
-  if (stage === 'agendado' || stage === 'agenda_set') updates.agenda_at = new Date().toISOString()
+  const isAgendaStage = stage === 'agendado' || stage === 'agenda_set'
+  if (isAgendaStage) updates.agenda_at = new Date().toISOString()
   if (stage === 'cliente' || stage === 'closed_won') updates.closed_at = new Date().toISOString()
 
-  const { error } = await supabase.from('leads').update(updates).eq('id', id)
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .update(updates)
+    .eq('id', id)
+    .select('id, client_id, full_name, content_id, first_touch_at, first_touch_type, lead_avatar')
+    .single()
   if (error) throw error
+
+  // No Calendly (or not yet configured) still needs the booking to show up
+  // in Agendas and roll into the funnel — create the linked record once,
+  // pre-filled with what we already know, so only the call outcome is left
+  // to fill in manually.
+  if (isAgendaStage && lead) {
+    await ensureAgendaRecordForLead(supabase, lead)
+  }
 
   revalidatePath('/leads')
   revalidatePath('/dashboard')
+}
+
+async function ensureAgendaRecordForLead(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  lead: { id: string; client_id: string; full_name: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null }
+) {
+  const { data: existing } = await supabase
+    .from('agenda_records')
+    .select('id')
+    .eq('lead_id', lead.id)
+    .maybeSingle()
+  if (existing) return
+
+  let keyword: string | null = null
+  if (lead.content_id) {
+    const { data: cp } = await supabase
+      .from('content_pieces')
+      .select('keyword_trigger')
+      .eq('id', lead.content_id)
+      .maybeSingle()
+    keyword = cp?.keyword_trigger || null
+  }
+
+  await supabase.from('agenda_records').insert({
+    client_id: lead.client_id,
+    lead_id: lead.id,
+    nombre_lead: lead.full_name,
+    avatar: lead.lead_avatar,
+    fecha_agenda: new Date().toISOString().split('T')[0],
+    fecha_1er_contacto: lead.first_touch_at ? lead.first_touch_at.split('T')[0] : null,
+    primer_cta: keyword,
+    de_donde_vino: lead.first_touch_type,
+    estado: 'Pendiente',
+  })
 }
 
 export async function updateLeadAvatarAction(id: string, avatar: string | null) {

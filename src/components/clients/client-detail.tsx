@@ -54,7 +54,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions: _interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
+export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const badge = statusBadge[client.status] || statusBadge.prospect
@@ -127,6 +127,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
                 leads={leads}
                 agencyUsers={agencyUsers}
                 contentPieces={contentPieces}
+                interactions={interactions}
                 clientId={client.id}
                 customAvatars={client.custom_avatars}
               />

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
-import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
+import type { LeadStage, Lead, ContentPiece, Interaction } from '@/lib/types'
 import {
   updateLeadStageAction,
   updateLeadFieldsAction,
@@ -28,6 +28,7 @@ interface Props {
   leads: Lead[]
   agencyUsers: AgencyUser[]
   contentPieces: ContentPiece[]
+  interactions?: Interaction[]
   clientId: string
   customAvatars?: string[]
 }
@@ -420,7 +421,7 @@ function NuevoLeadModal({
 
 // ── Leads Sheet ───────────────────────────────────────────────────────────────
 
-function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId, customAvatars }: Props) {
+function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interactions, clientId, customAvatars }: Props) {
   const [search, setSearch] = useState('')
   const [openLead, setOpenLead] = useState<Lead | null>(null)
   const [localLeads, setLocalLeads] = useState<Lead[]>(initialLeads)
@@ -429,6 +430,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [stageFilter, setStageFilter] = useState<Set<string>>(new Set())
   const [ctaFilter, setCtaFilter] = useState<Set<string>>(new Set())
+  const [interactionFilter, setInteractionFilter] = useState<Set<'real' | 'chat_only'>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const filtersRef = useRef<HTMLDivElement>(null)
@@ -468,7 +470,18 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
     return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]))
   }, [localLeads, contentMap])
 
-  const activeFilterCount = stageFilter.size + ctaFilter.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
+  // Leads with at least one real conversation (from either ManyChat webhook —
+  // the "chat abierto" one and the "conversación real" one both write to
+  // interactions, this just reads the classification back out)
+  const realConversationUsernames = useMemo(() => {
+    const s = new Set<string>()
+    for (const i of interactions ?? []) {
+      if (i.classification === 'conversacion_real' && i.ig_username) s.add(i.ig_username.toLowerCase())
+    }
+    return s
+  }, [interactions])
+
+  const activeFilterCount = stageFilter.size + ctaFilter.size + interactionFilter.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
 
   const filtered = useMemo(() =>
     localLeads.filter(l => {
@@ -483,11 +496,16 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
       }
       if (stageFilter.size > 0 && !stageFilter.has(l.stage)) return false
       if (ctaFilter.size > 0 && (!l.content_id || !ctaFilter.has(l.content_id))) return false
+      if (interactionFilter.size > 0) {
+        const hasReal = l.ig_username ? realConversationUsernames.has(l.ig_username.toLowerCase()) : false
+        const matches = (interactionFilter.has('real') && hasReal) || (interactionFilter.has('chat_only') && !hasReal)
+        if (!matches) return false
+      }
       if (dateFrom && l.created_at < dateFrom) return false
       if (dateTo && l.created_at.slice(0, 10) > dateTo) return false
       return true
     }),
-    [localLeads, search, stageFilter, ctaFilter, dateFrom, dateTo]
+    [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, dateFrom, dateTo]
   )
 
   function handleUpdated(updated: Lead) {
@@ -562,6 +580,32 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
                   </div>
                 </div>
 
+                {/* Tipo de interacción */}
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Tipo de interacción</p>
+                  <div className="space-y-1">
+                    {([
+                      { id: 'real' as const, label: 'Conversación real' },
+                      { id: 'chat_only' as const, label: 'Solo chat abierto (sin responder)' },
+                    ]).map(opt => (
+                      <label key={opt.id} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
+                        <input
+                          type="checkbox"
+                          checked={interactionFilter.has(opt.id)}
+                          onChange={() => setInteractionFilter(prev => {
+                            const next = new Set(prev)
+                            if (next.has(opt.id)) next.delete(opt.id)
+                            else next.add(opt.id)
+                            return next
+                          })}
+                          className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
+                        />
+                        {opt.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Fecha de ingreso */}
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Fecha de ingreso</p>
@@ -610,7 +654,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, clientId,
 
               <div className="border-t border-zinc-800 p-2">
                 <button
-                  onClick={() => { setStageFilter(new Set()); setCtaFilter(new Set()); setDateFrom(''); setDateTo('') }}
+                  onClick={() => { setStageFilter(new Set()); setCtaFilter(new Set()); setInteractionFilter(new Set()); setDateFrom(''); setDateTo('') }}
                   disabled={activeFilterCount === 0}
                   className="w-full rounded-md px-2 py-1.5 text-xs text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
@@ -1017,7 +1061,7 @@ function ConfigurarAvatarsModal({
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export function CrmTab({ leads, agencyUsers, contentPieces, clientId, customAvatars }: Props) {
+export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -1072,6 +1116,7 @@ export function CrmTab({ leads, agencyUsers, contentPieces, clientId, customAvat
           leads={leads}
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
+          interactions={interactions}
           clientId={clientId}
           customAvatars={localAvatars.length > 0 ? localAvatars : undefined}
         />
