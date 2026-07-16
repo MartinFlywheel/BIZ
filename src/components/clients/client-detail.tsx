@@ -112,6 +112,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
               <ContentMetricsGrid
                 contentPieces={contentPieces}
                 contentMetrics={contentMetrics}
+                interactions={interactions}
                 clientId={client.id}
                 contentAnalytics={contentAnalytics}
                 funnelTotals={funnelTotals}

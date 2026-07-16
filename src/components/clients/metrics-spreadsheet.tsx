@@ -61,6 +61,17 @@ function OverrideCell({ value, isOverride, onChange, currency = false, editable 
   )
 }
 
+// ── Reel/Historia split — informational only, not overridable (the split is
+// derived from the aggregate above, which is where corrections belong) ────
+
+function SplitCell({ value }: { value: number }) {
+  return (
+    <td className="px-2 py-1.5 text-right bg-white/[0.004]">
+      <span className="text-[11px] font-mono text-zinc-600">{value || '—'}</span>
+    </td>
+  )
+}
+
 // ── Editable cell (Seguidores + / Notas — the only fields with no live source) ─
 
 function EditCell({ value, onChange, type = 'number', placeholder = '0' }: {
@@ -140,7 +151,11 @@ function SpreadsheetRow({ clientId, periodType, row }: {
       <OverrideCell value={displayValue('views_historias')} isOverride={'views_historias' in overrides} onChange={(v) => setField('views_historias', v)} editable={editable} />
       <EditCell value={followers} onChange={(v) => { const n = parseFloat(v) || 0; setFollowers(n); persist({ followers_gained: n }) }} />
       <OverrideCell value={displayValue('chats_abiertos')} isOverride={'chats_abiertos' in overrides} onChange={(v) => setField('chats_abiertos', v)} editable={editable} />
+      <SplitCell value={row.chats_abiertos_reel} />
+      <SplitCell value={row.chats_abiertos_historia} />
       <OverrideCell value={displayValue('conversaciones')} isOverride={'conversaciones' in overrides} onChange={(v) => setField('conversaciones', v)} editable={editable} />
+      <SplitCell value={row.conversaciones_reel} />
+      <SplitCell value={row.conversaciones_historia} />
       <OverrideCell value={displayValue('agendas')} isOverride={'agendas' in overrides} onChange={(v) => setField('agendas', v)} editable={editable} />
       <OverrideCell value={displayValue('shows')} isOverride={'shows' in overrides} onChange={(v) => setField('shows', v)} editable={editable} />
       <OverrideCell value={displayValue('cierres')} isOverride={'cierres' in overrides} onChange={(v) => setField('cierres', v)} editable={editable} />
@@ -177,11 +192,22 @@ function TotalsRow({ rows }: { rows: ComputedMetricsRow[] }) {
       <td className="px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Total</span>
       </td>
-      {[
-        sum('views_reels'), sum('views_historias'), sum('followers_gained'),
-        sum('chats_abiertos'), sum('conversaciones'), sum('agendas'),
-        sum('shows'), sum('cierres'),
-      ].map((v, i) => (
+      {[sum('views_reels'), sum('views_historias'), sum('followers_gained')].map((v, i) => (
+        <td key={i} className="px-2 py-2 text-right">
+          <span className="text-xs font-mono font-semibold text-zinc-300">{v.toLocaleString('es')}</span>
+        </td>
+      ))}
+      <td className="px-2 py-2 text-right">
+        <span className="text-xs font-mono font-semibold text-zinc-300">{sum('chats_abiertos').toLocaleString('es')}</span>
+      </td>
+      <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('chats_abiertos_reel').toLocaleString('es')}</span></td>
+      <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('chats_abiertos_historia').toLocaleString('es')}</span></td>
+      <td className="px-2 py-2 text-right">
+        <span className="text-xs font-mono font-semibold text-zinc-300">{sum('conversaciones').toLocaleString('es')}</span>
+      </td>
+      <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('conversaciones_reel').toLocaleString('es')}</span></td>
+      <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('conversaciones_historia').toLocaleString('es')}</span></td>
+      {[sum('agendas'), sum('shows'), sum('cierres')].map((v, i) => (
         <td key={i} className="px-2 py-2 text-right">
           <span className="text-xs font-mono font-semibold text-zinc-300">{v.toLocaleString('es')}</span>
         </td>
@@ -224,7 +250,11 @@ const HEADERS = [
   { label: 'Views Historias', align: 'right' },
   { label: 'Seguidores +', align: 'right' },
   { label: 'Chats', align: 'right' },
+  { label: 'Chats Reel', align: 'right', dim: true },
+  { label: 'Chats Historia', align: 'right', dim: true },
   { label: 'Convs.', align: 'right' },
+  { label: 'Convs Reel', align: 'right', dim: true },
+  { label: 'Convs Historia', align: 'right', dim: true },
   { label: 'Agendas', align: 'right' },
   { label: 'Shows', align: 'right' },
   { label: 'Cierres', align: 'right' },

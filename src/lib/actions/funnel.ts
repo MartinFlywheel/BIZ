@@ -263,7 +263,11 @@ export interface ComputedMetricsRow {
   views_reels: number
   views_historias: number
   chats_abiertos: number
+  chats_abiertos_reel: number
+  chats_abiertos_historia: number
   conversaciones: number
+  conversaciones_reel: number
+  conversaciones_historia: number
   agendas: number
   shows: number
   cierres: number
@@ -335,7 +339,11 @@ export async function getComputedClientMetrics(
         views_reels: overrides.views_reels ?? liveRow.views_reels,
         views_historias: overrides.views_historias ?? liveRow.views_historias,
         chats_abiertos: overrides.chats_abiertos ?? liveRow.chats_abiertos,
+        chats_abiertos_reel: liveRow.chats_abiertos_reel,
+        chats_abiertos_historia: liveRow.chats_abiertos_historia,
         conversaciones: overrides.conversaciones ?? liveRow.conversaciones,
+        conversaciones_reel: liveRow.conversaciones_reel,
+        conversaciones_historia: liveRow.conversaciones_historia,
         agendas: overrides.agendas ?? liveRow.agendas,
         shows: overrides.shows ?? liveRow.shows,
         cierres: overrides.cierres ?? liveRow.cierres,
@@ -382,6 +390,10 @@ export async function getComputedClientMetrics(
       period_end: p.end,
       live: liveFields,
       ...liveFields,
+      chats_abiertos_reel: effective.chats_abiertos_reel,
+      chats_abiertos_historia: effective.chats_abiertos_historia,
+      conversaciones_reel: effective.conversaciones_reel,
+      conversaciones_historia: effective.conversaciones_historia,
       followers_gained: (manual?.followers_gained as number) ?? 0,
       notes: (manual?.notes as string) ?? null,
       overrides: {},

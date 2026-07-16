@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
@@ -9,8 +9,8 @@ import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
-import type { ContentPiece } from '@/lib/types'
+import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
+import type { ContentPiece, Interaction } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
 
@@ -123,6 +123,7 @@ function WebhookBanner() {
 interface Props {
     contentPieces: ContentPiece[]
     contentMetrics: ContentMetric[]
+    interactions?: Interaction[]
     clientId: string
     contentAnalytics: ContentAnalytics
     funnelTotals: ClientFunnelTotals
@@ -189,7 +190,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'story', label: 'Historias' },
 ]
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions, clientId, contentAnalytics, funnelTotals }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
@@ -198,6 +199,20 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     const [sortBy, setSortBy] = useState<SortKey>('recent')
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
     const router = useRouter()
+
+    // Per-piece Chats/Conversaciones, live from interactions (all-time,
+    // matching the all-time views/likes/etc. already on each piece)
+    const interactionCountsByPiece = useMemo(() => {
+        const counts = new Map<string, { chats: number; conversaciones: number }>()
+        for (const i of interactions ?? []) {
+            if (!i.content_id) continue
+            const entry = counts.get(i.content_id) ?? { chats: 0, conversaciones: 0 }
+            entry.chats += 1
+            if (i.classification === 'conversacion_real') entry.conversaciones += 1
+            counts.set(i.content_id, entry)
+        }
+        return counts
+    }, [interactions])
 
     async function handleQuickAdd() {
         setQuickAdding(true)
@@ -400,6 +415,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                 return sortedPieces.map((cp) => {
                                     const metric = metricsMap.get(cp.id)
                                     const hasMetrics = !!metric
+                                    const chatStats = interactionCountsByPiece.get(cp.id)
                                     const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
                                     const multiplierColor =
                                         multiplier >= 1.5
@@ -444,11 +460,6 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 ) : (
                                                     <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
                                                         <Play className="h-8 w-8 text-zinc-600" />
-                                                        {cp.keyword_trigger && (
-                                                            <span className="font-mono text-sm font-bold text-zinc-400">
-                                                                {cp.keyword_trigger}
-                                                            </span>
-                                                        )}
                                                         <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
                                                             {contentTypeLabel[cp.content_type] || cp.content_type}
                                                         </span>
@@ -474,6 +485,13 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                     <div className="hidden">
                                                         <Plus className="h-6 w-6 text-white" />
                                                     </div>
+                                                )}
+
+                                                {/* CTA tag — always visible, not just on the no-thumbnail placeholder */}
+                                                {cp.keyword_trigger && (
+                                                    <span className="absolute bottom-2 left-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
+                                                        {cp.keyword_trigger}
+                                                    </span>
                                                 )}
                                             </button>
 
@@ -513,6 +531,22 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* Chats / Conversaciones generated by this specific piece */}
+                                                {chatStats && chatStats.chats > 0 && (
+                                                    <div className="flex items-center gap-2 text-[11px] font-mono text-violet-400/80">
+                                                        <span className="flex items-center gap-0.5" title="Chats abiertos">
+                                                            <MessageSquare className="h-3 w-3" />
+                                                            {formatNumber(chatStats.chats)}
+                                                        </span>
+                                                        {chatStats.conversaciones > 0 && (
+                                                            <span className="flex items-center gap-0.5 text-emerald-400/80" title="Conversaciones reales">
+                                                                <MessageCircle className="h-3 w-3" />
+                                                                {formatNumber(chatStats.conversaciones)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
 
                                                 {/* Caption */}
                                                 {cp.caption && (
