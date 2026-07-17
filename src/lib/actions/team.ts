@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { Responsibility } from '@/lib/types'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export async function getTeamAssignments(clientId: string) {
   const supabase = await createClient()
@@ -46,16 +47,17 @@ export async function createAssignmentAction(formData: FormData) {
 
 export async function getAgendaTeamStats(clientId: string): Promise<Record<string, { agendas: number; shows: number; cerradas: number }>> {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('agenda_records')
-    .select('closer, estado')
-    .eq('client_id', clientId)
-    .not('closer', 'is', null)
-
-  if (error) throw error
+  const data = await fetchAllRows((from, to) =>
+    supabase
+      .from('agenda_records')
+      .select('closer, estado')
+      .eq('client_id', clientId)
+      .not('closer', 'is', null)
+      .range(from, to)
+  )
 
   const stats: Record<string, { agendas: number; shows: number; cerradas: number }> = {}
-  for (const r of data ?? []) {
+  for (const r of data) {
     const closer = r.closer?.trim()
     if (!closer) continue
     if (!stats[closer]) stats[closer] = { agendas: 0, shows: 0, cerradas: 0 }

@@ -3,21 +3,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CallOutcome, CallSentiment } from '@/lib/types'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export async function getCalls(leadId?: string) {
   const supabase = await createClient()
-  let query = supabase
-    .from('sales_calls')
-    .select('*, leads(full_name, ig_username, stage, clients(name, ig_handle)), users!sales_calls_caller_id_fkey(full_name)')
-    .order('scheduled_at', { ascending: false })
 
-  if (leadId) {
-    query = query.eq('lead_id', leadId)
-  }
+  return fetchAllRows((from, to) => {
+    let query = supabase
+      .from('sales_calls')
+      .select('*, leads(full_name, ig_username, stage, clients(name, ig_handle)), users!sales_calls_caller_id_fkey(full_name)')
+      .order('scheduled_at', { ascending: false })
+      .range(from, to)
 
-  const { data, error } = await query
-  if (error) throw error
-  return data
+    if (leadId) query = query.eq('lead_id', leadId)
+    return query
+  })
 }
 
 export async function createCallAction(formData: FormData) {

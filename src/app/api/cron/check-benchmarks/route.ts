@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 // Cron endpoint — must run at request time, never cached.
 export const dynamic = 'force-dynamic'
@@ -35,18 +36,17 @@ export async function GET(request: Request) {
       .eq('client_id', client.id)
       .eq('classification', 'conversacion_real')
 
-    const { data: leads } = await supabaseAdmin
-      .from('leads')
-      .select('stage')
-      .eq('client_id', client.id)
+    const leads = await fetchAllRows((from, to) =>
+      supabaseAdmin.from('leads').select('stage').eq('client_id', client.id).range(from, to)
+    )
 
-    const agendas = (leads || []).filter((l) =>
+    const agendas = leads.filter((l) =>
       ['agenda_set', 'showed_up', 'closed_won', 'closed_lost'].includes(l.stage)
     ).length
-    const showUps = (leads || []).filter((l) =>
+    const showUps = leads.filter((l) =>
       ['showed_up', 'closed_won'].includes(l.stage)
     ).length
-    const cierres = (leads || []).filter((l) => l.stage === 'closed_won').length
+    const cierres = leads.filter((l) => l.stage === 'closed_won').length
 
     const metrics: Record<string, number> = {
       tasa_respuesta: (totalChats || 0) > 0 ? ((realConvos || 0) / (totalChats || 1)) * 100 : 0,

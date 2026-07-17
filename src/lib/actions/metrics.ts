@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
 import { getEffectiveMetricsForRange } from './live-metrics'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export async function getDashboardMetrics(
   clientId: string,
@@ -13,46 +14,47 @@ export async function getDashboardMetrics(
 
   let interactionsQuery = supabase
     .from('interactions')
-    .select('classification', { count: 'exact' })
+    .select('classification', { count: 'exact', head: true })
     .eq('client_id', clientId)
 
-  let leadsQuery = supabase
-    .from('leads')
-    .select('stage', { count: 'exact' })
+  let convRealQuery = supabase
+    .from('interactions')
+    .select('classification', { count: 'exact', head: true })
     .eq('client_id', clientId)
-
-  let viewsQuery = supabase
-    .from('content_pieces')
-    .select('views')
-    .eq('client_id', clientId)
+    .eq('classification', 'conversacion_real')
 
   if (dateFrom) {
     interactionsQuery = interactionsQuery.gte('bot_triggered_at', dateFrom)
-    leadsQuery = leadsQuery.gte('created_at', dateFrom)
-    viewsQuery = viewsQuery.gte('published_at', dateFrom)
+    convRealQuery = convRealQuery.gte('bot_triggered_at', dateFrom)
   }
   if (dateTo) {
     interactionsQuery = interactionsQuery.lte('bot_triggered_at', dateTo)
-    leadsQuery = leadsQuery.lte('created_at', dateTo)
-    viewsQuery = viewsQuery.lte('published_at', dateTo)
+    convRealQuery = convRealQuery.lte('bot_triggered_at', dateTo)
   }
 
-  const [interactionsRes, convRealRes, leadsRes, viewsRes] = await Promise.all([
+  // These fetch actual rows (not just a count) to filter/sum client-side,
+  // so — unlike the count-only queries above — they need to page past
+  // Supabase's 1000-row cap explicitly.
+  const [interactionsRes, convRealRes, leads, views] = await Promise.all([
     interactionsQuery,
-    supabase
-      .from('interactions')
-      .select('classification', { count: 'exact' })
-      .eq('client_id', clientId)
-      .eq('classification', 'conversacion_real')
-      .then((r) => r),
-    leadsQuery.select('stage'),
-    viewsQuery,
+    convRealQuery,
+    fetchAllRows((from, to) => {
+      let q = supabase.from('leads').select('stage').eq('client_id', clientId).range(from, to)
+      if (dateFrom) q = q.gte('created_at', dateFrom)
+      if (dateTo) q = q.lte('created_at', dateTo)
+      return q
+    }),
+    fetchAllRows((from, to) => {
+      let q = supabase.from('content_pieces').select('views').eq('client_id', clientId).range(from, to)
+      if (dateFrom) q = q.gte('published_at', dateFrom)
+      if (dateTo) q = q.lte('published_at', dateTo)
+      return q
+    }),
   ])
 
   const chats_abiertos = interactionsRes.count || 0
   const conversaciones_reales = convRealRes.count || 0
 
-  const leads = leadsRes.data || []
   const agendas = leads.filter((l) =>
     ['agenda_set', 'showed_up', 'closed_won', 'closed_lost'].includes(l.stage)
   ).length
@@ -61,7 +63,7 @@ export async function getDashboardMetrics(
   ).length
   const cierres = leads.filter((l) => l.stage === 'closed_won').length
 
-  const total_views = (viewsRes.data || []).reduce((sum, c) => sum + (c.views || 0), 0)
+  const total_views = views.reduce((sum, c) => sum + (c.views || 0), 0)
 
   const tasa_respuesta = chats_abiertos > 0
     ? (conversaciones_reales / chats_abiertos) * 100
@@ -94,12 +96,14 @@ export async function getClientFunnelTotals(clientId: string) {
   const lastDay = new Date(year, month, 0).getDate()
   const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 
-  const [viewsRes, live] = await Promise.all([
-    supabase.from('content_pieces').select('views').eq('client_id', clientId),
+  const [viewsRows, live] = await Promise.all([
+    fetchAllRows((from, to) =>
+      supabase.from('content_pieces').select('views').eq('client_id', clientId).range(from, to)
+    ),
     getEffectiveMetricsForRange(clientId, start, end),
   ])
 
-  const views = (viewsRes.data || []).reduce((s, cp) => s + (cp.views || 0), 0)
+  const views = viewsRows.reduce((s, cp) => s + (cp.views || 0), 0)
 
   return {
     views,

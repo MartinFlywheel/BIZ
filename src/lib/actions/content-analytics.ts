@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export interface ContentAnalytics {
   engagement: {
@@ -39,12 +40,13 @@ export interface ContentAnalytics {
 export async function getContentAnalytics(clientId: string): Promise<ContentAnalytics> {
   const supabase = await createClient()
 
-  const { data: pieces } = await supabase
-    .from('content_pieces')
-    .select('id, caption, keyword_trigger, ig_thumbnail_url, views, likes, comments, shares, saves')
-    .eq('client_id', clientId)
-
-  const allPieces = pieces || []
+  const allPieces = await fetchAllRows((from, to) =>
+    supabase
+      .from('content_pieces')
+      .select('id, caption, keyword_trigger, ig_thumbnail_url, views, likes, comments, shares, saves')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
 
   const engagement = allPieces.reduce(
     (acc, p) => ({

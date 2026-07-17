@@ -3,22 +3,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ContentType } from '@/lib/types'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export async function getContentPieces(clientId?: string) {
   const supabase = await createClient()
-  let query = supabase
-    .from('content_pieces')
-    .select('*, clients(name, ig_handle), campaigns(name)')
-    .order('published_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
 
-  if (clientId) {
-    query = query.eq('client_id', clientId)
-  }
+  return fetchAllRows((from, to) => {
+    let query = supabase
+      .from('content_pieces')
+      .select('*, clients(name, ig_handle), campaigns(name)')
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .order('created_at', { ascending: false })
+      .range(from, to)
 
-  const { data, error } = await query
-  if (error) throw error
-  return data
+    if (clientId) query = query.eq('client_id', clientId)
+    return query
+  })
 }
 
 export async function createContentAction(formData: FormData) {

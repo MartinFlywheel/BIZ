@@ -3,21 +3,21 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { InteractionClassification, InteractionSource } from '@/lib/types'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export async function getInteractions(clientId?: string) {
   const supabase = await createClient()
-  let query = supabase
-    .from('interactions')
-    .select('*, clients(name, ig_handle), content_pieces(content_type, caption)')
-    .order('bot_triggered_at', { ascending: false })
 
-  if (clientId) {
-    query = query.eq('client_id', clientId)
-  }
+  return fetchAllRows((from, to) => {
+    let query = supabase
+      .from('interactions')
+      .select('*, clients(name, ig_handle), content_pieces(content_type, caption)')
+      .order('bot_triggered_at', { ascending: false })
+      .range(from, to)
 
-  const { data, error } = await query
-  if (error) throw error
-  return data
+    if (clientId) query = query.eq('client_id', clientId)
+    return query
+  })
 }
 
 export async function createInteractionAction(formData: FormData) {
