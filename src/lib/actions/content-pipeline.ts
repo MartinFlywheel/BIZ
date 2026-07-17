@@ -18,6 +18,8 @@ export interface PipelineItem {
   description: string | null
   script: string | null
   reference_url: string | null
+  raw_video_url: string | null
+  edited_video_url: string | null
   assigned_to: string | null
   due_date: string | null
   angle: string | null
@@ -81,6 +83,8 @@ export async function updatePipelineItem(id: string, clientId: string, fields: {
   description?: string
   script?: string
   reference_url?: string
+  raw_video_url?: string
+  edited_video_url?: string
   assigned_to?: string
   due_date?: string | null
   angle?: string

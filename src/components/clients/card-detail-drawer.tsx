@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
 
@@ -102,6 +102,101 @@ function AudioPlayer({ src, onDelete, onReRecord }: { src: string; onDelete: () 
   )
 }
 
+// ── Link field (Referencia / Crudo / Editado) ───────────────────────────────
+
+function LinkField({ icon: Icon, label, value, placeholder, onChange }: {
+  icon: React.ElementType
+  label: string
+  value: string
+  placeholder: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
+        <Icon className="h-3 w-3" /> {label}
+      </p>
+      <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent text-[11px] text-zinc-400 outline-none placeholder:text-zinc-700 font-mono"
+        />
+        {value && (
+          <a
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-zinc-600 hover:text-blue-400 transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Script editor — lightweight rich text (headings + bold) via
+// contentEditable/execCommand, no external editor dependency ────────────────
+
+function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChange: (html: string) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null)
+
+  function exec(command: string, value?: string) {
+    editorRef.current?.focus()
+    document.execCommand(command, false, value)
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+  }
+
+  return (
+    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden focus-within:border-white/[0.1] transition-colors">
+      <div className="flex items-center gap-1 border-b border-white/[0.06] px-2 py-1.5">
+        <button
+          type="button"
+          title="Título"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec('formatBlock', 'h3')}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
+        >
+          <Heading className="h-3 w-3" /> Título
+        </button>
+        <button
+          type="button"
+          title="Negrita"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec('bold')}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
+        >
+          <Bold className="h-3 w-3" /> Negrita
+        </button>
+        <button
+          type="button"
+          title="Quitar formato"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => exec('removeFormat')}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+        >
+          <Eraser className="h-3 w-3" /> Normal
+        </button>
+      </div>
+      <div
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={(e) => onChange(e.currentTarget.innerHTML)}
+        dangerouslySetInnerHTML={{ __html: initialValue }}
+        data-placeholder="Escribe el guión, notas o ideas para el reel..."
+        className="min-h-[240px] px-3 py-3 text-[12px] text-zinc-300 outline-none leading-relaxed
+          empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-700
+          [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-zinc-100 [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:first:mt-0
+          [&_strong]:text-zinc-100 [&_strong]:font-semibold"
+      />
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface Props {
@@ -114,6 +209,8 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [title, setTitle]           = useState(item.title)
   const [script, setScript]         = useState(item.script ?? '')
   const [referenceUrl, setRef]      = useState(item.reference_url ?? '')
+  const [rawVideoUrl, setRawVideo]     = useState(item.raw_video_url ?? '')
+  const [editedVideoUrl, setEditedVideo] = useState(item.edited_video_url ?? '')
   const [assignedTo, setAssigned]   = useState(item.assigned_to ?? '')
   const [dueDate, setDueDate]       = useState(item.due_date ?? '')
   const [angle, setAngle]           = useState(item.angle ?? '')
@@ -392,30 +489,28 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
 
           </div>
 
-          {/* ── Reference URL ── */}
-          <div className="space-y-2">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
-              <ExternalLink className="h-3 w-3" /> Referencia
-            </p>
-            <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-              <input
-                value={referenceUrl}
-                onChange={(e) => { setRef(e.target.value); debounceSave({ reference_url: e.target.value }) }}
-                placeholder="https://www.instagram.com/reel/..."
-                className="flex-1 bg-transparent text-[11px] text-zinc-400 outline-none placeholder:text-zinc-700 font-mono"
-              />
-              {referenceUrl && (
-                <a
-                  href={referenceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 text-zinc-600 hover:text-blue-400 transition-colors"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
+          {/* ── Links: Referencia / Crudo / Editado ── */}
+          <LinkField
+            icon={ExternalLink}
+            label="Referencia"
+            value={referenceUrl}
+            placeholder="https://www.instagram.com/reel/..."
+            onChange={(v) => { setRef(v); debounceSave({ reference_url: v }) }}
+          />
+          <LinkField
+            icon={Video}
+            label="Crudo"
+            value={rawVideoUrl}
+            placeholder="Link al video sin editar (Drive, etc.)..."
+            onChange={(v) => { setRawVideo(v); debounceSave({ raw_video_url: v }) }}
+          />
+          <LinkField
+            icon={Film}
+            label="Editado"
+            value={editedVideoUrl}
+            placeholder="Link al video ya editado..."
+            onChange={(v) => { setEditedVideo(v); debounceSave({ edited_video_url: v }) }}
+          />
 
           {/* ── Audio ── */}
           <div className="space-y-2">
@@ -473,12 +568,9 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
             <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
               <FileText className="h-3 w-3" /> Script
             </p>
-            <textarea
-              value={script}
-              onChange={(e) => { setScript(e.target.value); debounceSave({ script: e.target.value }) }}
-              placeholder="Escribe el guión, notas o ideas para el reel..."
-              rows={12}
-              className="w-full rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-3 text-[12px] text-zinc-300 outline-none placeholder:text-zinc-700 resize-none leading-relaxed focus:border-white/[0.1] transition-colors"
+            <ScriptEditor
+              initialValue={script}
+              onChange={(html) => { setScript(html); debounceSave({ script: html }) }}
             />
           </div>
 

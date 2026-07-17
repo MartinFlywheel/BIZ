@@ -180,6 +180,8 @@ function KanbanColumn({
       description: null,
       script: null,
       reference_url: null,
+      raw_video_url: null,
+      edited_video_url: null,
       assigned_to: null,
       due_date: null,
       angle: null,
