@@ -49,6 +49,16 @@ function tiempoDeCompra(a: string | null, b: string | null): string {
   return days >= 0 ? `${days}d` : '—'
 }
 
+// Days between when the booking was made (created_at) and the call's actual
+// date (fecha_agenda) — how far out people tend to book, to spot patterns
+// against close rate.
+function diasAnticipacion(createdAt: string, fechaAgenda: string | null): string {
+  if (!fechaAgenda) return '—'
+  const createdDate = createdAt.slice(0, 10)
+  const days = Math.round((new Date(fechaAgenda + 'T12:00:00Z').getTime() - new Date(createdDate + 'T12:00:00Z').getTime()) / 86400000)
+  return days >= 0 ? `${days}d` : '—'
+}
+
 function fmtDate(d: string | null): string {
   if (!d) return '—'
   return new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
@@ -253,7 +263,7 @@ const cellBase = 'px-0 py-0 h-full w-full flex items-center cursor-text text-inh
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const HEADERS = ['Fecha', 'Nombre', 'Avatar', 'CTA', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
+const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
 
 export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: string; customAvatars?: string[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
@@ -466,7 +476,13 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
         key={r.id}
         className={`group border-b border-white/[0.04] transition-colors ${isNew ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
       >
+        <td className="px-2 py-1.5 text-xs font-mono text-zinc-600 w-[80px] whitespace-nowrap" title="Cuándo se creó este registro de agenda">
+          {fmtDate(r.created_at)}
+        </td>
         <td className="px-2 py-1.5 text-xs w-[90px]">{dateCell()}</td>
+        <td className="px-2 py-1.5 text-xs font-mono text-right text-zinc-600 w-[80px] whitespace-nowrap" title="Días entre agendar y la fecha de la llamada">
+          {diasAnticipacion(r.created_at, r.fecha_agenda)}
+        </td>
         <td className="px-2 py-1.5 text-xs font-medium text-zinc-100 min-w-[130px] max-w-[180px]">
           {textCell('nombre_lead', r.nombre_lead, 'Nombre', 'text-sm font-medium text-zinc-100')}
         </td>
@@ -549,7 +565,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
                     </tr>,
                     ...recs.map(r => renderRow(r)),
                     <tr key={`wtotal-${week}`} className="border-b border-white/[0.06] bg-white/[0.01]">
-                      <td colSpan={6} className="px-3 py-1.5">
+                      <td colSpan={8} className="px-3 py-1.5">
                         <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Total semana {week}</span>
                       </td>
                       <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-400 whitespace-nowrap">
@@ -565,7 +581,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
               )}
               {records.length > 0 && (
                 <tr className="border-t border-white/[0.1] bg-white/[0.02]">
-                  <td colSpan={5} className="px-3 py-2">
+                  <td colSpan={7} className="px-3 py-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                       Total Mes · {grandCierres} cierre{grandCierres !== 1 ? 's' : ''}
                     </span>
