@@ -23,6 +23,7 @@ export interface PipelineItem {
   assigned_to: string | null
   due_date: string | null
   angle: string | null
+  objective: string | null
   audio_url: string | null
   stage: PipelineStage
   position: number
@@ -88,6 +89,7 @@ export async function updatePipelineItem(id: string, clientId: string, fields: {
   assigned_to?: string
   due_date?: string | null
   angle?: string
+  objective?: string
   audio_url?: string | null
   stage?: PipelineStage
   position?: number

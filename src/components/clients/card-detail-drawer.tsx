@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
 
@@ -16,6 +16,7 @@ const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[]
 ]
 
 const ANGLES = ['Clientes', 'Educativo', 'Viral', 'Nutrición', 'Casos de éxito', 'Posicionamiento', 'Dolor', 'Autoridad']
+const OBJETIVOS = ['Sígueme', 'Comenta', 'Comparte', 'Guarda', 'DM', 'Link en Bio']
 
 // ── Shared time formatter ─────────────────────────────────────────────────────
 
@@ -222,6 +223,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [assignedTo, setAssigned]   = useState(item.assigned_to ?? '')
   const [dueDate, setDueDate]       = useState(item.due_date ?? '')
   const [angle, setAngle]           = useState(item.angle ?? '')
+  const [objective, setObjective]   = useState(item.objective ?? '')
   const [audioUrl, setAudioUrl]     = useState(item.audio_url ?? null)
   const [recording, setRecording]   = useState(false)
   const [recSeconds, setRecSeconds] = useState(0)
@@ -234,6 +236,8 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [stageOpen, setStageOpen]   = useState(false)
   const [angleOpen, setAngleOpen]   = useState(false)
   const [angleCustom, setAngleCustom] = useState('')
+  const [objectiveOpen, setObjectiveOpen] = useState(false)
+  const [objectiveCustom, setObjectiveCustom] = useState('')
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingRef = useRef<Parameters<typeof updatePipelineItem>[2]>({})
 
@@ -285,6 +289,12 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     setAngle(a)
     setAngleOpen(false)
     debounceSave({ angle: a })
+  }
+
+  function selectObjective(o: string) {
+    setObjective(o)
+    setObjectiveOpen(false)
+    debounceSave({ objective: o })
   }
 
   async function uploadBlob(blob: Blob) {
@@ -401,7 +411,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
               <span className="text-[11px] text-zinc-600 w-24 shrink-0">Estado</span>
               <div className="relative">
                 <button
-                  onClick={() => { setStageOpen(!stageOpen); setAngleOpen(false) }}
+                  onClick={() => { setStageOpen(!stageOpen); setAngleOpen(false); setObjectiveOpen(false) }}
                   className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-semibold transition-opacity hover:opacity-80 ${currentStage?.color}`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${currentStage?.dot}`} />
@@ -459,7 +469,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
               </span>
               <div className="relative flex-1">
                 <button
-                  onClick={() => { setAngleOpen(!angleOpen); setStageOpen(false) }}
+                  onClick={() => { setAngleOpen(!angleOpen); setStageOpen(false); setObjectiveOpen(false) }}
                   className="text-[12px] text-zinc-300 hover:text-zinc-100 transition-colors text-left"
                 >
                   {angle
@@ -485,6 +495,49 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' && angleCustom.trim()) selectAngle(angleCustom.trim())
                           if (e.key === 'Escape') setAngleOpen(false)
+                        }}
+                        placeholder="Personalizado + Enter..."
+                        className="w-full py-1.5 text-[11px] bg-transparent text-zinc-400 outline-none placeholder:text-zinc-700"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Objective */}
+            <div className="flex items-center gap-3 px-4 py-2.5">
+              <span className="text-[11px] text-zinc-600 w-24 shrink-0 flex items-center gap-1.5">
+                <Target className="h-3 w-3" /> Objetivo
+              </span>
+              <div className="relative flex-1">
+                <button
+                  onClick={() => { setObjectiveOpen(!objectiveOpen); setStageOpen(false); setAngleOpen(false) }}
+                  className="text-[12px] text-zinc-300 hover:text-zinc-100 transition-colors text-left"
+                >
+                  {objective
+                    ? <span className="rounded-md border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-300">{objective}</span>
+                    : <span className="text-zinc-700">—</span>
+                  }
+                </button>
+                {objectiveOpen && (
+                  <div className="absolute top-full left-0 mt-1.5 z-10 rounded-xl border border-white/[0.08] bg-zinc-900 shadow-2xl py-1.5 min-w-[190px]">
+                    {OBJETIVOS.map((o) => (
+                      <button
+                        key={o}
+                        onClick={() => selectObjective(o)}
+                        className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/[0.05] transition-colors ${o === objective ? 'text-zinc-100' : 'text-zinc-400'}`}
+                      >
+                        {o}
+                      </button>
+                    ))}
+                    <div className="border-t border-white/[0.05] mt-1 pt-1 px-2">
+                      <input
+                        value={objectiveCustom}
+                        onChange={(e) => setObjectiveCustom(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && objectiveCustom.trim()) selectObjective(objectiveCustom.trim())
+                          if (e.key === 'Escape') setObjectiveOpen(false)
                         }}
                         placeholder="Personalizado + Enter..."
                         className="w-full py-1.5 text-[11px] bg-transparent text-zinc-400 outline-none placeholder:text-zinc-700"
