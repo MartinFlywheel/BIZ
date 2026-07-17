@@ -144,6 +144,15 @@ function LinkField({ icon: Icon, label, value, placeholder, onChange }: {
 function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChange: (html: string) => void }) {
   const editorRef = useRef<HTMLDivElement>(null)
 
+  // Set the starting content once, imperatively — never again from a prop
+  // change. Re-applying innerHTML from React on every keystroke (the
+  // previous dangerouslySetInnerHTML wiring) reset the caret to position 0
+  // after every character, which is what made typing look reversed.
+  useEffect(() => {
+    if (editorRef.current) editorRef.current.innerHTML = initialValue
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function exec(command: string, value?: string) {
     editorRef.current?.focus()
     document.execCommand(command, false, value)
@@ -186,7 +195,6 @@ function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChan
         contentEditable
         suppressContentEditableWarning
         onInput={(e) => onChange(e.currentTarget.innerHTML)}
-        dangerouslySetInnerHTML={{ __html: initialValue }}
         data-placeholder="Escribe el guión, notas o ideas para el reel..."
         className="min-h-[240px] px-3 py-3 text-[12px] text-zinc-300 outline-none leading-relaxed
           empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-700
