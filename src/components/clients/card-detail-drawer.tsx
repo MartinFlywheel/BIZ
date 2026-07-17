@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
+import { OBJETIVOS, objectiveColor } from '@/lib/types'
 
 const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[] = [
   { id: 'ideas',        label: 'Ideas',        color: 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',       dot: 'bg-zinc-400' },
@@ -16,7 +17,6 @@ const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[]
 ]
 
 const ANGLES = ['Clientes', 'Educativo', 'Viral', 'Nutrición', 'Casos de éxito', 'Posicionamiento', 'Dolor', 'Autoridad']
-const OBJETIVOS = ['Sígueme', 'Comenta', 'Comparte', 'Guarda', 'DM', 'Link en Bio']
 
 // ── Shared time formatter ─────────────────────────────────────────────────────
 
@@ -516,21 +516,28 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
                   className="text-[12px] text-zinc-300 hover:text-zinc-100 transition-colors text-left"
                 >
                   {objective
-                    ? <span className="rounded-md border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[11px] text-violet-300">{objective}</span>
+                    ? (() => {
+                        const c = objectiveColor(objective)
+                        return <span className={`rounded-md border ${c.border} ${c.bg} px-2 py-0.5 text-[11px] ${c.text}`}>{objective}</span>
+                      })()
                     : <span className="text-zinc-700">—</span>
                   }
                 </button>
                 {objectiveOpen && (
                   <div className="absolute top-full left-0 mt-1.5 z-10 rounded-xl border border-white/[0.08] bg-zinc-900 shadow-2xl py-1.5 min-w-[190px]">
-                    {OBJETIVOS.map((o) => (
-                      <button
-                        key={o}
-                        onClick={() => selectObjective(o)}
-                        className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/[0.05] transition-colors ${o === objective ? 'text-zinc-100' : 'text-zinc-400'}`}
-                      >
-                        {o}
-                      </button>
-                    ))}
+                    {OBJETIVOS.map((o) => {
+                      const c = objectiveColor(o)
+                      return (
+                        <button
+                          key={o}
+                          onClick={() => selectObjective(o)}
+                          className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-white/[0.05] transition-colors flex items-center gap-2 ${o === objective ? 'text-zinc-100' : 'text-zinc-400'}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+                          {o}
+                        </button>
+                      )
+                    })}
                     <div className="border-t border-white/[0.05] mt-1 pt-1 px-2">
                       <input
                         value={objectiveCustom}

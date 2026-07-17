@@ -1,6 +1,26 @@
 export const SOP_TAGS = ['Ventas', 'Marketing', 'Setting', 'Closing', 'Historias'] as const
 export type SopTag = typeof SOP_TAGS[number]
 
+// Reel CTA goal, shown on pipeline cards. Each option gets a distinct color
+// (explicit map, not a hash) so visually similar goals never collide.
+export const OBJETIVOS = ['Sígueme', 'Comenta', 'Comparte', 'Guarda', 'DM', 'Link en Bio'] as const
+
+const OBJETIVO_PALETTE: Record<string, { text: string; bg: string; border: string; dot: string }> = {
+  'Sígueme':     { text: 'text-violet-300',   bg: 'bg-violet-500/10',   border: 'border-violet-500/25', dot: 'bg-violet-400' },
+  'Comenta':     { text: 'text-cyan-300',     bg: 'bg-cyan-500/10',     border: 'border-cyan-500/25',   dot: 'bg-cyan-400' },
+  'Comparte':    { text: 'text-emerald-300',  bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', dot: 'bg-emerald-400' },
+  'Guarda':      { text: 'text-amber-300',    bg: 'bg-amber-500/10',   border: 'border-amber-500/25',   dot: 'bg-amber-400' },
+  'DM':          { text: 'text-rose-300',     bg: 'bg-rose-500/10',    border: 'border-rose-500/25',    dot: 'bg-rose-400' },
+  'Link en Bio': { text: 'text-fuchsia-300',  bg: 'bg-fuchsia-500/10', border: 'border-fuchsia-500/25', dot: 'bg-fuchsia-400' },
+}
+
+// Fallback for custom (user-typed) objectives not in the fixed list above.
+const OBJETIVO_FALLBACK = { text: 'text-blue-300', bg: 'bg-blue-500/10', border: 'border-blue-500/25', dot: 'bg-blue-400' }
+
+export function objectiveColor(objective: string) {
+  return OBJETIVO_PALETTE[objective] ?? OBJETIVO_FALLBACK
+}
+
 export type UserType = 'agency' | 'client'
 
 export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'editor' | 'client_owner'

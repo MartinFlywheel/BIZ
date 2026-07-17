@@ -11,6 +11,7 @@ import {
   type PipelineStage,
 } from '@/lib/actions/content-pipeline'
 import { CardDetailDrawer } from './card-detail-drawer'
+import { objectiveColor } from '@/lib/types'
 
 // ── Column config ────────────────────────────────────────────────────────────
 
@@ -85,11 +86,14 @@ function KanbanCard({
         <p className="text-xs text-zinc-200 leading-snug">{item.title}</p>
         {/* Metadata pills */}
         <div className="flex flex-wrap gap-1 mt-1.5">
-          {item.objective && (
-            <span className="rounded border border-violet-500/25 bg-violet-500/10 px-1.5 py-px text-[9px] font-medium text-violet-300">
-              {item.objective}
-            </span>
-          )}
+          {item.objective && (() => {
+            const c = objectiveColor(item.objective)
+            return (
+              <span className={`rounded border ${c.border} ${c.bg} px-1.5 py-px text-[9px] font-medium ${c.text}`}>
+                {item.objective}
+              </span>
+            )
+          })()}
           {item.angle && (
             <span className="rounded border border-white/[0.06] bg-white/[0.03] px-1.5 py-px text-[9px] text-zinc-500">
               {item.angle}
