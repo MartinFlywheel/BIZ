@@ -187,8 +187,8 @@ export async function getLiveMetricsBuckets(
     const r = result[b.key]
     const estado = a.estado as string | null
     r.agendas += 1
-    if (estado && ['Show', 'No Show', 'Cerrado', 'No Calificado'].includes(estado)) r.llamadas += 1
-    if (estado && ['Show', 'Cerrado'].includes(estado)) r.shows += 1
+    if (estado && ['Show', 'No Show', 'No Cerrado', 'Cerrado', 'No Calificado'].includes(estado)) r.llamadas += 1
+    if (estado && ['Show', 'No Cerrado', 'Cerrado'].includes(estado)) r.shows += 1
     if (estado === 'No Calificado') r.llamadas_no_calificadas += 1
     if (estado === 'Cerrado') {
       r.cierres += 1

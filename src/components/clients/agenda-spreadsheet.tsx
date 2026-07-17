@@ -13,11 +13,12 @@ import { Modal } from '@/components/ui/modal'
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
-const ESTADO_OPTIONS = ['Pendiente','Show','No Show','Cerrado','No Calificado','Reagendado']
+const ESTADO_OPTIONS = ['Pendiente','Show','No Show','No Cerrado','Cerrado','No Calificado','Reagendado']
 const FORMA_CIERRE_OPTIONS = ['1 cuota','2 cuotas','3 cuotas','Pago completo','Otra']
 
 const estadoColor: Record<string, string> = {
   'Show':           'text-emerald-400',
+  'No Cerrado':     'text-orange-400',
   'Cerrado':        'text-emerald-300 font-semibold',
   'No Show':        'text-red-400',
   'No Calificado':  'text-zinc-500',
@@ -27,6 +28,7 @@ const estadoColor: Record<string, string> = {
 
 const estadoBg: Record<string, string> = {
   'Show':           'bg-emerald-950/40 border-emerald-900/40',
+  'No Cerrado':     'bg-orange-950/40 border-orange-900/40',
   'Cerrado':        'bg-emerald-950/60 border-emerald-800/50',
   'No Show':        'bg-red-950/40 border-red-900/40',
   'No Calificado':  'bg-zinc-900 border-zinc-800',

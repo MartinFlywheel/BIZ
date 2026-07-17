@@ -62,7 +62,7 @@ export async function getAgendaTeamStats(clientId: string): Promise<Record<strin
     if (!closer) continue
     if (!stats[closer]) stats[closer] = { agendas: 0, shows: 0, cerradas: 0 }
     stats[closer].agendas++
-    if (r.estado === 'Show' || r.estado === 'Cerrado') stats[closer].shows++
+    if (r.estado === 'Show' || r.estado === 'No Cerrado' || r.estado === 'Cerrado') stats[closer].shows++
     if (r.estado === 'Cerrado') stats[closer].cerradas++
   }
 
