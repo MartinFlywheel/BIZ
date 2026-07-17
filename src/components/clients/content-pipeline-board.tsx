@@ -181,25 +181,8 @@ function KanbanColumn({
   async function handleAdd() {
     const trimmed = newTitle.trim()
     if (!trimmed) { setAdding(false); return }
-    await createPipelineItem(clientId, trimmed, stage.id)
-    onAdded({
-      id: crypto.randomUUID(),
-      client_id: clientId,
-      title: trimmed,
-      description: null,
-      script: null,
-      reference_url: null,
-      raw_video_url: null,
-      edited_video_url: null,
-      assigned_to: null,
-      due_date: null,
-      angle: null,
-      objective: null,
-      audio_url: null,
-      stage: stage.id,
-      position: items.length,
-      created_at: new Date().toISOString(),
-    })
+    const created = await createPipelineItem(clientId, trimmed, stage.id)
+    onAdded(created)
     setNewTitle('')
     setAdding(false)
   }

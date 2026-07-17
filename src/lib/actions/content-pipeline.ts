@@ -54,7 +54,7 @@ export async function getPipelineItems(clientId: string): Promise<Record<Pipelin
   return grouped
 }
 
-export async function createPipelineItem(clientId: string, title: string, stage: PipelineStage) {
+export async function createPipelineItem(clientId: string, title: string, stage: PipelineStage): Promise<PipelineItem> {
   const supabase = await createClient()
 
   const { data: last } = await supabase
@@ -68,15 +68,20 @@ export async function createPipelineItem(clientId: string, title: string, stage:
 
   const position = (last?.position ?? -1) + 1
 
-  const { error } = await supabase.from('content_pipeline').insert({
-    client_id: clientId,
-    title: title.trim(),
-    stage,
-    position,
-  })
+  const { data, error } = await supabase
+    .from('content_pipeline')
+    .insert({
+      client_id: clientId,
+      title: title.trim(),
+      stage,
+      position,
+    })
+    .select('*')
+    .single()
 
   if (error) throw error
   revalidatePath(`/clients/${clientId}`)
+  return data as PipelineItem
 }
 
 export async function updatePipelineItem(id: string, clientId: string, fields: {
