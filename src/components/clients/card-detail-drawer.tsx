@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser, Link2, Check } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser, Link2, Check, Maximize2 } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
 import { OBJETIVOS, objectiveColor } from '@/lib/types'
@@ -142,8 +142,9 @@ function LinkField({ icon: Icon, label, value, placeholder, onChange }: {
 // ── Script editor — lightweight rich text (headings + bold) via
 // contentEditable/execCommand, no external editor dependency ────────────────
 
-function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChange: (html: string) => void }) {
+function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initialValue: string; onChange: (html: string) => void; variant?: 'compact' | 'focus' }) {
   const editorRef = useRef<HTMLDivElement>(null)
+  const isFocus = variant === 'focus'
 
   // Set the starting content once, imperatively — never again from a prop
   // change. Re-applying innerHTML from React on every keystroke (the
@@ -162,13 +163,13 @@ function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChan
 
   return (
     <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden focus-within:border-white/[0.1] transition-colors">
-      <div className="flex items-center gap-1 border-b border-white/[0.06] px-2 py-1.5">
+      <div className={`flex items-center gap-1 border-b border-white/[0.06] ${isFocus ? 'px-3 py-2' : 'px-2 py-1.5'}`}>
         <button
           type="button"
           title="Título"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => exec('formatBlock', 'h3')}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors ${isFocus ? 'text-[13px]' : 'text-[11px]'}`}
         >
           <Heading className="h-3 w-3" /> Título
         </button>
@@ -177,7 +178,7 @@ function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChan
           title="Negrita"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => exec('bold')}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors"
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors ${isFocus ? 'text-[13px]' : 'text-[11px]'}`}
         >
           <Bold className="h-3 w-3" /> Negrita
         </button>
@@ -186,7 +187,7 @@ function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChan
           title="Quitar formato"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => exec('removeFormat')}
-          className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors ${isFocus ? 'text-[13px]' : 'text-[11px]'}`}
         >
           <Eraser className="h-3 w-3" /> Normal
         </button>
@@ -197,11 +198,50 @@ function ScriptEditor({ initialValue, onChange }: { initialValue: string; onChan
         suppressContentEditableWarning
         onInput={(e) => onChange(e.currentTarget.innerHTML)}
         data-placeholder="Escribe el guión, notas o ideas para el reel..."
-        className="min-h-[240px] px-3 py-3 text-[12px] text-zinc-300 outline-none leading-relaxed
-          empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-700
-          [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-zinc-100 [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:first:mt-0
-          [&_strong]:text-zinc-100 [&_strong]:font-semibold"
+        className={isFocus
+          ? `min-h-[55vh] px-8 py-8 text-[22px] text-zinc-200 outline-none leading-relaxed
+             empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-700
+             [&_h3]:text-[30px] [&_h3]:font-semibold [&_h3]:text-zinc-100 [&_h3]:mt-6 [&_h3]:mb-2 [&_h3]:first:mt-0
+             [&_strong]:text-zinc-100 [&_strong]:font-semibold`
+          : `min-h-[240px] px-3 py-3 text-[12px] text-zinc-300 outline-none leading-relaxed
+             empty:before:content-[attr(data-placeholder)] empty:before:text-zinc-700
+             [&_h3]:text-[15px] [&_h3]:font-semibold [&_h3]:text-zinc-100 [&_h3]:mt-3 [&_h3]:mb-1 [&_h3]:first:mt-0
+             [&_strong]:text-zinc-100 [&_strong]:font-semibold`
+        }
       />
+    </div>
+  )
+}
+
+// ── Script focus mode — large, centered view for reading the script while
+// recording, instead of the drawer pinned to the screen edge ────────────────
+
+function ScriptFocusModal({ title, script, onChange, onClose }: { title: string; script: string; onChange: (html: string) => void; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 lg:p-16"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-3xl max-h-full overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0a0a0a] shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06] sticky top-0 bg-[#0a0a0a] z-10">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Script</p>
+            <p className="text-sm text-zinc-300 truncate">{title || 'Sin título'}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-2 text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-colors shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-6">
+          <ScriptEditor initialValue={script} onChange={onChange} variant="focus" />
+        </div>
+      </div>
     </div>
   )
 }
@@ -239,6 +279,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [objectiveOpen, setObjectiveOpen] = useState(false)
   const [objectiveCustom, setObjectiveCustom] = useState('')
   const [copied, setCopied] = useState(false)
+  const [scriptFocus, setScriptFocus] = useState(false)
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingRef = useRef<Parameters<typeof updatePipelineItem>[2]>({})
 
@@ -249,10 +290,14 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   }
 
   useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (scriptFocus) setScriptFocus(false)
+      else onClose()
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, scriptFocus])
 
   // Flush any pending save immediately when drawer closes
   useEffect(() => {
@@ -649,9 +694,18 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
 
           {/* ── Script ── */}
           <div className="space-y-2">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
-              <FileText className="h-3 w-3" /> Script
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold flex items-center gap-1.5">
+                <FileText className="h-3 w-3" /> Script
+              </p>
+              <button
+                type="button"
+                onClick={() => setScriptFocus(true)}
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-zinc-600 hover:text-zinc-200 hover:bg-white/[0.06] transition-colors"
+              >
+                <Maximize2 className="h-3 w-3" /> Pantalla completa
+              </button>
+            </div>
             <ScriptEditor
               initialValue={script}
               onChange={(html) => { setScript(html); debounceSave({ script: html }) }}
@@ -660,6 +714,15 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
 
         </div>
       </div>
+
+      {scriptFocus && (
+        <ScriptFocusModal
+          title={title}
+          script={script}
+          onChange={(html) => { setScript(html); debounceSave({ script: html }) }}
+          onClose={() => setScriptFocus(false)}
+        />
+      )}
     </>,
     document.body
   )
