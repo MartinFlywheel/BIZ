@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
@@ -68,21 +69,23 @@ export default async function PortalDashboardPage() {
   const clientCalls = calls.filter((c: { lead_id: string }) => clientLeadIds.has(c.lead_id))
 
   return (
-    <ClientDetail
-      client={client}
-      campaigns={campaigns}
-      contentPieces={contentPieces}
-      contentMetrics={contentMetrics}
-      leads={leads}
-      calls={clientCalls}
-      agencyUsers={[]}
-      interactions={interactions}
-      leadFunnel={leadFunnel}
-      competitors={competitors}
-      competitorReels={competitorReels}
-      contentAnalytics={contentAnalytics}
-      funnelTotals={funnelTotals}
-      readOnly
-    />
+    <Suspense fallback={null}>
+      <ClientDetail
+        client={client}
+        campaigns={campaigns}
+        contentPieces={contentPieces}
+        contentMetrics={contentMetrics}
+        leads={leads}
+        calls={clientCalls}
+        agencyUsers={[]}
+        interactions={interactions}
+        leadFunnel={leadFunnel}
+        competitors={competitors}
+        competitorReels={competitorReels}
+        contentAnalytics={contentAnalytics}
+        funnelTotals={funnelTotals}
+        readOnly
+      />
+    </Suspense>
   )
 }

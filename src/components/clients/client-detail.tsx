@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs } from '@/components/ui/tabs'
@@ -57,6 +57,9 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
 export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialTab = searchParams.get('tab') ?? undefined
+  const initialCardId = searchParams.get('card') ?? undefined
   const badge = statusBadge[client.status] || statusBadge.prospect
 
   async function handleDelete() {
@@ -101,7 +104,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
         )}
       </div>
 
-      <Tabs tabs={tabs}>
+      <Tabs tabs={tabs} defaultTab={initialTab}>
         {(activeTab) => (
           <>
             {activeTab === 'analytics' && (
@@ -120,7 +123,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
             )}
 
             {activeTab === 'pipeline' && (
-              <ContentPipelineBoard clientId={client.id} />
+              <ContentPipelineBoard clientId={client.id} initialCardId={initialCardId} />
             )}
 
             {activeTab === 'crm' && (

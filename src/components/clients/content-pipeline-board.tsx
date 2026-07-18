@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, GripVertical, X, Check } from 'lucide-react'
 import {
   getPipelineItems,
@@ -270,18 +271,38 @@ function KanbanColumn({
 
 // ── Board ─────────────────────────────────────────────────────────────────────
 
-export function ContentPipelineBoard({ clientId }: { clientId: string }) {
+export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: string; initialCardId?: string }) {
   const [columns, setColumns] = useState<Record<PipelineStage, PipelineItem[]>>({
     ideas: [], grabar: [], grabados: [], editados: [], por_publicar: [], publicados: [],
   })
   const [loading, setLoading] = useState(true)
   const [selectedItem, setSelectedItem] = useState<PipelineItem | null>(null)
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  function openCard(item: PipelineItem | null) {
+    setSelectedItem(item)
+    const params = new URLSearchParams(searchParams.toString())
+    if (item) {
+      params.set('tab', 'pipeline')
+      params.set('card', item.id)
+    } else {
+      params.delete('card')
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
 
   useEffect(() => {
     getPipelineItems(clientId).then((data) => {
       setColumns(data)
       setLoading(false)
+      if (initialCardId) {
+        const found = Object.values(data).flat().find((i) => i.id === initialCardId)
+        if (found) setSelectedItem(found)
+      }
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
   function handleMoved(id: string, toStage: PipelineStage, fromStage: PipelineStage) {
@@ -301,7 +322,7 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
       ...prev,
       [stage]: prev[stage].filter((i) => i.id !== id),
     }))
-    setSelectedItem((prev) => prev?.id === id ? null : prev)
+    if (selectedItem?.id === id) openCard(null)
   }
 
   function handleAdded(stage: PipelineStage, item: PipelineItem) {
@@ -356,7 +377,7 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
             stage={stage}
             items={columns[stage.id]}
             clientId={clientId}
-            onOpen={(item) => setSelectedItem(item)}
+            onOpen={(item) => openCard(item)}
             onMoved={handleMoved}
             onDeleted={handleDeleted}
             onAdded={(item) => handleAdded(stage.id, item)}
@@ -367,7 +388,7 @@ export function ContentPipelineBoard({ clientId }: { clientId: string }) {
       {selectedItem && (
         <CardDetailDrawer
           item={selectedItem}
-          onClose={() => setSelectedItem(null)}
+          onClose={() => openCard(null)}
           onUpdated={handleItemUpdated}
         />
       )}

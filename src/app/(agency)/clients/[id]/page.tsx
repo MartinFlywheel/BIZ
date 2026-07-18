@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
 import { getClient } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
@@ -43,21 +44,23 @@ export default async function ClientDetailPage({
     const clientCalls = calls.filter((c: { lead_id: string }) => clientLeadIds.has(c.lead_id))
 
     return (
-      <ClientDetail
-        client={client}
-        campaigns={campaigns}
-        contentPieces={contentPieces}
-        contentMetrics={contentMetrics}
-        leads={leads}
-        calls={clientCalls}
-        agencyUsers={agencyUsers}
-        interactions={interactions}
-        leadFunnel={leadFunnel}
-        competitors={competitors}
-        competitorReels={competitorReels}
-        contentAnalytics={contentAnalytics}
-        funnelTotals={funnelTotals}
-      />
+      <Suspense fallback={null}>
+        <ClientDetail
+          client={client}
+          campaigns={campaigns}
+          contentPieces={contentPieces}
+          contentMetrics={contentMetrics}
+          leads={leads}
+          calls={clientCalls}
+          agencyUsers={agencyUsers}
+          interactions={interactions}
+          leadFunnel={leadFunnel}
+          competitors={competitors}
+          competitorReels={competitorReels}
+          contentAnalytics={contentAnalytics}
+          funnelTotals={funnelTotals}
+        />
+      </Suspense>
     )
   } catch {
     notFound()

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser, Link2, Check } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
 import { OBJETIVOS, objectiveColor } from '@/lib/types'
@@ -238,8 +238,15 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
   const [angleCustom, setAngleCustom] = useState('')
   const [objectiveOpen, setObjectiveOpen] = useState(false)
   const [objectiveCustom, setObjectiveCustom] = useState('')
+  const [copied, setCopied] = useState(false)
   const saveTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingRef = useRef<Parameters<typeof updatePipelineItem>[2]>({})
+
+  async function handleShare() {
+    await navigator.clipboard.writeText(window.location.href)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -383,12 +390,21 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06] shrink-0">
           <span className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Detalle del reel</span>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleShare}
+              className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.06] transition-colors"
+            >
+              {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Link2 className="h-3.5 w-3.5" />}
+              {copied ? 'Copiado' : 'Compartir'}
+            </button>
+            <button
+              onClick={onClose}
+              className="rounded-md p-1.5 text-zinc-600 hover:text-zinc-300 hover:bg-white/[0.06] transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Scrollable body */}
