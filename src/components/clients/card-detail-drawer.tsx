@@ -248,6 +248,15 @@ function ScriptFocusModal({ title, script, onChange, onClose }: { title: string;
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const DRAWER_WIDTH_KEY = 'pipelineDrawerWidth'
+const DRAWER_MIN_WIDTH = 380
+
+function initialDrawerWidth() {
+  if (typeof window === 'undefined') return 480
+  const saved = Number(localStorage.getItem(DRAWER_WIDTH_KEY))
+  return saved >= DRAWER_MIN_WIDTH ? saved : 480
+}
+
 interface Props {
   item: PipelineItem
   onClose: () => void
@@ -255,6 +264,8 @@ interface Props {
 }
 
 export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
+  const [drawerWidth, setDrawerWidth] = useState(initialDrawerWidth)
+  const [resizing, setResizing] = useState(false)
   const [title, setTitle]           = useState(item.title)
   const [script, setScript]         = useState(item.script ?? '')
   const [referenceUrl, setRef]      = useState(item.reference_url ?? '')
@@ -287,6 +298,29 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     await navigator.clipboard.writeText(window.location.href)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  // Drag-to-resize the drawer, Notion-style — width is remembered across cards.
+  function startResize(e: React.MouseEvent) {
+    e.preventDefault()
+    setResizing(true)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+
+    function onMove(ev: MouseEvent) {
+      const maxWidth = window.innerWidth * 0.9
+      setDrawerWidth(Math.min(Math.max(window.innerWidth - ev.clientX, DRAWER_MIN_WIDTH), maxWidth))
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setResizing(false)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      setDrawerWidth((w) => { localStorage.setItem(DRAWER_WIDTH_KEY, String(w)); return w })
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
   }
 
   useEffect(() => {
@@ -430,7 +464,17 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
       />
 
       {/* Drawer */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-[480px] max-w-[95vw] bg-[#0a0a0a] border-l border-white/[0.07] shadow-2xl flex flex-col">
+      <div
+        style={{ width: drawerWidth }}
+        className="fixed right-0 top-0 bottom-0 z-50 max-w-[95vw] bg-[#0a0a0a] border-l border-white/[0.07] shadow-2xl flex flex-col"
+      >
+        {/* Drag-to-resize handle */}
+        <div
+          onMouseDown={startResize}
+          className="absolute left-0 top-0 bottom-0 w-1.5 -ml-0.5 cursor-col-resize z-10 group"
+        >
+          <div className={`h-full w-px mx-auto transition-colors ${resizing ? 'bg-white/40' : 'bg-transparent group-hover:bg-white/25'}`} />
+        </div>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.06] shrink-0">
