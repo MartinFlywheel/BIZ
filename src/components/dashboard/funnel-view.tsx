@@ -47,6 +47,14 @@ const CONTENT_TYPE_LABEL: Record<string, string> = {
   story: 'Historias',
 }
 
+const PERIOD_TYPE_LABEL: Record<string, string> = {
+  daily: 'Diario',
+  weekly: 'Semanal',
+  monthly: 'Mensual',
+  '15d': 'Últimos 15 días',
+  '30d': 'Últimos 30 días',
+}
+
 export function FunnelView({ funnel, clientName, contentType }: Props) {
   const { stages, bottleneck, bottleneck_drop, period, raw } = funnel
   const n = stages.length
@@ -66,7 +74,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
             )}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            {period.type} · {formatDate(period.start)} — {formatDate(period.end)}
+            {PERIOD_TYPE_LABEL[period.type] || period.type} · {formatDate(period.start)} — {formatDate(period.end)}
           </p>
           {contentType && (
             <p className="mt-1 text-[11px] text-amber-500/70">

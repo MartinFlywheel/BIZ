@@ -30,10 +30,12 @@ function toDateStr(d: Date): string {
   return d.toISOString().split('T')[0]
 }
 
+export type FunnelPeriodType = 'daily' | 'weekly' | 'monthly' | '15d' | '30d'
+
 // Resolves [start, end] date-string bounds for a period, anchored on
 // periodStart when given, otherwise the current period.
 function periodBounds(
-  periodType: 'daily' | 'weekly' | 'monthly',
+  periodType: FunnelPeriodType,
   periodStart?: string
 ): { start: string; end: string } {
   const anchor = periodStart ? new Date(`${periodStart}T12:00:00Z`) : new Date()
@@ -52,6 +54,15 @@ function periodBounds(
     return { start, end: toDateStr(end) }
   }
 
+  // Rolling trailing window ending on the anchor date (today, unless a
+  // specific end was given) — not calendar-aligned like week/month.
+  if (periodType === '15d' || periodType === '30d') {
+    const days = periodType === '15d' ? 15 : 30
+    const start = new Date(anchor)
+    start.setDate(start.getDate() - (days - 1))
+    return { start: toDateStr(start), end: toDateStr(anchor) }
+  }
+
   const monday = mondayOf(anchor)
   const sunday = new Date(monday)
   sunday.setDate(sunday.getDate() + 6)
@@ -60,7 +71,7 @@ function periodBounds(
 
 export async function calculateFunnel(
   clientId: string,
-  periodType: 'daily' | 'weekly' | 'monthly' = 'weekly',
+  periodType: FunnelPeriodType = 'weekly',
   periodStart?: string,
   contentType?: ContentTypeFilter
 ): Promise<FunnelResult | null> {

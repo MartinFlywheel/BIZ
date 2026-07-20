@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { getClients } from '@/lib/actions/clients'
-import { checkHealthAlerts, calculateFunnel } from '@/lib/actions/funnel'
+import { checkHealthAlerts, calculateFunnel, type FunnelPeriodType } from '@/lib/actions/funnel'
 import { getDashboardMetrics, getBenchmarkAlerts } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -8,8 +8,11 @@ import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
 import { ClientSelector } from '@/components/dashboard/client-selector'
 import { ContentTypeToggle } from '@/components/dashboard/content-type-toggle'
+import { PeriodToggle } from '@/components/dashboard/period-toggle'
 import { Card } from '@/components/ui/card'
 import { formatNumber, formatPercent } from '@/lib/utils'
+
+const VALID_PERIODS: FunnelPeriodType[] = ['weekly', '15d', '30d', 'monthly']
 
 // ── Skeleton — shown instantly while ClientDetail streams ─────────────────────
 
@@ -97,17 +100,19 @@ async function ClientDetail({
   clientId,
   clients,
   contentType,
+  period,
 }: {
   clientId: string
   clients: Awaited<ReturnType<typeof getClients>>
   contentType?: ContentTypeFilter
+  period: FunnelPeriodType
 }) {
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
   // Run both queries in parallel
   const [funnel, liveMetrics] = await Promise.all([
-    calculateFunnel(clientId, 'weekly', undefined, contentType),
+    calculateFunnel(clientId, period, undefined, contentType),
     getDashboardMetrics(clientId),
   ])
 
@@ -122,7 +127,7 @@ async function ClientDetail({
       ) : (
         <Card>
           <div className="flex h-32 items-center justify-center text-center text-sm text-zinc-500">
-            {selectedClient.name} aún no tiene {contentType ? 'actividad' : 'métricas semanales'} para mostrar.
+            {selectedClient.name} aún no tiene {contentType ? 'actividad' : 'métricas'} para mostrar en este período.
             {!contentType && (
               <>
                 <br />
@@ -174,10 +179,13 @@ async function ClientDetail({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; type?: string }>
+  searchParams: Promise<{ client?: string; type?: string; period?: string }>
 }) {
-  const { client: clientId, type } = await searchParams
+  const { client: clientId, type, period: periodParam } = await searchParams
   const contentType: ContentTypeFilter | undefined = type === 'reel' || type === 'story' ? type : undefined
+  const period: FunnelPeriodType = VALID_PERIODS.includes(periodParam as FunnelPeriodType)
+    ? (periodParam as FunnelPeriodType)
+    : 'weekly'
 
   // These two queries are fast — run them in the page shell
   const [clients, healthAlerts] = await Promise.all([
@@ -193,6 +201,7 @@ export default async function DashboardPage({
           <p className="mt-1 text-sm text-zinc-400">Salud del funnel y métricas de conversión</p>
         </div>
         <div className="flex items-center gap-2">
+          <PeriodToggle selected={periodParam} />
           <ContentTypeToggle selected={type} />
           <ClientSelector clients={clients} selectedId={clientId} />
         </div>
@@ -203,8 +212,8 @@ export default async function DashboardPage({
 
       {/* Per-client: streams in behind a skeleton, key resets on client switch */}
       {clientId && (
-        <Suspense key={`${clientId}-${type || 'all'}`} fallback={<FunnelSkeleton />}>
-          <ClientDetail clientId={clientId} clients={clients} contentType={contentType} />
+        <Suspense key={`${clientId}-${type || 'all'}-${period}`} fallback={<FunnelSkeleton />}>
+          <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} />
         </Suspense>
       )}
     </div>
