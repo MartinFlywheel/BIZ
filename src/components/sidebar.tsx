@@ -10,6 +10,7 @@ import {
   Settings,
   Bell,
   LogOut,
+  GalleryHorizontal,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -102,6 +103,22 @@ export function Sidebar({ userType, userName }: SidebarProps) {
               Notificaciones
             </span>
           </Link>
+        )}
+
+        {userType === 'agency' && (
+          // Link cruzado — app de Carruseles, desplegada por separado.
+          <a
+            href="https://carruseles-three.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Carruseles"
+            className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/90"
+          >
+            <GalleryHorizontal className="h-[18px] w-[18px]" />
+            <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100">
+              Carruseles
+            </span>
+          </a>
         )}
 
         <div
