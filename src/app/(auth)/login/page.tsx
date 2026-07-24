@@ -32,7 +32,7 @@ export default function LoginPage() {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('id, user_type')
+      .select('id, user_type, role')
       .eq('id', authData.user.id)
       .single()
 
@@ -50,6 +50,14 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
+    }
+
+    // Non-admins get a session-only marker cookie (no Max-Age — cleared when
+    // the browser fully closes, not just the tab). Middleware requires it on
+    // every request; without it they're signed out and sent back here, so
+    // they can't stay logged in indefinitely like an admin can.
+    if (profile?.user_type === 'agency' && profile.role !== 'admin') {
+      document.cookie = 'biz_active_session=1; path=/; SameSite=Lax'
     }
 
     const dest = profile?.user_type === 'client' ? '/portal/dashboard' : '/dashboard'

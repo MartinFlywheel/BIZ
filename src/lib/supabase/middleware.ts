@@ -62,6 +62,22 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
+    // Non-admins don't get to stay logged in indefinitely like an admin can —
+    // require a session-only marker cookie (set at login, no Max-Age) on
+    // every request. Once the browser is fully closed the cookie is gone
+    // even though the Supabase refresh-token cookie may still be valid, so
+    // force them back through /login instead of silently letting them in.
+    if (profile?.user_type === 'agency' && profile.role !== 'admin' && !request.cookies.has('biz_active_session')) {
+      await supabase.auth.signOut()
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      const redirectResponse = NextResponse.redirect(url)
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value)
+      })
+      return redirectResponse
+    }
+
     // Non-admin agency users (setter/closer/editor/...) each belong to one
     // business — confine them to that client's page. Someone with no
     // client_id yet is let through; the agency layout shows a "sin cliente
