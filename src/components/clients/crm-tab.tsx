@@ -32,6 +32,7 @@ interface Props {
   clientId: string
   customAvatars?: string[]
   isAdmin?: boolean
+  currentUserId?: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -899,7 +900,7 @@ const ROLES = [
   { value: 'editor', label: 'Editor' },
 ]
 
-function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agencyUsers: AgencyUser[]; isAdmin: boolean }) {
+function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId: string; agencyUsers: AgencyUser[]; isAdmin: boolean; currentUserId?: string }) {
   const [stats, setStats] = useState<Record<string, { agendas: number; shows: number; cerradas: number }>>({})
   const [loading, setLoading] = useState(true)
   const [localUsers, setLocalUsers] = useState(agencyUsers)
@@ -907,6 +908,9 @@ function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agenc
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [showAddPerson, setShowAddPerson] = useState(false)
+  const [pendingSelfRole, setPendingSelfRole] = useState<string | null>(null)
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [confirmError, setConfirmError] = useState<string | null>(null)
 
   useEffect(() => {
     getAgendaTeamStats(clientId)
@@ -934,13 +938,37 @@ function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agenc
     setEditing(null)
   }
 
-  async function saveRole(userId: string, role: string) {
+  async function saveRole(userId: string, role: string, password?: string) {
     setSaving(userId)
-    const result = await updateAgencyUserAction(userId, { role })
+    const result = await updateAgencyUserAction(userId, { role }, password)
       .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
     setSaving(null)
     if (result.success) {
       setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u))
+    }
+    return result
+  }
+
+  function handleRoleChange(userId: string, role: string) {
+    if (userId === currentUserId) {
+      // Changing your own role — require the confirmation password instead
+      // of applying it straight away, so a misclick doesn't demote you.
+      setPendingSelfRole(role)
+      setConfirmPassword('')
+      setConfirmError(null)
+      return
+    }
+    saveRole(userId, role)
+  }
+
+  async function confirmSelfRoleChange() {
+    if (!pendingSelfRole || !currentUserId) return
+    const result = await saveRole(currentUserId, pendingSelfRole, confirmPassword)
+    if (result.success) {
+      setPendingSelfRole(null)
+      setConfirmPassword('')
+    } else {
+      setConfirmError(result.error)
     }
   }
 
@@ -1050,7 +1078,7 @@ function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agenc
                         <select
                           value={user.role}
                           disabled={isSaving}
-                          onChange={e => saveRole(user.id, e.target.value)}
+                          onChange={e => handleRoleChange(user.id, e.target.value)}
                           className={`rounded-md px-2 py-0.5 text-[11px] font-medium border focus:outline-none cursor-pointer ${badge.color} bg-transparent disabled:opacity-50`}
                         >
                           {ROLES.map(r => (
@@ -1107,6 +1135,36 @@ function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agenc
           onCreated={(user) => setLocalUsers(prev => [...prev, user])}
         />
       )}
+
+      <Dialog
+        open={pendingSelfRole !== null}
+        onClose={() => setPendingSelfRole(null)}
+        title="Confirmá el cambio de tu rol"
+        description="Estás por cambiar tu propio rol — escribí la contraseña de confirmación para continuar."
+      >
+        <div className="space-y-4">
+          <Input
+            id="confirm_role_password"
+            type="password"
+            label="Contraseña"
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmSelfRoleChange() }}
+            autoFocus
+          />
+          {confirmError && (
+            <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">{confirmError}</p>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button type="button" variant="secondary" onClick={() => setPendingSelfRole(null)} className="flex-1">
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmSelfRoleChange} disabled={saving === currentUserId} className="flex-1">
+              {saving === currentUserId ? 'Confirmando...' : 'Confirmar'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }
@@ -1280,7 +1338,7 @@ function ConfigurarAvatarsModal({
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars, isAdmin = false }: Props) {
+export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -1344,7 +1402,7 @@ export function CrmTab({ leads, agencyUsers, contentPieces, interactions, client
         <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} />
       )}
       {activeSubTab === 'equipo' && (
-        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} isAdmin={isAdmin} />
+        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} isAdmin={isAdmin} currentUserId={currentUserId} />
       )}
 
       {showAvatarConfig && (

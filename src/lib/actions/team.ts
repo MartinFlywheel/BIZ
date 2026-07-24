@@ -94,13 +94,20 @@ export async function getAgendaTeamStats(clientId: string): Promise<Record<strin
   return stats
 }
 
+// Shared confirmation phrase for an admin changing their OWN role — not real
+// per-user auth, just a guard rail against fat-fingering the dropdown and
+// locking yourself out. Checked server-side since a client-only check would
+// be trivial to bypass.
+const SELF_ROLE_CHANGE_PASSWORD = 'Holakase6.'
+
 // Editing anyone's profile (role especially — this is how privilege
 // escalation would happen) is admin-only. Without this check, any non-admin
 // who can see their client's Equipo tab could have promoted themselves (or
 // anyone else) to admin via the role dropdown.
 export async function updateAgencyUserAction(
   userId: string,
-  fields: { full_name?: string; email?: string; role?: string }
+  fields: { full_name?: string; email?: string; role?: string },
+  confirmPassword?: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()
   const { data: { user: currentUser } } = await supabase.auth.getUser()
@@ -116,8 +123,10 @@ export async function updateAgencyUserAction(
     return { success: false, error: 'Solo un admin puede editar a otras personas del equipo' }
   }
 
-  if (userId === currentUser.id && fields.role && fields.role !== 'admin') {
-    return { success: false, error: 'No podés quitarte tu propio rol de admin' }
+  if (userId === currentUser.id && fields.role && fields.role !== caller.role) {
+    if (confirmPassword !== SELF_ROLE_CHANGE_PASSWORD) {
+      return { success: false, error: 'Contraseña incorrecta — no se cambió tu rol' }
+    }
   }
 
   const { error } = await supabase

@@ -73,6 +73,7 @@ export default async function ClientDetailPage({
           contentAnalytics={contentAnalytics}
           funnelTotals={funnelTotals}
           isAdmin={isAdmin}
+          currentUserId={authUser?.id}
         />
       </Suspense>
     )
