@@ -18,17 +18,41 @@ export async function getTeamAssignments(clientId: string) {
   return data
 }
 
-export async function getAgencyUsers() {
+// Each business has its own team: admins (unscoped) see/manage every client,
+// everyone else is tied to the one client they were added under. Pass
+// clientId to get that client's roster (admins + their assigned people);
+// omit it for the old unscoped global list (e.g. the agency-wide /calls page).
+export async function getAgencyUsers(clientId?: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
+  const base = supabase
     .from('users')
-    .select('id, full_name, email, role')
+    .select('id, full_name, email, role, client_id')
     .eq('user_type', 'agency')
     .eq('is_active', true)
-    .order('full_name')
 
-  if (error) throw error
-  return data
+  if (!clientId) {
+    const { data, error } = await base.order('full_name')
+    if (error) throw error
+    return data
+  }
+
+  // Two plain .eq() queries + merge, instead of building a raw .or() filter
+  // string from clientId (avoids PostgREST filter-syntax injection).
+  const [adminsRes, teamRes] = await Promise.all([
+    base.eq('role', 'admin'),
+    supabase
+      .from('users')
+      .select('id, full_name, email, role, client_id')
+      .eq('user_type', 'agency')
+      .eq('is_active', true)
+      .eq('client_id', clientId),
+  ])
+
+  if (adminsRes.error) throw adminsRes.error
+  if (teamRes.error) throw teamRes.error
+
+  const byId = new Map([...adminsRes.data, ...teamRes.data].map((u) => [u.id, u]))
+  return [...byId.values()].sort((a, b) => a.full_name.localeCompare(b.full_name))
 }
 
 export async function createAssignmentAction(formData: FormData) {
@@ -114,8 +138,14 @@ export async function createAgencyUserAction(formData: FormData): Promise<
   const email = (formData.get('email') as string)?.trim().toLowerCase()
   const fullName = (formData.get('full_name') as string)?.trim()
   const role = formData.get('role') as string
+  const clientId = (formData.get('client_id') as string) || null
 
   if (!email || !fullName || !role) return { success: false, error: 'Faltan datos' }
+  // Non-admins are scoped to one business — only admins are unscoped across
+  // all clients, so every other role needs the client it's being added for.
+  if (role !== 'admin' && !clientId) {
+    return { success: false, error: 'Falta el cliente al que pertenece esta persona' }
+  }
 
   const admin = createAdminClient()
   const tempPassword = generateTempPassword()
@@ -137,6 +167,7 @@ export async function createAgencyUserAction(formData: FormData): Promise<
     full_name: fullName,
     user_type: 'agency',
     role,
+    client_id: role === 'admin' ? null : clientId,
     is_active: true,
   })
 

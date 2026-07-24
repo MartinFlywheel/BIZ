@@ -52,7 +52,7 @@ export async function updateSession(request: NextRequest) {
   if (!pathname.startsWith('/portal')) {
     const { data: profile } = await supabase
       .from('users')
-      .select('user_type')
+      .select('user_type, role, client_id')
       .eq('id', user.id)
       .single()
 
@@ -60,6 +60,20 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/portal/dashboard'
       return NextResponse.redirect(url)
+    }
+
+    // Non-admin agency users (setter/closer/editor/...) each belong to one
+    // business — confine them to that client's page. Someone with no
+    // client_id yet is let through; the agency layout shows a "sin cliente
+    // asignado" message for them instead of a redirect target that doesn't exist.
+    if (profile?.user_type === 'agency' && profile.role !== 'admin' && profile.client_id) {
+      const allowedPath = `/clients/${profile.client_id}`
+      if (pathname !== allowedPath && !pathname.startsWith(`${allowedPath}/`)) {
+        const url = request.nextUrl.clone()
+        url.pathname = allowedPath
+        url.search = ''
+        return NextResponse.redirect(url)
+      }
     }
   }
 

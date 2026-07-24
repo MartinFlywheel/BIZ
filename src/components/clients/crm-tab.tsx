@@ -1091,6 +1091,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
 
       {showAddPerson && (
         <AddPersonModal
+          clientId={clientId}
           onClose={() => setShowAddPerson(false)}
           onCreated={(user) => setLocalUsers(prev => [...prev, user])}
         />
@@ -1101,7 +1102,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
 
 // ── Add Person Modal ─────────────────────────────────────────────────────────
 
-function AddPersonModal({ onClose, onCreated }: { onClose: () => void; onCreated: (user: AgencyUser) => void }) {
+function AddPersonModal({ clientId, onClose, onCreated }: { clientId: string; onClose: () => void; onCreated: (user: AgencyUser) => void }) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('closer')
@@ -1118,6 +1119,7 @@ function AddPersonModal({ onClose, onCreated }: { onClose: () => void; onCreated
     formData.set('full_name', fullName.trim())
     formData.set('email', email.trim())
     formData.set('role', role)
+    formData.set('client_id', clientId)
     const res = await createAgencyUserAction(formData)
     setLoading(false)
     if (!res.success) { setError(res.error); return }
@@ -1158,6 +1160,11 @@ function AddPersonModal({ onClose, onCreated }: { onClose: () => void; onCreated
             onChange={e => setRole(e.target.value)}
             options={ROLES}
           />
+          {role !== 'admin' && (
+            <p className="text-[11px] text-zinc-600 leading-snug -mt-2">
+              Va a quedar asignado solo a este cliente — no va a poder ver ni navegar otros negocios de la agencia.
+            </p>
+          )}
           {error && (
             <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">{error}</p>
           )}

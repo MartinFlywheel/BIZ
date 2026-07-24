@@ -33,7 +33,7 @@ export default async function ClientDetailPage({
       getCalls(),
       getCallFolders(id),
       getAgendaLeadOptions(id),
-      getAgencyUsers(),
+      getAgencyUsers(id),
       getInteractions(id),
       getClientLeadFunnel(id),
       getCompetitors(id),

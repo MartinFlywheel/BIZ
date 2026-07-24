@@ -35,12 +35,18 @@ const portalNav: NavItem[] = [
 interface SidebarProps {
   userType: 'agency' | 'client'
   userName: string
+  // Non-admin agency users are scoped to one client — no cross-client nav,
+  // no notifications/carruseles, just enough chrome to navigate their one
+  // business (via that page's own tabs) and sign out.
+  restricted?: boolean
+  homeHref?: string
 }
 
-export function Sidebar({ userType, userName }: SidebarProps) {
+export function Sidebar({ userType, userName, restricted = false, homeHref }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
-  const navItems = userType === 'agency' ? agencyNav : portalNav
+  const navItems = restricted ? [] : userType === 'agency' ? agencyNav : portalNav
+  const brandHref = homeHref ?? (userType === 'agency' ? '/dashboard' : '/portal/dashboard')
 
   async function handleSignOut() {
     const supabase = createClient()
@@ -52,7 +58,7 @@ export function Sidebar({ userType, userName }: SidebarProps) {
     <aside className="relative z-10 my-3 ml-3 flex w-16 flex-col items-center rounded-2xl border border-white/[0.06] bg-white/[0.02] py-4 backdrop-blur-xl">
       {/* Brand */}
       <Link
-        href={userType === 'agency' ? '/dashboard' : '/portal/dashboard'}
+        href={brandHref}
         className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ff453a] shadow-[0_0_14px_rgba(255,69,58,0.5)]"
       >
         <span className="text-sm font-bold text-white">B</span>
@@ -92,7 +98,7 @@ export function Sidebar({ userType, userName }: SidebarProps) {
 
       {/* Footer */}
       <div className="mt-4 flex flex-col items-center gap-1.5 border-t border-white/[0.06] pt-4">
-        {userType === 'agency' && (
+        {userType === 'agency' && !restricted && (
           <Link
             href="/notifications"
             title="Notificaciones"
@@ -105,7 +111,7 @@ export function Sidebar({ userType, userName }: SidebarProps) {
           </Link>
         )}
 
-        {userType === 'agency' && (
+        {userType === 'agency' && !restricted && (
           // Link cruzado — app de Carruseles, desplegada por separado.
           <a
             href="https://carruseles-three.vercel.app"
