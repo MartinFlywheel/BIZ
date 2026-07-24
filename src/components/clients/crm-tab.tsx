@@ -13,7 +13,7 @@ import {
   deleteLeadAction,
   createLeadAction,
 } from '@/lib/actions/leads'
-import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction } from '@/lib/actions/team'
+import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -943,6 +943,19 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
     }
   }
 
+  async function handleDeleteUser(userId: string, name: string) {
+    if (!confirm(`¿Eliminar a ${name} del equipo? Se borra su cuenta por completo y pierde acceso al dashboard de inmediato.`)) return
+    setSaving(userId)
+    const result = await deleteAgencyUserAction(userId)
+      .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
+    setSaving(null)
+    if (result.success) {
+      setLocalUsers(prev => prev.filter(u => u.id !== userId))
+    } else {
+      alert(result.error)
+    }
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
@@ -957,7 +970,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              {['Nombre', 'Correo personal', 'Rol', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate'].map((h, i) => (
+              {['Nombre', 'Correo personal', 'Rol', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 whitespace-nowrap first:pl-4">
                   {h}
                 </th>
@@ -967,13 +980,13 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-zinc-600 text-xs">
+                <td colSpan={9} className="py-12 text-center text-zinc-600 text-xs">
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Cargando estadísticas...
                 </td>
               </tr>
             ) : localUsers.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
+                <td colSpan={9} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
               </tr>
             ) : (
               localUsers.map(user => {
@@ -1056,6 +1069,16 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                       <span className={closeRate >= 20 ? 'text-emerald-400' : closeRate >= 10 ? 'text-amber-400' : 'text-zinc-500'}>
                         {s.shows > 0 ? `${closeRate.toFixed(2)}%` : '0.00%'}
                       </span>
+                    </td>
+                    <td className="px-3 py-3 text-right pr-4">
+                      <button
+                        onClick={() => handleDeleteUser(user.id, user.full_name)}
+                        disabled={isSaving}
+                        className="rounded p-1 text-zinc-700 hover:text-red-400 hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                        title="Eliminar del equipo"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </td>
                   </tr>
                 )

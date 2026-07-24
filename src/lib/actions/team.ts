@@ -150,6 +150,42 @@ export async function createAgencyUserAction(formData: FormData): Promise<
   return { success: true, tempPassword, user: { id: created.user.id, full_name: fullName, email, role } }
 }
 
+// Fully revokes access — deletes the users row AND the underlying Supabase
+// Auth account (invalidates their sessions immediately), not just a soft
+// is_active flag. is_active exists but nothing in auth/session checks it, so
+// deactivating alone would NOT actually block them from logging back in.
+export async function deleteAgencyUserAction(userId: string): Promise<{ success: true } | { success: false; error: string }> {
+  const supabase = await createClient()
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) return { success: false, error: 'No autenticado' }
+
+  const { data: caller } = await supabase
+    .from('users')
+    .select('role, user_type')
+    .eq('id', currentUser.id)
+    .single()
+
+  if (!caller || caller.user_type !== 'agency' || caller.role !== 'admin') {
+    return { success: false, error: 'Solo un admin puede eliminar personas del equipo' }
+  }
+
+  if (userId === currentUser.id) {
+    return { success: false, error: 'No podés eliminar tu propia cuenta' }
+  }
+
+  const admin = createAdminClient()
+
+  // users.id references auth.users(id) with no ON DELETE CASCADE, so the
+  // profile row has to go first or the auth deletion is rejected by the FK.
+  const { error: deleteRowError } = await admin.from('users').delete().eq('id', userId)
+  if (deleteRowError) return { success: false, error: deleteRowError.message }
+
+  const { error: deleteAuthError } = await admin.auth.admin.deleteUser(userId)
+  if (deleteAuthError) return { success: false, error: deleteAuthError.message }
+
+  return { success: true }
+}
+
 export async function deleteAssignmentAction(id: string, clientId: string) {
   const supabase = await createClient()
   const { error } = await supabase.from('team_assignments').delete().eq('id', id)
