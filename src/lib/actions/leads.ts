@@ -100,6 +100,9 @@ async function ensureAgendaRecordForLead(
     lead_id: lead.id,
     nombre_lead: lead.full_name,
     avatar: lead.lead_avatar,
+    // The day the lead's stage was changed to "Agendado" — today, from the
+    // CRM's perspective — distinct from fecha_agenda (the call date).
+    fecha_agendado: new Date().toISOString().split('T')[0],
     fecha_agenda: agendaDate,
     fecha_1er_contacto: lead.first_touch_at ? lead.first_touch_at.split('T')[0] : null,
     primer_cta: keyword,

@@ -49,13 +49,12 @@ function tiempoDeCompra(a: string | null, b: string | null): string {
   return days >= 0 ? `${days}d` : '—'
 }
 
-// Days between when the booking was made (created_at) and the call's actual
-// date (fecha_agenda) — how far out people tend to book, to spot patterns
-// against close rate.
-function diasAnticipacion(createdAt: string, fechaAgenda: string | null): string {
-  if (!fechaAgenda) return '—'
-  const createdDate = createdAt.slice(0, 10)
-  const days = Math.round((new Date(fechaAgenda + 'T12:00:00Z').getTime() - new Date(createdDate + 'T12:00:00Z').getTime()) / 86400000)
+// Days between when the booking was made (fecha_agendado) and the call's
+// actual date (fecha_agenda) — how far out people tend to book, to spot
+// patterns against close rate.
+function diasAnticipacion(fechaAgendado: string | null, fechaAgenda: string | null): string {
+  if (!fechaAgendado || !fechaAgenda) return '—'
+  const days = Math.round((new Date(fechaAgenda + 'T12:00:00Z').getTime() - new Date(fechaAgendado + 'T12:00:00Z').getTime()) / 86400000)
   return days >= 0 ? `${days}d` : '—'
 }
 
@@ -314,10 +313,11 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
 
   async function handleAdd() {
     const today = new Date()
+    const todayStr = today.toISOString().split('T')[0]
     const fecha = (year === today.getFullYear() && month === today.getMonth() + 1)
-      ? today.toISOString().split('T')[0]
+      ? todayStr
       : `${year}-${String(month).padStart(2, '0')}-01`
-    const created = await createAgendaRecord(clientId, { fecha_agenda: fecha })
+    const created = await createAgendaRecord(clientId, { fecha_agenda: fecha, fecha_agendado: todayStr })
     setRecords(prev => sortRecords([...prev, created]))
     setNewRowId(created.id)
     setEditingCell({ id: created.id, field: 'nombre_lead' })
@@ -442,6 +442,33 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
       )
     }
 
+    function agendadoCell() {
+      const active = ec?.id === r.id && ec?.field === 'fecha_agendado'
+      if (active) {
+        return (
+          <input
+            autoFocus
+            type="date"
+            value={editValue}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={() => commitEdit(r.id, 'fecha_agendado', editValue)}
+            onKeyDown={e => {
+              if (e.key === 'Escape') setEditingCell(null)
+            }}
+            className={`${cellInput} text-xs [color-scheme:dark] text-zinc-500`}
+          />
+        )
+      }
+      return (
+        <span
+          onClick={() => startEdit(r.id, 'fecha_agendado', r.fecha_agendado ?? '')}
+          className={`${cellBase} text-xs px-1 font-mono cursor-text ${r.fecha_agendado ? 'text-zinc-600' : 'text-zinc-700'}`}
+        >
+          {r.fecha_agendado ? fmtDate(r.fecha_agendado) : 'Fecha'}
+        </span>
+      )
+    }
+
     function avatarCell() {
       return (
         <select
@@ -476,12 +503,12 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
         key={r.id}
         className={`group border-b border-white/[0.04] transition-colors ${isNew ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
       >
-        <td className="px-2 py-1.5 text-xs font-mono text-zinc-600 w-[80px] whitespace-nowrap" title="Cuándo se creó este registro de agenda">
-          {fmtDate(r.created_at)}
+        <td className="px-2 py-1.5 text-xs w-[80px]" title="Día en que el lead pasó a Agendado">
+          {agendadoCell()}
         </td>
         <td className="px-2 py-1.5 text-xs w-[90px]">{dateCell()}</td>
         <td className="px-2 py-1.5 text-xs font-mono text-right text-zinc-600 w-[80px] whitespace-nowrap" title="Días entre agendar y la fecha de la llamada">
-          {diasAnticipacion(r.created_at, r.fecha_agenda)}
+          {diasAnticipacion(r.fecha_agendado, r.fecha_agenda)}
         </td>
         <td className="px-2 py-1.5 text-xs font-medium text-zinc-100 min-w-[130px] max-w-[180px]">
           {textCell('nombre_lead', r.nombre_lead, 'Nombre', 'text-sm font-medium text-zinc-100')}

@@ -6,6 +6,7 @@ export interface AgendaRecord {
   id: string
   client_id: string
   lead_id: string | null
+  fecha_agendado: string | null
   fecha_agenda: string | null
   link_perfil: string | null
   nombre_lead: string | null
