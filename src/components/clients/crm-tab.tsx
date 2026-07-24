@@ -4,7 +4,7 @@ import { useState, useMemo, useTransition, useEffect, useRef, useCallback } from
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
-import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter } from 'lucide-react'
+import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import type { LeadStage, Lead, ContentPiece, Interaction } from '@/lib/types'
 import {
@@ -13,7 +13,7 @@ import {
   deleteLeadAction,
   createLeadAction,
 } from '@/lib/actions/leads'
-import { getAgendaTeamStats, updateAgencyUserAction } from '@/lib/actions/team'
+import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -905,6 +905,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
   const [editing, setEditing] = useState<{ userId: string; field: 'full_name' | 'email' } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
+  const [showAddPerson, setShowAddPerson] = useState(false)
 
   useEffect(() => {
     getAgendaTeamStats(clientId)
@@ -943,7 +944,15 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
   }
 
   return (
-    <div className="rounded-xl border border-white/[0.06] overflow-hidden">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setShowAddPerson(true)}>
+          <UserPlus className="h-3.5 w-3.5" />
+          Agregar persona
+        </Button>
+      </div>
+
+      <div className="rounded-xl border border-white/[0.06] overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
@@ -1055,7 +1064,87 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
           </tbody>
         </table>
       </div>
+      </div>
+
+      {showAddPerson && (
+        <AddPersonModal
+          onClose={() => setShowAddPerson(false)}
+          onCreated={(user) => setLocalUsers(prev => [...prev, user])}
+        />
+      )}
     </div>
+  )
+}
+
+// ── Add Person Modal ─────────────────────────────────────────────────────────
+
+function AddPersonModal({ onClose, onCreated }: { onClose: () => void; onCreated: (user: AgencyUser) => void }) {
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState('closer')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ email: string; tempPassword: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+    const formData = new FormData()
+    formData.set('full_name', fullName.trim())
+    formData.set('email', email.trim())
+    formData.set('role', role)
+    const res = await createAgencyUserAction(formData)
+    setLoading(false)
+    if (!res.success) { setError(res.error); return }
+    onCreated(res.user)
+    setResult({ email: res.user.email, tempPassword: res.tempPassword })
+  }
+
+  function copyPassword() {
+    if (!result) return
+    navigator.clipboard.writeText(result.tempPassword)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <Dialog open onClose={onClose} title="Agregar persona al equipo" description="Crea una cuenta real para que pueda iniciar sesión" className="max-w-sm">
+      {result ? (
+        <div className="space-y-4">
+          <p className="text-sm text-zinc-300">
+            Cuenta creada para <span className="font-medium text-zinc-100">{result.email}</span>. Compartile esta contraseña temporal — solo se muestra una vez:
+          </p>
+          <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2">
+            <span className="flex-1 font-mono text-sm text-zinc-100 select-all">{result.tempPassword}</span>
+            <button onClick={copyPassword} className="text-zinc-500 hover:text-zinc-200 transition-colors">
+              {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+            </button>
+          </div>
+          <Button onClick={onClose} className="w-full">Listo</Button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input id="full_name" label="Nombre" value={fullName} onChange={e => setFullName(e.target.value)} required />
+          <Input id="email" type="email" label="Correo" value={email} onChange={e => setEmail(e.target.value)} required />
+          <Select
+            id="role"
+            label="Rol"
+            value={role}
+            onChange={e => setRole(e.target.value)}
+            options={ROLES}
+          />
+          {error && (
+            <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
+            <Button type="submit" disabled={loading} className="flex-1">{loading ? 'Creando...' : 'Crear cuenta'}</Button>
+          </div>
+        </form>
+      )}
+    </Dialog>
   )
 }
 
