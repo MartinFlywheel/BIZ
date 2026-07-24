@@ -7,6 +7,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // /roadmap/* is a bucket for standalone public pages (client-facing
+    // deliverables, no login) served as plain static files from /public —
+    // excluded here so they're never gated behind Supabase auth.
+    '/((?!_next/static|_next/image|favicon.ico|roadmap/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

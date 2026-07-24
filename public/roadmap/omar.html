@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roadmap — Omar Ferrer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#050505;
+    --panel:rgba(255,255,255,0.04);
+    --panel-strong:rgba(255,255,255,0.065);
+    --panel-border:rgba(255,255,255,0.09);
+    --line:rgba(255,255,255,0.09);
+    --text:#F4F3F1;
+    --text-dim:#9B9A9F;
+    --text-faint:#6C6B70;
+    --orange:#EE4607;
+    --orange-light:#FF8A4D;
+    --orange-glow:rgba(238,70,7,0.35);
+    --orange-glow-soft:rgba(238,70,7,0.12);
+    --red-glow:rgba(220,38,38,0.15);
+    --green:#22c55e;
+    --green-glow:rgba(34,197,94,0.15);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{scroll-behavior:smooth;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:16px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+
+  /* BG GLOW */
+  .bg-glow{
+    position:fixed;top:-20%;left:50%;transform:translateX(-50%);
+    width:1100px;height:800px;border-radius:50%;
+    background:radial-gradient(circle,var(--orange-glow) 0%,rgba(238,70,7,0.06) 40%,transparent 70%);
+    filter:blur(60px);pointer-events:none;z-index:0;
+  }
+
+  /* EYEBROW PILL */
+  .eyebrow-pill{
+    display:inline-flex;align-items:center;gap:8px;
+    font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    color:var(--orange-light);
+    background:var(--orange-glow-soft);
+    border:1px solid rgba(238,70,7,0.3);
+    padding:6px 14px;border-radius:999px;
+  }
+  .eyebrow-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--orange);flex-shrink:0;}
+
+  /* GLASS */
+  .glass{
+    background:linear-gradient(180deg,var(--panel-strong),var(--panel));
+    border:1px solid var(--panel-border);
+    border-radius:20px;
+    backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+    box-shadow:0 1px 0 rgba(255,255,255,0.05) inset,0 20px 60px rgba(0,0,0,0.4);
+  }
+
+  /* HERO */
+  .hero{
+    position:relative;z-index:1;
+    min-height:55vh;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;
+    padding:80px 24px 100px;
+  }
+  .hero-label{margin-bottom:24px;}
+  .hero h1{
+    font-size:clamp(2.8rem,6vw,4.8rem);
+    font-weight:800;line-height:1.04;letter-spacing:-0.03em;
+    margin:0 0 20px;
+  }
+  .hero h1 em{color:var(--orange-light);font-style:normal;}
+  .hero-sub{font-size:1rem;color:var(--text-dim);max-width:480px;}
+
+  /* PHASE STEPS NAV */
+  .phase-nav{
+    position:relative;z-index:1;
+    display:flex;justify-content:center;gap:0;
+    padding:0 24px 80px;
+    max-width:900px;margin:0 auto;
+  }
+  .phase-step{
+    flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;
+    position:relative;
+  }
+  .phase-step::after{
+    content:'';position:absolute;top:22px;left:50%;right:-50%;height:1px;
+    background:var(--line);z-index:0;
+  }
+  .phase-step:last-child::after{display:none;}
+  .phase-num{
+    width:44px;height:44px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;font-weight:800;z-index:1;
+    border:1px solid var(--panel-border);
+    background:var(--panel);
+    color:var(--text-dim);
+    transition:all .3s;
+  }
+  .phase-step.active .phase-num{
+    background:var(--orange);border-color:var(--orange);color:#fff;
+    box-shadow:0 0 24px var(--orange-glow);
+  }
+  .phase-label{font-size:11.5px;font-weight:600;color:var(--text-faint);text-align:center;letter-spacing:0.02em;}
+  .phase-step.active .phase-label{color:var(--orange-light);}
+
+  /* SECTIONS */
+  .phase-section{
+    position:relative;z-index:1;
+    padding:0 6vw 100px;
+    max-width:1300px;margin:0 auto;
+  }
+  .phase-header{
+    display:flex;align-items:flex-start;gap:28px;
+    margin-bottom:52px;
+    padding-bottom:40px;
+    border-bottom:1px solid var(--line);
+  }
+  .phase-number-big{
+    font-size:clamp(4rem,8vw,7rem);font-weight:800;
+    color:var(--orange);line-height:1;letter-spacing:-0.04em;
+    opacity:0.18;flex-shrink:0;
+    margin-top:-8px;
+  }
+  .phase-header-text h2{
+    font-size:clamp(1.8rem,3.5vw,2.8rem);font-weight:800;
+    letter-spacing:-0.025em;line-height:1.1;margin-bottom:10px;
+  }
+  .phase-header-text p{color:var(--text-dim);font-size:0.97rem;max-width:560px;}
+
+  /* === FASE 1: BASES === */
+
+  /* Workflow viz */
+  .workflow-container{
+    display:flex;align-items:center;justify-content:center;
+    gap:0;padding:48px 0;
+    position:relative;
+  }
+  .wf-node{
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    position:relative;z-index:2;
+  }
+  .wf-circle{
+    width:90px;height:90px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:12.5px;font-weight:700;text-align:center;line-height:1.3;
+    position:relative;
+  }
+  .wf-circle.main-node{
+    background:linear-gradient(135deg,rgba(238,70,7,0.25),rgba(238,70,7,0.08));
+    border:1px solid rgba(238,70,7,0.5);
+    color:var(--text);
+    box-shadow:0 0 30px rgba(238,70,7,0.2);
+    width:110px;height:110px;font-size:14px;
+  }
+  .wf-circle.side-node{
+    background:var(--panel-strong);
+    border:1px solid var(--panel-border);
+    color:var(--text);
+  }
+  .wf-circle.side-node.bottleneck{
+    border-color:rgba(238,70,7,0.4);
+    background:rgba(238,70,7,0.06);
+  }
+  .wf-label{font-size:11px;font-weight:600;color:var(--text-faint);text-align:center;}
+
+  .wf-center{
+    display:flex;flex-direction:column;gap:20px;align-items:center;
+    position:relative;
+  }
+  .wf-connectors{
+    position:relative;display:flex;align-items:center;
+  }
+  .wf-line-h{
+    width:60px;height:1px;background:var(--line);
+  }
+  .wf-line-h.accent{background:rgba(238,70,7,0.3);}
+  .wf-lines-multi{
+    position:relative;width:70px;height:160px;
+    flex-shrink:0;
+  }
+  .wf-lines-multi svg{position:absolute;inset:0;width:100%;height:100%;}
+
+  .solo-tag{
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    color:#ef4444;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);
+    padding:4px 10px;border-radius:999px;margin-top:6px;
+  }
+
+  /* Info cards grid */
+  .info-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:24px;
+    margin-top:40px;
+  }
+  .info-card{
+    padding:32px;
+  }
+  .info-card h3{
+    font-size:1.15rem;font-weight:700;margin-bottom:6px;
+    letter-spacing:-0.01em;
+  }
+  .info-card .card-eyebrow{
+    font-size:10.5px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;
+    color:var(--orange-light);margin-bottom:14px;display:block;
+  }
+
+  .offer-price{
+    font-size:clamp(2rem,4vw,3rem);font-weight:800;color:var(--orange-light);
+    letter-spacing:-0.03em;margin-bottom:4px;
+  }
+  .offer-detail{color:var(--text-dim);font-size:0.92rem;line-height:1.6;}
+
+  .avatar-levels{display:flex;flex-direction:column;gap:12px;margin-top:4px;}
+  .avatar-level{
+    padding:12px 16px;border-radius:12px;
+    background:rgba(255,255,255,0.035);border:1px solid var(--line);
+    font-size:0.88rem;color:var(--text-dim);line-height:1.5;
+  }
+  .avatar-level strong{color:var(--text);display:block;margin-bottom:3px;font-size:0.85rem;}
+
+  /* === FASE 2: CUELLOS === */
+  .bottleneck-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:24px;
+  }
+  .bn-card{
+    padding:32px;
+    position:relative;overflow:hidden;
+  }
+  .bn-card::before{
+    content:'';position:absolute;top:0;right:0;width:200px;height:200px;
+    background:radial-gradient(circle,rgba(239,68,68,0.08) 0%,transparent 70%);
+    pointer-events:none;
+  }
+  .bn-card.wide{grid-column:1 / -1;}
+  .bn-number{
+    width:36px;height:36px;border-radius:10px;
+    background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.25);
+    display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:800;color:#ef4444;
+    margin-bottom:16px;flex-shrink:0;
+  }
+  .bn-card h3{
+    font-size:1.1rem;font-weight:700;margin-bottom:6px;letter-spacing:-0.01em;
+  }
+  .bn-subtitle{
+    font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;
+    color:#ef4444;opacity:0.8;margin-bottom:18px;display:block;
+  }
+  .bn-items{display:flex;flex-direction:column;gap:14px;}
+  .bn-item{
+    padding-left:18px;position:relative;
+    font-size:0.9rem;color:var(--text-dim);line-height:1.6;
+  }
+  .bn-item::before{
+    content:'';position:absolute;left:0;top:8px;
+    width:6px;height:6px;border-radius:50%;
+    background:#ef4444;box-shadow:0 0 8px rgba(239,68,68,0.5);
+  }
+  .bn-item strong{color:var(--text);}
+
+  .stat-highlight{
+    display:flex;align-items:center;gap:12px;
+    padding:16px 20px;border-radius:12px;
+    background:rgba(255,255,255,0.035);border:1px solid var(--line);
+    margin-top:20px;
+  }
+  .stat-num{font-size:1.8rem;font-weight:800;color:#ef4444;letter-spacing:-0.03em;}
+  .stat-desc{font-size:0.85rem;color:var(--text-dim);line-height:1.4;}
+  .stat-desc strong{color:var(--text);}
+
+  /* === FASE 3: PRÃXIMOS PASOS === */
+  .steps-intro{
+    padding:40px;margin-bottom:32px;
+  }
+  .steps-intro h3{
+    font-size:clamp(1.3rem,2.5vw,1.8rem);font-weight:700;margin-bottom:12px;letter-spacing:-0.02em;
+  }
+  .steps-intro p{color:var(--text-dim);font-size:0.96rem;line-height:1.7;max-width:800px;}
+
+  .next-steps-grid{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:20px;
+    margin-top:32px;
+  }
+  .step-card{padding:28px;}
+  .step-card .step-phase{
+    font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--text-faint);margin-bottom:8px;display:block;
+  }
+  .step-card h4{font-size:1rem;font-weight:700;margin-bottom:10px;letter-spacing:-0.01em;}
+  .step-card p{font-size:0.87rem;color:var(--text-dim);line-height:1.6;}
+
+  .step-icon{
+    width:40px;height:40px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:16px;font-size:18px;
+    background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.2);
+  }
+
+  .immediate-steps{margin-top:48px;}
+  .immediate-steps h3{
+    font-size:1.2rem;font-weight:700;margin-bottom:24px;letter-spacing:-0.01em;
+  }
+  .immediate-steps h3 span{color:var(--orange-light);}
+
+  .timeline{display:flex;flex-direction:column;gap:0;}
+  .tl-item{
+    display:grid;grid-template-columns:120px 1px 1fr;
+    gap:0 28px;
+    padding-bottom:36px;
+  }
+  .tl-item:last-child{padding-bottom:0;}
+  .tl-time{
+    text-align:right;padding-top:4px;
+    font-size:11.5px;font-weight:700;color:var(--orange-light);
+    letter-spacing:0.04em;text-transform:uppercase;
+  }
+  .tl-line{
+    position:relative;background:var(--line);
+    display:flex;justify-content:center;
+  }
+  .tl-dot{
+    position:absolute;top:4px;
+    width:10px;height:10px;border-radius:50%;
+    background:var(--orange);
+    box-shadow:0 0 12px var(--orange-glow);
+    margin-left:-4.5px;
+  }
+  .tl-item:last-child .tl-line{background:transparent;}
+  .tl-content{padding-top:0;}
+  .tl-content h4{font-size:1rem;font-weight:700;margin-bottom:6px;letter-spacing:-0.01em;}
+  .tl-content p{font-size:0.88rem;color:var(--text-dim);line-height:1.6;}
+
+  .justification-box{
+    margin-top:48px;padding:40px;
+    position:relative;overflow:hidden;
+  }
+  .justification-box::before{
+    content:'';position:absolute;top:-40%;left:-10%;width:60%;height:150%;
+    background:radial-gradient(circle,var(--orange-glow-soft) 0%,transparent 65%);
+    pointer-events:none;
+  }
+  .justification-box h3{
+    font-size:1.2rem;font-weight:700;margin-bottom:20px;letter-spacing:-0.01em;
+  }
+  blockquote.main{
+    font-size:clamp(1.2rem,2vw,1.6rem);font-weight:600;line-height:1.45;
+    color:var(--text);border-left:2px solid var(--orange);
+    padding-left:24px;margin-bottom:24px;
+  }
+  .justification-box p{color:var(--text-dim);font-size:0.95rem;line-height:1.7;max-width:700px;}
+
+  /* DIVIDER */
+  .section-divider{
+    position:relative;z-index:1;
+    display:flex;align-items:center;gap:20px;
+    padding:20px 6vw 40px;max-width:1300px;margin:0 auto;
+  }
+  .section-divider::before,.section-divider::after{
+    content:'';flex:1;height:1px;background:var(--line);
+  }
+  .section-divider-label{
+    font-size:10.5px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+    color:var(--text-faint);white-space:nowrap;
+  }
+
+  /* FOOTER */
+  footer{
+    position:relative;z-index:1;
+    padding:40px 6vw 60px;max-width:1300px;margin:0 auto;
+    border-top:1px solid var(--line);
+    font-size:12px;color:var(--text-faint);line-height:1.7;
+  }
+
+  @media (max-width:900px){
+    .info-grid{grid-template-columns:1fr;}
+    .bottleneck-grid{grid-template-columns:1fr;}
+    .bn-card.wide{grid-column:1;}
+    .next-steps-grid{grid-template-columns:1fr;}
+    .tl-item{grid-template-columns:80px 1px 1fr;gap:0 16px;}
+    .phase-section{padding:0 18px 80px;}
+    .phase-header{flex-direction:column;gap:10px;}
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-glow"></div>
+
+<!-- HERO -->
+<header class="hero">
+  <span class="eyebrow-pill"><span class="dot"></span>Diagnóstico Estratégico</span>
+  <h1 style="margin-top:22px">Tu camino a<br><em>100K USD/mes</em></h1>
+  <p class="hero-sub" style="margin-top:16px">Un mapa claro de dónde estás, qué te frena y qué se hace primero.</p>
+  <div style="margin-top:32px;display:inline-flex;align-items:center;gap:10px;font-size:12px;color:var(--text-faint);background:var(--panel);border:1px solid var(--panel-border);padding:8px 18px;border-radius:999px;">
+    <span style="color:var(--orange-light);font-weight:700;">Omar Ferrer</span>
+    <span>·</span>
+    <span>Consultoría Dropshipping</span>
+    <span>·</span>
+    <span>2025</span>
+  </div>
+</header>
+
+<!-- PHASE NAV -->
+<nav class="phase-nav">
+  <div class="phase-step active">
+    <div class="phase-num">01</div>
+    <span class="phase-label">Bases<br>del Negocio</span>
+  </div>
+  <div class="phase-step">
+    <div class="phase-num">02</div>
+    <span class="phase-label">Cuellos<br>de Botella</span>
+  </div>
+  <div class="phase-step">
+    <div class="phase-num">03</div>
+    <span class="phase-label">Próximos<br>Pasos</span>
+  </div>
+</nav>
+
+<!-- ==================== FASE 1: BASES ==================== -->
+<section class="phase-section">
+  <div class="phase-header">
+    <div class="phase-number-big">01</div>
+    <div class="phase-header-text">
+      <span class="eyebrow-pill"><span class="dot"></span>Bases del Negocio</span>
+      <h2 style="margin-top:16px">Cómo opera hoy<br>tu negocio</h2>
+      <p style="margin-top:10px">Workflow actual, oferta y el mercado al que le hablas. El punto de partida real, sin filtros.</p>
+    </div>
+  </div>
+
+  <!-- WORKFLOW -->
+  <div class="glass" style="padding:40px;margin-bottom:24px;">
+    <span class="eyebrow-pill" style="margin-bottom:24px;display:inline-flex;"><span class="dot"></span>Workflow Actual</span>
+
+    <div class="workflow-container">
+      <!-- CSM Node -->
+      <div class="wf-node">
+        <div class="wf-circle side-node" style="border-color:rgba(238,70,7,0.4);background:rgba(238,70,7,0.06);">
+          <div>
+            <div style="font-size:13px;font-weight:700;">CSM</div>
+            <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Servicio</div>
+          </div>
+        </div>
+        <span class="solo-tag">&#9888; Omar</span>
+      </div>
+
+      <!-- Lines left to center -->
+      <svg width="80" height="180" viewBox="0 0 80 180" fill="none" style="flex-shrink:0;">
+        <path d="M0 30 C40 30, 40 90, 80 90" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+        <path d="M0 90 L80 90" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+        <path d="M0 150 C40 150, 40 90, 80 90" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+      </svg>
+
+      <!-- Center column: Setter, Creador, Closer -->
+      <div style="display:flex;flex-direction:column;gap:20px;align-items:center;">
+        <div class="wf-node">
+          <div class="wf-circle side-node bottleneck">
+            <div>
+              <div style="font-size:12px;font-weight:700;">Setter</div>
+            </div>
+          </div>
+          <span class="solo-tag">&#9888; Omar</span>
+        </div>
+        <div class="wf-node">
+          <div class="wf-circle main-node">
+            <div>
+              <div style="font-size:14px;font-weight:800;">Creador</div>
+              <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">Contenido</div>
+            </div>
+          </div>
+          <span class="solo-tag">&#9888; Omar</span>
+        </div>
+        <div class="wf-node">
+          <div class="wf-circle side-node bottleneck">
+            <div>
+              <div style="font-size:12px;font-weight:700;">Closer</div>
+            </div>
+          </div>
+          <span class="solo-tag">&#9888; Omar</span>
+        </div>
+      </div>
+
+      <!-- Lines center to marketing -->
+      <svg width="80" height="180" viewBox="0 0 80 180" fill="none" style="flex-shrink:0;">
+        <path d="M0 90 C40 90, 40 30, 80 30" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+        <path d="M0 90 L80 90" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+        <path d="M0 90 C40 90, 40 150, 80 150" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" fill="none"/>
+      </svg>
+
+      <!-- Marketing Node -->
+      <div class="wf-node">
+        <div class="wf-circle side-node" style="border-color:rgba(238,70,7,0.4);background:rgba(238,70,7,0.06);">
+          <div>
+            <div style="font-size:13px;font-weight:700;">Marketing</div>
+            <div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Distribución</div>
+          </div>
+        </div>
+        <span class="solo-tag">&#9888; Omar</span>
+      </div>
+    </div>
+
+    <!-- Alerta cuello de botella -->
+    <div style="margin-top:32px;padding:20px 24px;border-radius:14px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);display:flex;align-items:flex-start;gap:14px;">
+      <div style="font-size:20px;flex-shrink:0;margin-top:1px;">🔴</div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:#ef4444;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:5px;">Hombre Orquesta — Cuello de Botella Total</div>
+        <p style="font-size:0.9rem;color:var(--text-dim);line-height:1.6;">Omar lo hace <strong style="color:var(--text)">todo</strong>: crea contenido, abre chats, hace setting, cierra ventas y atiende clientes activos. Cuando el volumen aumente, este modelo colapsa.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- OFERTA + AVATAR -->
+  <div class="info-grid">
+    <!-- Oferta -->
+    <div class="glass info-card">
+      <span class="card-eyebrow">La Oferta</span>
+      <h3>Mentoría Dropshipping</h3>
+      <div class="offer-price" style="margin-top:16px;">$1.000.000 CLP</div>
+      <p class="offer-detail">Ayudo a dropshippers a llegar a sus primeros <strong style="color:var(--text)">10K USD de facturación en 90 días</strong> sin malgastar dinero en Ads.</p>
+      <div style="margin-top:24px;display:flex;flex-direction:column;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;font-size:0.87rem;color:var(--text-dim);">
+          <span style="color:var(--orange-light);">◦</span> 5 llamadas 1 a 1
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:0.87rem;color:var(--text-dim);">
+          <span style="color:var(--orange-light);">◦</span> Acceso a plataforma con videos pregrabados
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:0.87rem;color:var(--text-dim);">
+          <span style="color:var(--orange-light);">◦</span> Soporte WhatsApp privado + Discord
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;font-size:0.87rem;color:var(--text-dim);">
+          <span style="color:var(--orange-light);">◦</span> 2 sesiones grupales semanales por 90 días
+        </div>
+      </div>
+      <div style="margin-top:20px;padding:14px 18px;border-radius:10px;background:rgba(255,255,255,0.035);border:1px solid var(--line);font-size:0.87rem;color:var(--text-dim);">
+        Canal único: <strong style="color:var(--text)">Instagram orgánico</strong> — 300 a 3.000 views por Reel · 30 chats semanales
+      </div>
+    </div>
+
+    <!-- A quién le vende -->
+    <div class="glass info-card">
+      <span class="card-eyebrow">A Quién Le Vende</span>
+      <h3>El Avatar</h3>
+
+      <div class="avatar-levels" style="margin-top:16px;">
+        <div class="avatar-level">
+          <strong>🔴 Avatar Principal (hoy)</strong>
+          Emprendedor que ya intentó dropshipping sin éxito. Perdió dinero, frustración técnica y sin resultados. Busca una guía honesta y estrategia personalizada.
+        </div>
+        <div class="avatar-level">
+          <strong>🟡 Avatar Secundario</strong>
+          Persona que quiere emprender y <em>tiene</em> capital para invertir. Aún no tiene negocio, busca un punto de partida claro y confiable.
+        </div>
+        <div class="avatar-level" style="border-color:rgba(238,70,7,0.25);background:rgba(238,70,7,0.04);">
+          <strong style="color:var(--orange-light);">⚠️ Diferenciador declarado</strong>
+          Omar habla las cosas tal cual son, sin ponerles color. Honestidad como posicionamiento frente a la saturación de gurús.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider">
+  <span class="section-divider-label">Diagnóstico</span>
+</div>
+
+<!-- ==================== FASE 2: CUELLOS DE BOTELLA ==================== -->
+<section class="phase-section">
+  <div class="phase-header">
+    <div class="phase-number-big" style="color:#ef4444;">02</div>
+    <div class="phase-header-text">
+      <span class="eyebrow-pill" style="color:#ef4444;background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.25);"><span class="dot" style="background:#ef4444;"></span>Diagnóstico</span>
+      <h2 style="margin-top:16px">Lo que te está<br>frenando hoy</h2>
+      <p style="margin-top:10px">Cuatro bloqueos reales, ordenados por impacto. Esto no es opinión — es lo que dice la matemática de tu negocio.</p>
+    </div>
+  </div>
+
+  <div class="bottleneck-grid">
+
+    <!-- 1. Tráfico -->
+    <div class="glass bn-card">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px;">
+        <div class="bn-number">01</div>
+        <div>
+          <h3>Adquisición de Tráfico</h3>
+          <span class="bn-subtitle">Top of funnel roto</span>
+        </div>
+      </div>
+      <div class="bn-items">
+        <div class="bn-item"><strong>Sin ecosistema de contenido:</strong> Publicar "cuando te pinta" no es una estrategia. Falta la división en atracción, nutrición y conversión.</div>
+        <div class="bn-item"><strong>El volumen no cierra:</strong> Con 30 chats semanales, aunque tu agendamiento y cierre sean de 30% cada uno, solo generas 2 a 3 ventas por semana. Para llegar a 100 ventas/mes necesitas multiplicar los chats por 10.</div>
+        <div class="bn-item"><strong>Unicanalidad:</strong> Solo Instagram orgánico con 300–3.000 views. Sin inyección de tráfico externo ni respaldo de Ads.</div>
+      </div>
+      <div class="stat-highlight">
+        <div class="stat-num">×10</div>
+        <div class="stat-desc"><strong style="color:var(--text);">270–300 chats semanales</strong> es el mínimo para tu meta de 100 ventas/mes.</div>
+      </div>
+    </div>
+
+    <!-- 2. Ventas -->
+    <div class="glass bn-card">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px;">
+        <div class="bn-number">02</div>
+        <div>
+          <h3>Ventas</h3>
+          <span class="bn-subtitle">El techo del hombre orquesta</span>
+        </div>
+      </div>
+      <div class="bn-items">
+        <div class="bn-item"><strong>Cero delegación en Setting y Closing:</strong> Estás haciendo el contenido, filtrando DMs y tomando llamadas de cierre al mismo tiempo. Eso funciona a este volumen — y colapsa al siguiente.</div>
+        <div class="bn-item"><strong>Sin Setter, no escala:</strong> Cuando el volumen de chats aumente, necesitas que alguien califique y caliente los leads antes de que lleguen a tu agenda. Sin eso, vas a gastar horas en curiosos.</div>
+      </div>
+      <div class="stat-highlight">
+        <div style="font-size:1.6rem;">⚡</div>
+        <div class="stat-desc">Un Setter bien entrenado puede <strong style="color:var(--text);">triplicar tu tasa de agendamiento</strong> protegiendo tu tiempo para los cierres reales.</div>
+      </div>
+    </div>
+
+    <!-- 3. Operaciones (wide) -->
+    <div class="glass bn-card wide">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px;">
+        <div class="bn-number">03</div>
+        <div>
+          <h3>Operaciones y Delivery</h3>
+          <span class="bn-subtitle">El freno más grave — y el más oculto</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;">
+        <div class="bn-items">
+          <div class="bn-item"><strong>Modelo 1 a 1 insostenible:</strong> Prometiste 5 llamadas personales por cliente. Con 50 activos eso ya son 250 llamadas dentro de 90 días — más sesiones grupales, comunidad y creación de contenido.</div>
+          <div class="bn-item"><strong>La percepción de "1000 clientes fácil" es una ceguera:</strong> 100 clientes nuevos por mes = 500 llamadas 1 a 1 adicionales en 90 días. Tu tiempo no existe en esa ecuación.</div>
+        </div>
+        <div class="bn-items">
+          <div class="bn-item"><strong>El colapso no es una posibilidad — es un cronograma:</strong> Cuando la calidad del servicio caiga, caen los resultados de los clientes. Y cuando caigan sus resultados, caen los reembolsos, los testimonios y tu reputación.</div>
+          <div class="bn-item"><strong>La solución:</strong> Transicionar ya el delivery a un modelo grupal o incorporar coaches de soporte técnico antes de escalar el volumen.</div>
+        </div>
+      </div>
+      <div style="margin-top:24px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        <div style="padding:16px;border-radius:12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);text-align:center;">
+          <div style="font-size:1.6rem;font-weight:800;color:#ef4444;">500</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">llamadas 1 a 1 en 90 días<br>con 100 clientes/mes</div>
+        </div>
+        <div style="padding:16px;border-radius:12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);text-align:center;">
+          <div style="font-size:1.6rem;font-weight:800;color:#ef4444;">50</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">clientes activos hoy<br>= límite real actual</div>
+        </div>
+        <div style="padding:16px;border-radius:12px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.15);text-align:center;">
+          <div style="font-size:1.6rem;font-weight:800;color:#ef4444;">0</div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">coaches de soporte<br>en equipo hoy</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Medición -->
+    <div class="glass bn-card wide">
+      <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:20px;">
+        <div class="bn-number">04</div>
+        <div>
+          <h3>Medición y Sistemas</h3>
+          <span class="bn-subtitle">Sin datos no hay dirección</span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;">
+        <div class="bn-items">
+          <div class="bn-item"><strong>"Anotar todo" no es medir:</strong> Sin un registro estructurado de métricas, estás operando por intuición. La intuición escala hasta cierto punto — después te rompe.</div>
+          <div class="bn-item"><strong>Sin Cash Collected ni AOV:</strong> No sabes qué Reel específico trajo a tus compradores. No sabes el valor promedio real de cada cliente. Eso hace imposible tomar decisiones de inversión o duplicar lo que funciona.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.87rem;color:var(--text-dim);">
+            <strong style="color:var(--text);display:block;margin-bottom:3px;">¿Qué Reel vende más?</strong> Sin tracking, imposible saberlo.
+          </div>
+          <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.87rem;color:var(--text-dim);">
+            <strong style="color:var(--text);display:block;margin-bottom:3px;">¿Cuánto vale realmente un cliente?</strong> AOV desconocido = presupuesto a ciegas.
+          </div>
+          <div style="padding:12px 16px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.87rem;color:var(--text-dim);">
+            <strong style="color:var(--text);display:block;margin-bottom:3px;">¿Cuántos chats se pierden y dónde?</strong> Sin funnel tracking, cada lead es un misterio.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<div class="section-divider">
+  <span class="section-divider-label">Plan de Acción</span>
+</div>
+
+<!-- ==================== FASE 3: PRÓXIMOS PASOS ==================== -->
+<section class="phase-section">
+  <div class="phase-header">
+    <div class="phase-number-big" style="color:var(--orange);">03</div>
+    <div class="phase-header-text">
+      <span class="eyebrow-pill"><span class="dot"></span>Plan de Acción</span>
+      <h2 style="margin-top:16px">Qué se hace<br>y en qué orden</h2>
+      <p style="margin-top:10px">Tres frentes simultáneos, una lógica clara: primero los cimientos, después la escala.</p>
+    </div>
+  </div>
+
+  <!-- Justificación -->
+  <div class="glass justification-box" style="margin-bottom:40px;">
+    <h3>La lógica detrás del plan</h3>
+    <blockquote class="main">
+      No tiene sentido abrir más el grifo si el balde tiene agujeros.
+    </blockquote>
+    <p>Escalar tráfico sin arreglar el delivery es la forma más rápida de destruir una reputación. Escalar contenido sin medir es tirar presupuesto al vacío. El orden importa: primero se estabiliza el modelo de servicio y se instalan los sistemas de medición, <strong style="color:var(--text);">después</strong> se abre el flujo de tráfico masivo y se incorpora el setter.</p>
+  </div>
+
+  <!-- Frentes estratégicos -->
+  <div style="margin-bottom:32px;">
+    <span class="eyebrow-pill" style="margin-bottom:20px;display:inline-flex;"><span class="dot"></span>Los 3 Frentes</span>
+  </div>
+  <div class="next-steps-grid">
+    <div class="glass step-card">
+      <div class="step-icon">🔍</div>
+      <span class="step-phase">Frente 01</span>
+      <h4>Market Research + Medición</h4>
+      <p>Investigar quién te está comprando de verdad, por qué te compran y qué cuellos de botella internos existen. Instalar tracking real de métricas antes de tocar el contenido.</p>
+    </div>
+    <div class="glass step-card">
+      <div class="step-icon">📞</div>
+      <span class="step-phase">Frente 02</span>
+      <h4>Análisis de Ventas</h4>
+      <p>Revisar todas las llamadas: las que se cerraron y las que no. Todos los chats: los que agendaron y los que se cayeron. Identificar los ángulos que realmente traen ventas vs. los que solo generan curiosos.</p>
+    </div>
+    <div class="glass step-card">
+      <div class="step-icon">🛠️</div>
+      <span class="step-phase">Frente 03</span>
+      <h4>Ajuste de Bases</h4>
+      <p>Redefinir el avatar con la data real, ajustar la oferta para que sea escalable, y comenzar la transición del delivery a un modelo grupal con soporte técnico.</p>
+    </div>
+  </div>
+
+  <!-- Timeline de primeros pasos -->
+  <div class="immediate-steps" style="margin-top:48px;">
+    <span class="eyebrow-pill" style="margin-bottom:24px;display:inline-flex;"><span class="dot"></span>Si empezamos hoy</span>
+    <div style="height:20px;"></div>
+
+    <div class="timeline">
+
+      <!-- SEMANA 1 -->
+      <div class="tl-item">
+        <div class="tl-time">Semana 1</div>
+        <div class="tl-line"><div class="tl-dot"></div></div>
+        <div class="tl-content">
+          <h4>Market Research + Excavación de Llamadas</h4>
+          <p style="margin-bottom:14px;">Levantar el cuestionario de MR interno para entender quién te compra y por qué. Analizar los 10 casos de éxito actuales: qué los unía, cómo llegaron, qué los hizo avanzar. En paralelo, revisar todas las llamadas cerradas vs. las que no — identificar las objeciones reales y los ángulos de contenido que traen a las personas correctas.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:4px;">
+            <div style="padding:11px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.82rem;color:var(--text-dim);">
+              <strong style="color:var(--text);display:block;margin-bottom:3px;">📋 Market Research</strong>Cuestionario interno + análisis de compradores actuales
+            </div>
+            <div style="padding:11px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.82rem;color:var(--text-dim);">
+              <strong style="color:var(--text);display:block;margin-bottom:3px;">📞 Llamadas</strong>Cerradas vs. no cerradas — patrones y objeciones reales
+            </div>
+            <div style="padding:11px 14px;border-radius:10px;background:rgba(255,255,255,0.03);border:1px solid var(--line);font-size:0.82rem;color:var(--text-dim);">
+              <strong style="color:var(--text);display:block;margin-bottom:3px;">💬 Chats</strong>Agendados vs. no — ángulos que convierten vs. que solo generan curiosos
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEMANA 2 -->
+      <div class="tl-item">
+        <div class="tl-time">Semana 2</div>
+        <div class="tl-line"><div class="tl-dot"></div></div>
+        <div class="tl-content">
+          <h4>Sistemas: Dashboard + Laboratorio de Contenido + Competidores</h4>
+          <p style="margin-bottom:20px;">Con la data de la semana 1, instalar el dashboard de métricas real y el laboratorio de contenido. Analizar competidores directos para identificar qué formatos generan chats vs. solo views. Ajustar avatar y oferta con evidencia, no con intuición.</p>
+        </div>
+      </div>
+
+      <!-- MES 2-3 -->
+      <div class="tl-item">
+        <div class="tl-time">Mes 2–3</div>
+        <div class="tl-line"><div class="tl-dot"></div></div>
+        <div class="tl-content">
+          <h4>Expansión: Setter + SOPs + Estrategia de Posicionamiento</h4>
+          <p>Con el sistema medido, el avatar ajustado y el modelo de delivery estabilizado: incorporar el primer Setter, documentar los SOPs de closing y setting, y lanzar la estrategia de posicionamiento que abre el tráfico a escala. Aquí es donde el grifo se abre — con el balde sin agujeros.</p>
+          <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;">
+            <div style="padding:8px 16px;border-radius:999px;background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.25);font-size:11.5px;font-weight:600;color:var(--orange-light);">Primer Setter contratado</div>
+            <div style="padding:8px 16px;border-radius:999px;background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.25);font-size:11.5px;font-weight:600;color:var(--orange-light);">SOP Closing documentado</div>
+            <div style="padding:8px 16px;border-radius:999px;background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.25);font-size:11.5px;font-weight:600;color:var(--orange-light);">SOP Setting documentado</div>
+            <div style="padding:8px 16px;border-radius:999px;background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.25);font-size:11.5px;font-weight:600;color:var(--orange-light);">Estrategia de posicionamiento activa</div>
+            <div style="padding:8px 16px;border-radius:999px;background:var(--orange-glow-soft);border:1px solid rgba(238,70,7,0.25);font-size:11.5px;font-weight:600;color:var(--orange-light);">Calendario de contenido escalado</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</section>
+
+<footer>
+  Diagnóstico construido a partir del formulario de onboarding completado por Omar Ferrer · Los números son proyecciones basadas en las tasas actuales declaradas (30% agendamiento · 30% cierre · 30 chats/semana) · <strong>Documento de trabajo interno — no para distribución.</strong>
+</footer>
+
+</body>
+</html>
