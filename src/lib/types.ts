@@ -233,6 +233,8 @@ export interface Lead {
   updated_at: string
 }
 
+export type CallBucket = 'cerrada' | 'no_cerrada'
+
 export interface SalesCall {
   id: string
   lead_id: string
@@ -249,6 +251,17 @@ export interface SalesCall {
   objections: Array<{ objection: string; response: string; resolved: boolean }>
   next_steps: string | null
   sentiment: CallSentiment | null
+  bucket: CallBucket | null
+  folder_id: string | null
+  created_at: string
+}
+
+export interface CallFolder {
+  id: string
+  client_id: string
+  parent_id: string | null
+  bucket: CallBucket
+  name: string
   created_at: string
 }
 

@@ -17,10 +17,11 @@ import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTab } from './crm-tab'
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, Competitor, CompetitorReel } from '@/lib/types'
+import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
+import type { AgendaLeadOption } from '@/lib/actions/agenda-records'
 
 interface AgencyUser {
   id: string
@@ -36,6 +37,8 @@ interface Props {
   contentMetrics: ContentMetric[]
   leads: Lead[]
   calls: SalesCall[]
+  callFolders: CallFolder[]
+  agendaLeadOptions: AgendaLeadOption[]
   agencyUsers: AgencyUser[]
   interactions: Interaction[]
   leadFunnel: ClientFunnelAggregate
@@ -54,7 +57,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
+export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -139,8 +142,11 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
 
             {activeTab === 'calls' && (
               <ClientCallsList
+                clientId={client.id}
                 calls={calls}
                 leads={leads}
+                callFolders={callFolders}
+                agendaLeadOptions={agendaLeadOptions}
               />
             )}
 

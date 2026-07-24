@@ -80,3 +80,28 @@ export async function deleteAgendaRecord(id: string): Promise<void> {
   const { error } = await supabase.from('agenda_records').delete().eq('id', id)
   if (error) throw error
 }
+
+export interface AgendaLeadOption {
+  lead_id: string
+  nombre_lead: string | null
+  avatar: string | null
+  de_donde_vino: string | null
+  closer: string | null
+  fecha_agenda: string | null
+}
+
+// Leads that are already booked (have an Agendas row) — used to scope the
+// "Registrar Llamada" lead picker instead of every lead ever created, and to
+// prefill the call date/context so it doesn't need retyping.
+export async function getAgendaLeadOptions(clientId: string): Promise<AgendaLeadOption[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('agenda_records')
+    .select('lead_id, nombre_lead, avatar, de_donde_vino, closer, fecha_agenda')
+    .eq('client_id', clientId)
+    .not('lead_id', 'is', null)
+    .order('fecha_agenda', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as AgendaLeadOption[]
+}
