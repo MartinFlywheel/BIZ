@@ -94,11 +94,32 @@ export async function getAgendaTeamStats(clientId: string): Promise<Record<strin
   return stats
 }
 
+// Editing anyone's profile (role especially — this is how privilege
+// escalation would happen) is admin-only. Without this check, any non-admin
+// who can see their client's Equipo tab could have promoted themselves (or
+// anyone else) to admin via the role dropdown.
 export async function updateAgencyUserAction(
   userId: string,
   fields: { full_name?: string; email?: string; role?: string }
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) return { success: false, error: 'No autenticado' }
+
+  const { data: caller } = await supabase
+    .from('users')
+    .select('role, user_type')
+    .eq('id', currentUser.id)
+    .single()
+
+  if (!caller || caller.user_type !== 'agency' || caller.role !== 'admin') {
+    return { success: false, error: 'Solo un admin puede editar a otras personas del equipo' }
+  }
+
+  if (userId === currentUser.id && fields.role && fields.role !== 'admin') {
+    return { success: false, error: 'No podés quitarte tu propio rol de admin' }
+  }
+
   const { error } = await supabase
     .from('users')
     .update(fields)

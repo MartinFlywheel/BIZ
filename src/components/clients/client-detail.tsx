@@ -47,6 +47,7 @@ interface Props {
   contentAnalytics: ContentAnalytics
   funnelTotals: ClientFunnelTotals
   readOnly?: boolean
+  isAdmin?: boolean
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -57,7 +58,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false }: Props) {
+export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -137,6 +138,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
                 interactions={interactions}
                 clientId={client.id}
                 customAvatars={client.custom_avatars}
+                isAdmin={isAdmin}
               />
             )}
 

@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
+import { createClient } from '@/lib/supabase/server'
 import { getClient } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
@@ -22,6 +23,13 @@ export default async function ClientDetailPage({
 }) {
   const { id } = await params
   unstable_noStore()
+
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const { data: viewer } = authUser
+    ? await supabase.from('users').select('role').eq('id', authUser.id).single()
+    : { data: null }
+  const isAdmin = viewer?.role === 'admin'
 
   try {
     const [client, campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
@@ -64,6 +72,7 @@ export default async function ClientDetailPage({
           competitorReels={competitorReels}
           contentAnalytics={contentAnalytics}
           funnelTotals={funnelTotals}
+          isAdmin={isAdmin}
         />
       </Suspense>
     )

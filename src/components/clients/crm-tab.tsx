@@ -31,6 +31,7 @@ interface Props {
   interactions?: Interaction[]
   clientId: string
   customAvatars?: string[]
+  isAdmin?: boolean
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -898,7 +899,7 @@ const ROLES = [
   { value: 'editor', label: 'Editor' },
 ]
 
-function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: AgencyUser[] }) {
+function EquipoTab({ clientId, agencyUsers, isAdmin }: { clientId: string; agencyUsers: AgencyUser[]; isAdmin: boolean }) {
   const [stats, setStats] = useState<Record<string, { agendas: number; shows: number; cerradas: number }>>({})
   const [loading, setLoading] = useState(true)
   const [localUsers, setLocalUsers] = useState(agencyUsers)
@@ -958,12 +959,14 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setShowAddPerson(true)}>
-          <UserPlus className="h-3.5 w-3.5" />
-          Agregar persona
-        </Button>
-      </div>
+      {isAdmin && (
+        <div className="flex justify-end">
+          <Button size="sm" onClick={() => setShowAddPerson(true)}>
+            <UserPlus className="h-3.5 w-3.5" />
+            Agregar persona
+          </Button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
       <div className="overflow-x-auto">
@@ -1011,8 +1014,8 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                         />
                       ) : (
                         <span
-                          onClick={() => startEdit(user.id, 'full_name', user.full_name)}
-                          className="block text-sm font-medium text-zinc-100 cursor-text hover:text-white rounded px-1 py-0.5 -mx-1 hover:bg-white/[0.04] transition-colors"
+                          onClick={() => isAdmin && startEdit(user.id, 'full_name', user.full_name)}
+                          className={`block text-sm font-medium text-zinc-100 rounded px-1 py-0.5 -mx-1 transition-colors ${isAdmin ? 'cursor-text hover:text-white hover:bg-white/[0.04]' : ''}`}
                         >
                           {isSaving ? <Loader2 className="h-3 w-3 animate-spin inline" /> : user.full_name}
                         </span>
@@ -1033,8 +1036,8 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                         />
                       ) : (
                         <span
-                          onClick={() => startEdit(user.id, 'email', user.email)}
-                          className="block text-xs text-zinc-500 cursor-text hover:text-zinc-300 rounded px-1 py-0.5 -mx-1 hover:bg-white/[0.04] transition-colors"
+                          onClick={() => isAdmin && startEdit(user.id, 'email', user.email)}
+                          className={`block text-xs text-zinc-500 rounded px-1 py-0.5 -mx-1 transition-colors ${isAdmin ? 'cursor-text hover:text-zinc-300 hover:bg-white/[0.04]' : ''}`}
                         >
                           {user.email}
                         </span>
@@ -1043,18 +1046,24 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
 
                     {/* Rol */}
                     <td className="px-3 py-2">
-                      <select
-                        value={user.role}
-                        disabled={isSaving}
-                        onChange={e => saveRole(user.id, e.target.value)}
-                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium border focus:outline-none cursor-pointer ${badge.color} bg-transparent disabled:opacity-50`}
-                      >
-                        {ROLES.map(r => (
-                          <option key={r.value} value={r.value} className="bg-zinc-900 text-zinc-100">
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
+                      {isAdmin ? (
+                        <select
+                          value={user.role}
+                          disabled={isSaving}
+                          onChange={e => saveRole(user.id, e.target.value)}
+                          className={`rounded-md px-2 py-0.5 text-[11px] font-medium border focus:outline-none cursor-pointer ${badge.color} bg-transparent disabled:opacity-50`}
+                        >
+                          {ROLES.map(r => (
+                            <option key={r.value} value={r.value} className="bg-zinc-900 text-zinc-100">
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-medium border ${badge.color}`}>
+                          {badge.label}
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.agendas}</td>
@@ -1071,6 +1080,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                       </span>
                     </td>
                     <td className="px-3 py-3 text-right pr-4">
+                      {isAdmin && (
                       <button
                         onClick={() => handleDeleteUser(user.id, user.full_name)}
                         disabled={isSaving}
@@ -1079,6 +1089,7 @@ function EquipoTab({ clientId, agencyUsers }: { clientId: string; agencyUsers: A
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                      )}
                     </td>
                   </tr>
                 )
@@ -1269,7 +1280,7 @@ function ConfigurarAvatarsModal({
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars }: Props) {
+export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars, isAdmin = false }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -1333,7 +1344,7 @@ export function CrmTab({ leads, agencyUsers, contentPieces, interactions, client
         <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} />
       )}
       {activeSubTab === 'equipo' && (
-        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} />
+        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} isAdmin={isAdmin} />
       )}
 
       {showAvatarConfig && (
