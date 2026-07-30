@@ -35,6 +35,10 @@ export interface ContentAnalytics {
   }>
   total_revenue: number
   total_pieces: number
+  // Full per-piece revenue/cierres map (leads.close_value + agenda_records
+  // "Cerrado" rows + content_metrics.cash_collected, merged) — top_by_revenue
+  // above is only the top 5, but every piece's card needs its own number.
+  revenue_by_content_id: Record<string, { revenue: number; cierres: number }>
 }
 
 export async function getContentAnalytics(clientId: string): Promise<ContentAnalytics> {
@@ -202,6 +206,13 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     }
   })
 
+  const revenue_by_content_id = Object.fromEntries(
+    Object.entries(revenueByContent).map(([content_id, revenue]) => [
+      content_id,
+      { revenue, cierres: cierresByContent[content_id] || 0 },
+    ])
+  )
+
   return {
     engagement: { ...engagement, engagement_rate },
     top_by_revenue,
@@ -209,5 +220,6 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     top_by_chats,
     total_revenue,
     total_pieces: allPieces.length,
+    revenue_by_content_id,
   }
 }

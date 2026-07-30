@@ -264,8 +264,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
         if (sortBy === 'views') return (b.views || 0) - (a.views || 0)
         if (sortBy === 'comments') return (b.comments || 0) - (a.comments || 0)
         if (sortBy === 'revenue') {
-            const aRev = metricsMap.get(a.id)?.cash_collected || 0
-            const bRev = metricsMap.get(b.id)?.cash_collected || 0
+            const aRev = contentAnalytics.revenue_by_content_id[a.id]?.revenue || 0
+            const bRev = contentAnalytics.revenue_by_content_id[b.id]?.revenue || 0
             return bRev - aRev
         }
         // 'recent' — server already sorted by published_at desc, preserve order
@@ -415,6 +415,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
                                 return sortedPieces.map((cp) => {
                                     const metric = metricsMap.get(cp.id)
                                     const hasMetrics = !!metric
+                                    const revenueStats = contentAnalytics.revenue_by_content_id[cp.id]
                                     const chatStats = interactionCountsByPiece.get(cp.id)
                                     const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
                                     const multiplierColor =
@@ -555,17 +556,19 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
                                                     </p>
                                                 )}
 
-                                                {/* Funnel metrics if available */}
-                                                {hasMetrics && metric && (
+                                                {/* Revenue attributed to this piece — leads, Agendas "Cerrado" rows, and manual content_metrics, merged */}
+                                                {revenueStats && (revenueStats.cierres > 0 || revenueStats.revenue > 0) && (
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-[10px] text-emerald-500 font-mono">
-                                                            {metric.cierres} cierre{metric.cierres !== 1 ? 's' : ''}
-                                                        </span>
-                                                        {metric.cash_collected != null && (
+                                                        {revenueStats.cierres > 0 && (
+                                                            <span className="text-[10px] text-emerald-500 font-mono">
+                                                                {revenueStats.cierres} cierre{revenueStats.cierres !== 1 ? 's' : ''}
+                                                            </span>
+                                                        )}
+                                                        {revenueStats.revenue > 0 && (
                                                             <>
-                                                                <span className="text-[10px] text-zinc-600">·</span>
+                                                                {revenueStats.cierres > 0 && <span className="text-[10px] text-zinc-600">·</span>}
                                                                 <span className="text-[10px] text-emerald-600 font-mono">
-                                                                    {formatCurrency(metric.cash_collected)}
+                                                                    {formatCurrency(revenueStats.revenue)}
                                                                 </span>
                                                             </>
                                                         )}
