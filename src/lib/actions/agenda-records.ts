@@ -15,6 +15,7 @@ export interface AgendaRecord {
   fecha_1er_contacto: string | null
   primer_cta: string | null
   todos_los_ctas: string | null
+  setter: string | null
   closer: string | null
   estado: string | null
   objecion: string | null

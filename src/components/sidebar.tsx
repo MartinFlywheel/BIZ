@@ -55,17 +55,26 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
   }
 
   return (
-    <aside className="relative z-10 my-3 ml-3 flex w-16 flex-col items-center rounded-2xl border border-white/[0.06] bg-white/[0.02] py-4 backdrop-blur-xl">
-      {/* Brand */}
+    <aside
+      className={cn(
+        // Mobile: fixed bottom bar, out of document flow, row layout.
+        'fixed inset-x-0 bottom-0 z-20 flex h-14 w-full flex-row items-center justify-around',
+        'border-t border-white/[0.06] bg-zinc-950/95 backdrop-blur-xl',
+        // Desktop (sm+): restore the original vertical rail.
+        'sm:relative sm:inset-auto sm:my-3 sm:ml-3 sm:h-auto sm:w-16 sm:flex-col sm:justify-start',
+        'sm:rounded-2xl sm:border sm:bg-white/[0.02] sm:py-4'
+      )}
+    >
+      {/* Brand — desktop only, mobile keeps the bar compact */}
       <Link
         href={brandHref}
-        className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#ff453a] shadow-[0_0_14px_rgba(255,69,58,0.5)]"
+        className="hidden h-9 w-9 items-center justify-center rounded-lg bg-[#ff453a] shadow-[0_0_14px_rgba(255,69,58,0.5)] sm:flex"
       >
         <span className="text-sm font-bold text-white">B</span>
       </Link>
 
       {/* Navigation icons */}
-      <nav className="mt-6 flex flex-1 flex-col items-center gap-1.5">
+      <nav className="flex flex-1 flex-row items-center justify-around gap-1.5 sm:mt-6 sm:flex-col sm:justify-start">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + '/')
@@ -83,21 +92,30 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
             >
               {/* Active accent bar — Raycast signature */}
               {isActive && (
-                <span className="absolute -left-1 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#ff453a] shadow-[0_0_8px_rgba(255,69,58,0.7)]" />
+                <span className="absolute -left-1 top-1/2 hidden h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#ff453a] shadow-[0_0_8px_rgba(255,69,58,0.7)] sm:block" />
               )}
               <item.icon className="h-[18px] w-[18px]" />
 
-              {/* Tooltip */}
-              <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100">
+              {/* Tooltip — desktop only (hover-based, meaningless on touch) */}
+              <span className="pointer-events-none absolute left-full ml-3 z-50 hidden whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100 sm:block">
                 {item.label}
               </span>
             </Link>
           )
         })}
+
+        {/* Logout lives inline with nav on mobile to fit the bar */}
+        <button
+          onClick={handleSignOut}
+          title="Cerrar sesión"
+          className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/90 sm:hidden"
+        >
+          <LogOut className="h-[18px] w-[18px]" />
+        </button>
       </nav>
 
-      {/* Footer */}
-      <div className="mt-4 flex flex-col items-center gap-1.5 border-t border-white/[0.06] pt-4">
+      {/* Footer — desktop only; notifications/carruseles/avatar/logout */}
+      <div className="mt-4 hidden flex-col items-center gap-1.5 border-t border-white/[0.06] pt-4 sm:flex">
         {userType === 'agency' && !restricted && (
           <Link
             href="/notifications"

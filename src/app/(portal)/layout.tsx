@@ -28,8 +28,8 @@ export default async function PortalLayout({
 
       <Sidebar userType={profile.user_type} userName={profile.full_name} />
 
-      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
-        <PageTransition className="mx-auto max-w-7xl px-8 py-8">
+      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
+        <PageTransition className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-8">
           {children}
         </PageTransition>
       </main>

@@ -63,7 +63,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
     <div className="space-y-5">
 
       {/* ── Header ── */}
-      <div className="flex items-end justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-white/90">
             Funnel — {clientName}
@@ -141,7 +141,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
             Embudo de ventas
           </p>
 
-          <div className="flex items-stretch gap-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:gap-6">
 
             {/* ── Visual funnel ── */}
             <div
@@ -209,7 +209,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
                         {stage.label}
                       </span>
                       <span
-                        className="font-mono text-[2rem] font-bold leading-tight mt-1"
+                        className="font-mono text-xl sm:text-[2rem] font-bold leading-tight mt-1"
                         style={{
                           color: 'rgba(255,255,255,0.93)',
                           textShadow: stage.is_bottleneck
@@ -227,7 +227,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
 
             {/* ── Rate panel ── */}
             <div
-              className="w-44 shrink-0 flex flex-col rounded-lg"
+              className="w-full sm:w-44 shrink-0 flex flex-col rounded-lg"
               style={{
                 gap: `${GAP}px`,
                 background: 'rgba(255,255,255,0.02)',

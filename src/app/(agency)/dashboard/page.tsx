@@ -41,7 +41,7 @@ function FunnelSkeleton() {
         }}
       >
         <div className="h-3 w-32 rounded bg-white/[0.04] mb-5" />
-        <div className="flex gap-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
           {/* Funnel shape */}
           <div className="flex-1 flex flex-col" style={{ gap: GAP }}>
             {SEG_WIDTHS.map((w, i) => (
@@ -57,7 +57,7 @@ function FunnelSkeleton() {
             ))}
           </div>
           {/* Rate panel */}
-          <div className="w-44 shrink-0 flex flex-col" style={{ gap: GAP }}>
+          <div className="w-full sm:w-44 shrink-0 flex flex-col" style={{ gap: GAP }}>
             {SEG_WIDTHS.map((_, i) => (
               <div key={i} className="flex flex-col justify-center px-4 gap-2" style={{ height: SEG_H }}>
                 {i > 0 && (
@@ -195,12 +195,12 @@ export default async function DashboardPage({
 
   return (
     <div className="stagger-children space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white/90">Dashboard</h1>
           <p className="mt-1 text-sm text-zinc-400">Salud del funnel y métricas de conversión</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <PeriodToggle selected={periodParam} />
           <ContentTypeToggle selected={type} />
           <ClientSelector clients={clients} selectedId={clientId} />

@@ -30,14 +30,14 @@ export function Tabs({ tabs, defaultTab, children }: TabsProps) {
 
   return (
     <div>
-      {/* Tab bar */}
-      <div className="relative flex gap-1 border-b border-zinc-800 mb-6">
+      {/* Tab bar — horizontally scrollable with touch on mobile where it overflows */}
+      <div className="relative flex gap-1 overflow-x-auto border-b border-zinc-800 mb-6 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
-              'relative px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px',
+              'relative shrink-0 px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px',
               active === tab.id
                 ? 'border-zinc-50 text-zinc-50'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'

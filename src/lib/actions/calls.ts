@@ -5,17 +5,24 @@ import { revalidatePath } from 'next/cache'
 import type { CallOutcome, CallSentiment, CallBucket, CallFolder } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase/paginate'
 
-export async function getCalls(leadId?: string) {
+export async function getCalls(leadId?: string, clientId?: string) {
   const supabase = await createClient()
 
   return fetchAllRows((from, to) => {
+    // clientId needs leads as an inner join so the .eq below can filter on it —
+    // a plain left join can't be filtered server-side via PostgREST.
+    const leadsSelect = clientId
+      ? 'leads!inner(full_name, ig_username, stage, clients(name, ig_handle))'
+      : 'leads(full_name, ig_username, stage, clients(name, ig_handle))'
+
     let query = supabase
       .from('sales_calls')
-      .select('*, leads(full_name, ig_username, stage, clients(name, ig_handle)), users!sales_calls_caller_id_fkey(full_name)')
+      .select(`*, ${leadsSelect}, users!sales_calls_caller_id_fkey(full_name)`)
       .order('scheduled_at', { ascending: false })
       .range(from, to)
 
     if (leadId) query = query.eq('lead_id', leadId)
+    if (clientId) query = query.eq('leads.client_id', clientId)
     return query
   })
 }

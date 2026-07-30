@@ -262,7 +262,7 @@ const cellBase = 'px-0 py-0 h-full w-full flex items-center cursor-text text-inh
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
+const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Setter', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
 
 export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: string; customAvatars?: string[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
@@ -518,6 +518,9 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
           {textCell('de_donde_vino', r.de_donde_vino, 'CTA', 'text-xs text-zinc-400')}
         </td>
         <td className="px-2 py-1.5 text-xs w-[110px]">
+          {textCell('setter', r.setter, 'Setter', 'text-xs text-zinc-400')}
+        </td>
+        <td className="px-2 py-1.5 text-xs w-[110px]">
           {textCell('closer', r.closer, 'Closer', 'text-xs text-zinc-400')}
         </td>
         <td className="px-2 py-1.5 text-xs w-[120px]">{estadoCell()}</td>
@@ -561,7 +564,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
 
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse">
+          <table className="w-full min-w-[960px] border-collapse">
             <thead>
               <tr className="border-b border-white/[0.06] bg-white/[0.02]">
                 {HEADERS.map((h, i) => (
@@ -592,7 +595,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
                     </tr>,
                     ...recs.map(r => renderRow(r)),
                     <tr key={`wtotal-${week}`} className="border-b border-white/[0.06] bg-white/[0.01]">
-                      <td colSpan={8} className="px-3 py-1.5">
+                      <td colSpan={9} className="px-3 py-1.5">
                         <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Total semana {week}</span>
                       </td>
                       <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-400 whitespace-nowrap">
@@ -608,7 +611,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
               )}
               {records.length > 0 && (
                 <tr className="border-t border-white/[0.1] bg-white/[0.02]">
-                  <td colSpan={7} className="px-3 py-2">
+                  <td colSpan={8} className="px-3 py-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                       Total Mes · {grandCierres} cierre{grandCierres !== 1 ? 's' : ''}
                     </span>

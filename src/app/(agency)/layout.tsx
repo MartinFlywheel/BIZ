@@ -33,8 +33,8 @@ export default async function AgencyLayout({
       <div className="relative flex h-screen overflow-hidden bg-black">
         <div className="raycast-glow inset-x-0 top-0 h-[60vh]" />
         <Sidebar userType="agency" userName={profile.full_name} homeHref="/login" restricted />
-        <main className="relative z-10 flex flex-1 items-center justify-center">
-          <p className="text-sm text-zinc-500">Tu cuenta no tiene un cliente asignado. Contactá a un admin.</p>
+        <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-14 sm:pb-0">
+          <p className="text-center text-sm text-zinc-500">Tu cuenta no tiene un cliente asignado. Contactá a un admin.</p>
         </main>
       </div>
     )
@@ -52,8 +52,8 @@ export default async function AgencyLayout({
         restricted={restricted}
       />
 
-      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto">
-        <PageTransition className="mx-auto max-w-7xl px-8 py-8">
+      <main className="relative z-10 min-w-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
+        <PageTransition className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-8">
           {children}
         </PageTransition>
       </main>

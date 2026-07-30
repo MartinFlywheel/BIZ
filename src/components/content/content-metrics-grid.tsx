@@ -282,12 +282,12 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
         <div className="space-y-4">
             {/* ── Funnel Banner ── */}
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-2">
                         <BarChart2 className="h-4 w-4 text-zinc-400" />
                         <h3 className="text-sm font-semibold text-zinc-300">Embudo Agregado del Cliente</h3>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         {funnelTotals.cash > 0 && (
                             <span className="text-xs font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-900/40 rounded-md px-2 py-0.5">
                                 {formatCurrency(funnelTotals.cash)} cobrado
@@ -364,10 +364,10 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
             <WebhookBanner />
 
             {/* ── Two-column Moka layout ── */}
-            <div className="flex gap-4 items-start">
+            <div className="flex flex-col gap-4 items-start lg:flex-row">
 
                 {/* ── LEFT: Reels grid (2/3) ── */}
-                <div className="flex-[2] min-w-0 space-y-3">
+                <div className="w-full lg:flex-[2] min-w-0 space-y-3">
                     {/* Type filter + sort controls */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                         <div className="flex items-center gap-1.5">
@@ -407,7 +407,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
                             Sin piezas de contenido registradas
                         </div>
                     ) : (
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                             {(() => {
                                 const totalV = sortedPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
                                 const avgViews = sortedPieces.length > 0 ? totalV / sortedPieces.length : 1
@@ -607,8 +607,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
                     )}
                 </div>
 
-                {/* ── RIGHT: Analytics sidebar (1/3) sticky ── */}
-                <div className="w-72 flex-shrink-0 sticky top-4">
+                {/* ── RIGHT: Analytics sidebar (1/3) sticky on desktop only ── */}
+                <div className="w-full lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4">
                     <ContentAnalyticsSidebar analytics={contentAnalytics} />
                 </div>
             </div>

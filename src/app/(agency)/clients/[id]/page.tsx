@@ -38,7 +38,7 @@ export default async function ClientDetailPage({
       getContentPieces(id),
       getContentMetricsByClient(id),
       getLeads(id),
-      getCalls(),
+      getCalls(undefined, id),
       getCallFolders(id),
       getAgendaLeadOptions(id),
       getAgencyUsers(id),
@@ -50,10 +50,6 @@ export default async function ClientDetailPage({
       getClientFunnelTotals(id),
     ])
 
-    // Filter calls by client: only calls whose lead belongs to this client
-    const clientLeadIds = new Set(leads.map((l: { id: string }) => l.id))
-    const clientCalls = calls.filter((c: { lead_id: string }) => clientLeadIds.has(c.lead_id))
-
     return (
       <Suspense fallback={null}>
         <ClientDetail
@@ -62,7 +58,7 @@ export default async function ClientDetailPage({
           contentPieces={contentPieces}
           contentMetrics={contentMetrics}
           leads={leads}
-          calls={clientCalls}
+          calls={calls}
           callFolders={callFolders}
           agendaLeadOptions={agendaLeadOptions}
           agencyUsers={agencyUsers}
