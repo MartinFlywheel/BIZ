@@ -264,8 +264,22 @@ const cellBase = 'px-0 py-0 h-full w-full flex items-center cursor-text text-inh
 
 const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Setter', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
 
-export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: string; customAvatars?: string[] }) {
+interface TeamMember {
+  full_name: string
+  role: string
+}
+
+export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }: { clientId: string; customAvatars?: string[]; agencyUsers?: TeamMember[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
+  // Setter/Closer are free-text columns, but day-to-day they should just be
+  // picked from the actual team so payouts aren't at the mercy of typos
+  // (e.g. "Mane" vs "Mnae") — "Otro" still allows a one-off manual name.
+  const setterOptions = Array.from(new Set(
+    agencyUsers.filter(u => u.role === 'setter' || u.role === 'admin').map(u => u.full_name)
+  ))
+  const closerOptions = Array.from(new Set(
+    agencyUsers.filter(u => u.role === 'closer' || u.role === 'sales_director' || u.role === 'admin').map(u => u.full_name)
+  ))
   const now = new Date()
   const [year, setYear]     = useState(now.getFullYear())
   const [month, setMonth]   = useState(now.getMonth() + 1)
@@ -469,6 +483,43 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
       )
     }
 
+    function personCell(field: 'setter' | 'closer', value: string | null, teamNames: string[]) {
+      const active = ec?.id === r.id && ec?.field === field
+      if (active) {
+        return (
+          <input
+            autoFocus
+            value={editValue}
+            placeholder={field === 'setter' ? 'Setter' : 'Closer'}
+            onChange={e => setEditValue(e.target.value)}
+            onBlur={() => commitEdit(r.id, field, editValue)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              if (e.key === 'Escape') setEditingCell(null)
+            }}
+            className={`${cellInput} text-xs text-zinc-400`}
+          />
+        )
+      }
+      // Keep an already-saved manual name visible even if it's not on the team list
+      const options = value && !teamNames.includes(value) ? [value, ...teamNames] : teamNames
+      return (
+        <select
+          value={value ?? ''}
+          onChange={e => {
+            const v = e.target.value
+            if (v === '__custom__') startEdit(r.id, field, value ?? '')
+            else saveCell(r.id, field, v || null)
+          }}
+          className={`w-full bg-transparent text-xs focus:outline-none cursor-pointer [&>option]:bg-zinc-900 border-0 ${value ? 'text-zinc-400' : 'text-zinc-700'}`}
+        >
+          <option value="">— {field === 'setter' ? 'Setter' : 'Closer'} —</option>
+          {options.map(name => <option key={name} value={name}>{name}</option>)}
+          <option value="__custom__">Otro (escribir)...</option>
+        </select>
+      )
+    }
+
     function avatarCell() {
       return (
         <select
@@ -518,10 +569,10 @@ export function AgendaSpreadsheet({ clientId, customAvatars }: { clientId: strin
           {textCell('de_donde_vino', r.de_donde_vino, 'CTA', 'text-xs text-zinc-400')}
         </td>
         <td className="px-2 py-1.5 text-xs w-[110px]">
-          {textCell('setter', r.setter, 'Setter', 'text-xs text-zinc-400')}
+          {personCell('setter', r.setter, setterOptions)}
         </td>
         <td className="px-2 py-1.5 text-xs w-[110px]">
-          {textCell('closer', r.closer, 'Closer', 'text-xs text-zinc-400')}
+          {personCell('closer', r.closer, closerOptions)}
         </td>
         <td className="px-2 py-1.5 text-xs w-[120px]">{estadoCell()}</td>
         <td className="px-2 py-1.5 text-xs w-[110px] text-right">{numCell('monto_facturacion', r.monto_facturacion, '—')}</td>

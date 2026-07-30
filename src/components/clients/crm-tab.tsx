@@ -1399,7 +1399,7 @@ export function CrmTab({ leads, agencyUsers, contentPieces, interactions, client
         />
       )}
       {activeSubTab === 'agendas' && (
-        <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} />
+        <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} agencyUsers={agencyUsers} />
       )}
       {activeSubTab === 'equipo' && (
         <EquipoTab clientId={clientId} agencyUsers={agencyUsers} isAdmin={isAdmin} currentUserId={currentUserId} />
