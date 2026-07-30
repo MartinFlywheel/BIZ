@@ -67,7 +67,7 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
   // Revenue attribution: leads with close_value linked to content via first_touch_content_id
   const { data: closedLeads } = await supabase
     .from('leads')
-    .select('first_touch_content_id, close_value')
+    .select('id, first_touch_content_id, close_value')
     .eq('client_id', clientId)
     .eq('stage', 'closed_won')
     .not('first_touch_content_id', 'is', null)
@@ -76,6 +76,7 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
   const revenueByContent: Record<string, number> = {}
   const cierresByContent: Record<string, number> = {}
   let total_revenue = 0
+  const leadIdsAlreadyCounted = new Set<string>()
 
   for (const lead of closedLeads || []) {
     const cid = lead.first_touch_content_id!
@@ -83,6 +84,58 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     revenueByContent[cid] = (revenueByContent[cid] || 0) + val
     cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
     total_revenue += val
+    leadIdsAlreadyCounted.add(lead.id)
+  }
+
+  // Also pull closes recorded in the Agendas sheet (agenda_records) — the
+  // place the team actually marks a lead "Cerrado" day to day now, separate
+  // from the older leads.close_value path above. Most Agendas rows are typed
+  // in directly (Agregar lead) and never get a lead_id, so attribution tries
+  // lead_id -> leads.first_touch_content_id first, then falls back to
+  // matching the row's CTA text against the piece's keyword_trigger — the
+  // same ID (e.g. "H_13_07") shown on each content card and used by the
+  // ManyChat webhook, sometimes stored here with a "manychat:" prefix.
+  function normalizeCta(raw: string | null): string | null {
+    if (!raw) return null
+    const trimmed = raw.trim().replace(/^manychat:/i, '')
+    return trimmed || null
+  }
+  const keywordTriggerToContentId = Object.fromEntries(
+    allPieces.filter((p) => p.keyword_trigger).map((p) => [p.keyword_trigger as string, p.id])
+  )
+
+  const { data: closedAgendas } = await supabase
+    .from('agenda_records')
+    .select('lead_id, de_donde_vino, monto_facturacion, monto_upfront')
+    .eq('client_id', clientId)
+    .eq('estado', 'Cerrado')
+
+  if (closedAgendas && closedAgendas.length > 0) {
+    const leadIds = Array.from(
+      new Set(closedAgendas.map((a) => a.lead_id).filter((id): id is string => !!id))
+    )
+    const { data: leadsForAgendas } = leadIds.length > 0
+      ? await supabase.from('leads').select('id, first_touch_content_id').in('id', leadIds)
+      : { data: [] }
+    const contentIdByLeadId = Object.fromEntries(
+      (leadsForAgendas || [])
+        .filter((l) => l.first_touch_content_id)
+        .map((l) => [l.id, l.first_touch_content_id as string])
+    )
+
+    for (const a of closedAgendas) {
+      const leadId = a.lead_id as string | null
+      if (leadId && leadIdsAlreadyCounted.has(leadId)) continue
+      const cid = (leadId && contentIdByLeadId[leadId])
+        || keywordTriggerToContentId[normalizeCta(a.de_donde_vino as string | null) ?? '']
+      if (!cid) continue
+      const val = Number(a.monto_facturacion) || Number(a.monto_upfront) || 0
+      if (val <= 0) continue
+      revenueByContent[cid] = (revenueByContent[cid] || 0) + val
+      cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
+      total_revenue += val
+      if (leadId) leadIdsAlreadyCounted.add(leadId)
+    }
   }
 
   // Also check content_metrics for manual revenue
