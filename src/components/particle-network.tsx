@@ -2,27 +2,6 @@
 
 import React, { useEffect, useRef } from 'react'
 
-const SPIDER_SVG = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Cuerpo central -->
-  <path d="M50,25 C56,25 62,35 62,45 C62,60 55,75 50,80 C45,75 38,60 38,45 C38,35 44,25 50,25 Z" fill="#8B0D1A"/>
-  <!-- Cabeza -->
-  <circle cx="50" cy="20" r="6" fill="#8B0D1A"/>
-  
-  <!-- Patas derechas -->
-  <path d="M60,30 Q80,10 90,30 Q95,40 90,55" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M62,40 Q85,35 95,50 Q98,60 90,75" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M60,50 Q80,60 85,80 Q88,90 80,95" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M55,60 Q70,75 70,95" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-
-  <!-- Patas izquierdas -->
-  <path d="M40,30 Q20,10 10,30 Q5,40 10,55" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M38,40 Q15,35 5,50 Q2,60 10,75" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M40,50 Q20,60 15,80 Q12,90 20,95" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M45,60 Q30,75 30,95" stroke="#8B0D1A" stroke-width="4" fill="none" stroke-linecap="round"/>
-</svg>
-`
-
 export function ParticleNetwork() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
@@ -39,12 +18,6 @@ export function ParticleNetwork() {
     const isDesktop = window.matchMedia('(min-width: 640px)').matches
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     if (!isDesktop || reducedMotion) return
-
-    // Pre-render the spider SVG to an offscreen image for performance
-    const spiderImg = new Image()
-    const svgBlob = new Blob([SPIDER_SVG], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
-    spiderImg.src = url
 
     let width = window.innerWidth
     let height = window.innerHeight
@@ -71,7 +44,7 @@ export function ParticleNetwork() {
         currentX: x,
         currentY: y,
         currentZ: z,
-        size: Math.random() * 8 + 4, // Size of the spider
+        size: Math.random() * 2 + 1.5, // Size of the dot
       })
     }
 
@@ -186,42 +159,35 @@ export function ParticleNetwork() {
         }
       }
 
-      // Draw particles (Spiders)
-      if (spiderImg.complete && spiderImg.naturalWidth !== 0) {
-        for (const p of projectedParticles) {
-          const size = p.size * p.scale
-          const opacity = Math.max(0.1, (1 - (p.currentZ + 1) / 2)) // Fade out particles in back
-          
-          ctx.globalAlpha = opacity
-          // Adding a subtle red glow
-          ctx.shadowBlur = 10
-          ctx.shadowColor = 'rgba(139, 13, 26, 0.8)'
-          
-          ctx.drawImage(
-            spiderImg,
-            p.screenX - size / 2,
-            p.screenY - size / 2,
-            size,
-            size
-          )
-        }
+      // Draw particles (Dots)
+      for (const p of projectedParticles) {
+        const size = p.size * p.scale
+        const opacity = Math.max(0.1, (1 - (p.currentZ + 1) / 2)) // Fade out particles in back
+        
+        ctx.globalAlpha = opacity
+        // Adding a subtle red glow
+        ctx.shadowBlur = 8
+        ctx.shadowColor = 'rgba(139, 13, 26, 0.8)'
+        
+        ctx.beginPath()
+        ctx.fillStyle = '#8B0D1A'
+        ctx.arc(p.screenX, p.screenY, size, 0, Math.PI * 2)
+        ctx.fill()
       }
+      
       ctx.globalAlpha = 1
       ctx.shadowBlur = 0
 
       animationFrameId = requestAnimationFrame(render)
     }
 
-    spiderImg.onload = () => {
-      render()
-    }
+    render()
 
     return () => {
       cancelAnimationFrame(animationFrameId)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseleave', handleMouseLeave)
-      URL.revokeObjectURL(url)
     }
   }, [])
 
