@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
 import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
+import { ContentConversationTable } from './content-conversation-table'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { formatNumber, formatCurrency } from '@/lib/utils'
@@ -362,6 +363,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
 
             {/* ── Webhook Integration Banner ── */}
             <WebhookBanner />
+
+            {/* ── Chats → Conversaciones diagnostic, per piece ── */}
+            <ContentConversationTable contentPieces={contentPieces} interactions={interactions ?? []} />
 
             {/* ── Two-column Moka layout ── */}
             <div className="flex flex-col gap-4 items-start lg:flex-row">
