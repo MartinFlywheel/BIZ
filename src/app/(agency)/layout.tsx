@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { PageTransition } from '@/components/page-transition'
-import { ParticleNetwork } from '@/components/particle-network'
 
 export default async function AgencyLayout({
   children,
@@ -43,8 +42,10 @@ export default async function AgencyLayout({
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
-      {/* Background Interactive Particle Network */}
-      <ParticleNetwork />
+      {/* Particle network background disabled — crashed some browsers even
+          after optimization (see git history on particle-network.tsx),
+          likely GPU compositing overload combined with the glass-panel
+          backdrop-blur cards. Re-enable once root-caused. */}
 
       {/* Ambient glow bleeding down from the top and sides */}
       <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60 pointer-events-none" />
