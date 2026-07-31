@@ -34,6 +34,14 @@ const contentTypeLabel: Record<string, string> = {
   live: 'Live',
 }
 
+type TypeFilter = 'all' | 'reel' | 'story'
+
+const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
+  { key: 'all', label: 'Todo' },
+  { key: 'reel', label: 'Reels' },
+  { key: 'story', label: 'Historias' },
+]
+
 function rateColor(rate: number): string {
   if (rate >= 70) return 'text-emerald-400'
   if (rate >= 30) return 'text-amber-400'
@@ -42,6 +50,7 @@ function rateColor(rate: number): string {
 
 export function ContentConversationTable({ contentPieces, interactions }: Props) {
   const [expanded, setExpanded] = useState(true)
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const rows = useMemo<Row[]>(() => {
     const pieceMap = new Map(contentPieces.map((p) => [p.id, p]))
@@ -77,7 +86,8 @@ export function ContentConversationTable({ contentPieces, interactions }: Props)
       .sort((a, b) => b.chats - a.chats)
   }, [contentPieces, interactions])
 
-  const flaggedCount = rows.filter((r) => r.missing_chat_node).length
+  const filteredRows = typeFilter === 'all' ? rows : rows.filter((r) => r.content_type === typeFilter)
+  const flaggedCount = filteredRows.filter((r) => r.missing_chat_node).length
 
   if (rows.length === 0) return null
 
@@ -101,7 +111,23 @@ export function ContentConversationTable({ contentPieces, interactions }: Props)
       </button>
 
       {expanded && (
-        <div className="border-t border-zinc-800 overflow-x-auto">
+        <div className="border-t border-zinc-800">
+          <div className="flex items-center gap-1.5 px-5 pt-3">
+            {TYPE_FILTER_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setTypeFilter(opt.key)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  typeFilter === opt.key
+                    ? 'bg-white/[0.08] text-zinc-100 border border-white/[0.12]'
+                    : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[600px] border-collapse">
             <thead>
               <tr className="border-b border-zinc-800">
@@ -114,7 +140,13 @@ export function ContentConversationTable({ contentPieces, interactions }: Props)
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-xs text-zinc-600">
+                    Sin piezas de este tipo con chats registrados
+                  </td>
+                </tr>
+              ) : filteredRows.map((r) => (
                 <tr key={r.content_id} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
                   <td className="px-4 py-2 text-xs text-zinc-200 max-w-[220px] truncate" title={r.caption ?? r.keyword_trigger ?? ''}>
                     {r.keyword_trigger || r.caption || 'Sin título'}
@@ -140,6 +172,7 @@ export function ContentConversationTable({ contentPieces, interactions }: Props)
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
