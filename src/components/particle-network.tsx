@@ -25,7 +25,10 @@ export function ParticleNetwork() {
     canvas.height = height
 
     const particles: Particle[] = []
-    const particleCount = 450 // Lots of particles for the "thousands of connections" feel
+    // Connection cost is O(n^2) — 200 keeps that under ~20k pairs/frame
+    // instead of the ~100k that 450 produced, without visibly thinning
+    // the sphere.
+    const particleCount = 200
     const sphereRadius = Math.min(width, height) * 0.4 // Size of the sphere
 
     // Generate points on a sphere (Fibonacci sphere algorithm)
@@ -44,6 +47,9 @@ export function ParticleNetwork() {
         currentX: x,
         currentY: y,
         currentZ: z,
+        screenX: 0,
+        screenY: 0,
+        scale: 1,
         size: Math.random() * 2 + 1.5, // Size of the dot
       })
     }
@@ -76,6 +82,13 @@ export function ParticleNetwork() {
 
     let animationFrameId: number
 
+    // Bucketed connection opacity — batches every connection into a handful
+    // of Path2D objects so a frame does a few stroke() calls instead of up
+    // to ~20k individual ones (each stroke() call has real per-call
+    // overhead; that was the single biggest cost in this loop).
+    const OPACITY_BUCKETS = 6
+    const bucketPaths: Path2D[] = Array.from({ length: OPACITY_BUCKETS }, () => new Path2D())
+
     const render = () => {
       ctx.clearRect(0, 0, width, height)
 
@@ -85,16 +98,18 @@ export function ParticleNetwork() {
 
       const cx = width / 2
       const cy = height / 2
+      const cosY = Math.cos(angleY), sinY = Math.sin(angleY)
+      const cosX = Math.cos(angleX), sinX = Math.sin(angleX)
 
-      // Calculate projected 2D coordinates
-      const projectedParticles = particles.map((p) => {
+      // Project in place — no per-frame array/object allocation.
+      for (const p of particles) {
         // Rotate around Y axis
-        const x1 = p.baseX * Math.cos(angleY) - p.baseZ * Math.sin(angleY)
-        const z1 = p.baseZ * Math.cos(angleY) + p.baseX * Math.sin(angleY)
+        const x1 = p.baseX * cosY - p.baseZ * sinY
+        const z1 = p.baseZ * cosY + p.baseX * sinY
 
         // Rotate around X axis
-        const y2 = p.baseY * Math.cos(angleX) - z1 * Math.sin(angleX)
-        const z2 = z1 * Math.cos(angleX) + p.baseY * Math.sin(angleX)
+        const y2 = p.baseY * cosX - z1 * sinX
+        const z2 = z1 * cosX + p.baseY * sinX
 
         p.currentX = x1
         p.currentY = y2
@@ -102,81 +117,82 @@ export function ParticleNetwork() {
 
         // Simple perspective projection
         const scale = 300 / (300 + z2 * sphereRadius)
-        const screenX = cx + x1 * sphereRadius * scale
-        const screenY = cy + y2 * sphereRadius * scale
+        let screenX = cx + x1 * sphereRadius * scale
+        let screenY = cy + y2 * sphereRadius * scale
 
         // Interactive mouse push effect
-        let finalX = screenX
-        let finalY = screenY
-        
         if (mouse.isActive) {
           const dx = mouse.x - screenX
           const dy = mouse.y - screenY
           const dist = Math.sqrt(dx * dx + dy * dy)
           const maxDist = 150
-          
+
           if (dist < maxDist) {
             const force = (maxDist - dist) / maxDist
-            finalX -= dx * force * 0.5
-            finalY -= dy * force * 0.5
+            screenX -= dx * force * 0.5
+            screenY -= dy * force * 0.5
           }
         }
 
-        return {
-          ...p,
-          screenX: finalX,
-          screenY: finalY,
-          scale,
-        }
-      })
+        p.screenX = screenX
+        p.screenY = screenY
+        p.scale = scale
+      }
 
       // Sort by Z index to render back to front
-      projectedParticles.sort((a, b) => b.currentZ - a.currentZ)
+      particles.sort((a, b) => b.currentZ - a.currentZ)
 
-      // Draw connections
-      ctx.lineWidth = 0.5
-      for (let i = 0; i < projectedParticles.length; i++) {
-        const p1 = projectedParticles[i]
+      // Draw connections — accumulate into opacity buckets, one stroke() per bucket
+      for (let b = 0; b < OPACITY_BUCKETS; b++) bucketPaths[b] = new Path2D()
+
+      for (let i = 0; i < particles.length; i++) {
+        const p1 = particles[i]
         // Only draw lines for particles somewhat in front to save performance and make it look clean
         if (p1.currentZ > 0.5) continue
 
-        for (let j = i + 1; j < projectedParticles.length; j++) {
-          const p2 = projectedParticles[j]
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j]
           if (p2.currentZ > 0.5) continue
 
           const dx = p1.screenX - p2.screenX
           const dy = p1.screenY - p2.screenY
-          const dist = Math.sqrt(dx * dx + dy * dy)
+          const distSq = dx * dx + dy * dy
 
-          if (dist < 60) {
+          if (distSq < 3600) { // 60px threshold, squared — skips a sqrt for most pairs
+            const dist = Math.sqrt(distSq)
             const opacity = (1 - dist / 60) * 0.3 * p1.scale
-            ctx.beginPath()
-            ctx.strokeStyle = `rgba(139, 13, 26, ${opacity})`
-            ctx.moveTo(p1.screenX, p1.screenY)
-            ctx.lineTo(p2.screenX, p2.screenY)
-            ctx.stroke()
+            const bucket = Math.min(OPACITY_BUCKETS - 1, Math.max(0, Math.floor((opacity / 0.3) * OPACITY_BUCKETS)))
+            bucketPaths[bucket].moveTo(p1.screenX, p1.screenY)
+            bucketPaths[bucket].lineTo(p2.screenX, p2.screenY)
           }
         }
       }
 
-      // Draw particles (Dots)
-      for (const p of projectedParticles) {
+      ctx.lineWidth = 0.5
+      for (let b = 0; b < OPACITY_BUCKETS; b++) {
+        ctx.strokeStyle = `rgba(139, 13, 26, ${((b + 1) / OPACITY_BUCKETS) * 0.3})`
+        ctx.stroke(bucketPaths[b])
+      }
+
+      // Draw particles (Dots) — a soft halo + solid core, no shadowBlur
+      // (shadow rendering is one of Canvas2D's most expensive per-call ops).
+      ctx.fillStyle = '#8B0D1A'
+      for (const p of particles) {
         const size = p.size * p.scale
         const opacity = Math.max(0.1, (1 - (p.currentZ + 1) / 2)) // Fade out particles in back
-        
-        ctx.globalAlpha = opacity
-        // Adding a subtle red glow
-        ctx.shadowBlur = 8
-        ctx.shadowColor = 'rgba(139, 13, 26, 0.8)'
-        
+
+        ctx.globalAlpha = opacity * 0.35
         ctx.beginPath()
-        ctx.fillStyle = '#8B0D1A'
+        ctx.arc(p.screenX, p.screenY, size * 2.2, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.globalAlpha = opacity
+        ctx.beginPath()
         ctx.arc(p.screenX, p.screenY, size, 0, Math.PI * 2)
         ctx.fill()
       }
-      
+
       ctx.globalAlpha = 1
-      ctx.shadowBlur = 0
 
       animationFrameId = requestAnimationFrame(render)
     }
@@ -206,5 +222,8 @@ interface Particle {
   currentX: number
   currentY: number
   currentZ: number
+  screenX: number
+  screenY: number
+  scale: number
   size: number
 }
