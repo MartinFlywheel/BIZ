@@ -11,7 +11,7 @@ import { deleteSopAction, deleteCategoryAction } from '@/lib/actions/sops'
 import { formatDate, cn } from '@/lib/utils'
 import { SOP_TAGS } from '@/lib/types'
 import type { Sop, OnboardingTemplate } from '@/lib/types'
-import { Plus, Trash2, FileText, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, FileText, ChevronDown, Search, X } from 'lucide-react'
 
 interface Props {
   sops: Sop[]
@@ -45,6 +45,7 @@ export function SopsList({ sops, templates }: Props) {
 
   const [activeTag, setActiveTag] = useState<string>('all')
   const [filterOpen, setFilterOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const filterRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
@@ -70,7 +71,9 @@ export function SopsList({ sops, templates }: Props) {
   const filterTags = ['all', ...categoriesInUse]
   const allCategories = [...new Set([...SOP_TAGS, ...categoriesInUse])]
 
-  const visibleSops = activeTag === 'all' ? sops : sops.filter((s) => s.category === activeTag)
+  const byTag = activeTag === 'all' ? sops : sops.filter((s) => s.category === activeTag)
+  const query = searchQuery.trim().toLowerCase()
+  const visibleSops = query ? byTag.filter((s) => s.title.toLowerCase().includes(query)) : byTag
   const categories = [...new Set(visibleSops.map((s) => s.category).filter((c): c is string => !!c))]
 
   async function handleDeleteCategory(e: React.MouseEvent, cat: string) {
@@ -102,7 +105,26 @@ export function SopsList({ sops, templates }: Props) {
           <>
             {activeTab === 'sops' && (
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Buscar SOP por nombre..."
+                      className="w-56 rounded-full border border-zinc-800 bg-zinc-900 py-1 pl-8 pr-7 text-xs text-zinc-200 placeholder:text-zinc-600 outline-none focus:border-zinc-600"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        title="Limpiar búsqueda"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-300"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                   <div ref={filterRef} className="relative">
                     <button
                       onClick={() => setFilterOpen((v) => !v)}
@@ -156,13 +178,16 @@ export function SopsList({ sops, templates }: Props) {
                       </div>
                     )}
                   </div>
+                  </div>
                   <Button size="sm" onClick={() => setShowSopForm(true)}>
                     <Plus className="h-3.5 w-3.5" /> Nuevo SOP
                   </Button>
                 </div>
                 {visibleSops.length === 0 ? (
 
-                  <Card><div className="text-center text-zinc-500 py-8">No hay SOPs creados</div></Card>
+                  <Card><div className="text-center text-zinc-500 py-8">
+                    {query ? `Sin resultados para "${searchQuery.trim()}"` : 'No hay SOPs creados'}
+                  </div></Card>
                 ) : (
                   <div className="space-y-6">
                     {categories.length > 0 ? (
