@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { PageTransition } from '@/components/page-transition'
+import { ParticleNetwork } from '@/components/particle-network'
 
 export default async function AgencyLayout({
   children,
@@ -42,9 +43,12 @@ export default async function AgencyLayout({
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
+      {/* Background Interactive Particle Network */}
+      <ParticleNetwork />
+
       {/* Ambient glow bleeding down from the top and sides */}
-      <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60" />
-      <div className="ambient-glow -left-40 top-1/4 h-[60vh] w-[60vh] rounded-full opacity-40 blur-3xl" />
+      <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60 pointer-events-none" />
+      <div className="ambient-glow -left-40 top-1/4 h-[60vh] w-[60vh] rounded-full opacity-40 blur-3xl pointer-events-none" />
 
       <Sidebar
         userType="agency"
@@ -54,7 +58,8 @@ export default async function AgencyLayout({
       />
 
       <main className="relative z-10 min-w-0 flex-1 overflow-y-auto pb-14 sm:pb-0">
-        <PageTransition className="mx-auto max-w-7xl px-4 py-5 sm:px-8 sm:py-8">
+        {/* Changed from max-w-7xl to w-full max-w-[2000px] to support 21:9 but keep laptop view intact */}
+        <PageTransition className="mx-auto w-full max-w-[2000px] px-4 py-5 sm:px-8 sm:py-8 2xl:px-12">
           {children}
         </PageTransition>
       </main>

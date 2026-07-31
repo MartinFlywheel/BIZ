@@ -141,14 +141,14 @@ async function ClientDetail({
       {liveMetrics && (
         <div className="space-y-4">
           <h2 className="text-sm font-medium text-white/90">Métricas en Vivo (CRM)</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 2xl:gap-6">
             <MetricCard title="Views"        value={formatNumber(liveMetrics.total_views)} />
             <MetricCard title="Chats Nuevos" value={formatNumber(liveMetrics.chats_abiertos)} />
             <MetricCard title="Conv. Reales" value={formatNumber(liveMetrics.conversaciones_reales)} />
             <MetricCard title="Agendas"      value={formatNumber(liveMetrics.agendas)} />
             <MetricCard title="Cierres"      value={formatNumber(liveMetrics.cierres)} />
           </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 2xl:gap-6">
             <MetricCard
               title="Tasa de Respuesta"
               value={formatPercent(liveMetrics.tasa_respuesta)}
