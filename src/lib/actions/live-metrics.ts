@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { OVERRIDABLE_FIELDS } from '@/lib/metrics-types'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 // Live funnel metrics — no manual entry. Sourced from the systems that already
 // write these events in real time: content_pieces (Meta sync), interactions
@@ -74,25 +75,38 @@ export async function getLiveMetricsBuckets(
 
   const supabase = await createClient()
 
-  const [piecesRes, interactionsRes, agendaRes] = await Promise.all([
-    supabase
-      .from('content_pieces')
-      .select('content_type, views, published_at')
-      .eq('client_id', clientId)
-      .gte('published_at', `${rangeStart}T00:00:00Z`)
-      .lte('published_at', `${rangeEnd}T23:59:59Z`),
-    supabase
-      .from('interactions')
-      .select('classification, bot_triggered_at, content_id')
-      .eq('client_id', clientId)
-      .gte('bot_triggered_at', `${rangeStart}T00:00:00Z`)
-      .lte('bot_triggered_at', `${rangeEnd}T23:59:59Z`),
-    supabase
-      .from('agenda_records')
-      .select('fecha_agenda, estado, monto_facturacion, monto_upfront, lead_id')
-      .eq('client_id', clientId)
-      .gte('fecha_agenda', rangeStart)
-      .lte('fecha_agenda', rangeEnd),
+  // None of these can rely on Supabase's default query behavior — each one
+  // routinely exceeds the 1000-row cap (see paginate.ts) for active clients,
+  // which was silently truncating chats/conversaciones/agendas the wider the
+  // selected period got. fetchAllRows pages through with .range() instead.
+  const [pieces, interactions, agendas] = await Promise.all([
+    fetchAllRows<{ content_type: string; views: number; published_at: string | null }>((from, to) =>
+      supabase
+        .from('content_pieces')
+        .select('content_type, views, published_at')
+        .eq('client_id', clientId)
+        .gte('published_at', `${rangeStart}T00:00:00Z`)
+        .lte('published_at', `${rangeEnd}T23:59:59Z`)
+        .range(from, to)
+    ),
+    fetchAllRows<{ classification: string; bot_triggered_at: string; content_id: string | null }>((from, to) =>
+      supabase
+        .from('interactions')
+        .select('classification, bot_triggered_at, content_id')
+        .eq('client_id', clientId)
+        .gte('bot_triggered_at', `${rangeStart}T00:00:00Z`)
+        .lte('bot_triggered_at', `${rangeEnd}T23:59:59Z`)
+        .range(from, to)
+    ),
+    fetchAllRows<{ fecha_agenda: string; estado: string | null; monto_facturacion: number | null; monto_upfront: number | null; lead_id: string | null }>((from, to) =>
+      supabase
+        .from('agenda_records')
+        .select('fecha_agenda, estado, monto_facturacion, monto_upfront, lead_id')
+        .eq('client_id', clientId)
+        .gte('fecha_agenda', rangeStart)
+        .lte('fecha_agenda', rangeEnd)
+        .range(from, to)
+    ),
   ])
 
   function bucketFor(dateStr: string): DateBucket | undefined {
@@ -101,7 +115,7 @@ export async function getLiveMetricsBuckets(
 
   // Resolve reel-vs-historia origin for interactions via their content_id
   const interactionContentIds = Array.from(
-    new Set((interactionsRes.data || []).map((i) => i.content_id).filter((id): id is string => !!id))
+    new Set(interactions.map((i) => i.content_id).filter((id): id is string => !!id))
   )
   let contentTypeById: Record<string, string> = {}
   if (interactionContentIds.length > 0) {
@@ -116,7 +130,7 @@ export async function getLiveMetricsBuckets(
   let agendaContentTypeByLeadId: Record<string, string> = {}
   if (contentType) {
     const leadIds = Array.from(
-      new Set((agendaRes.data || []).map((a) => a.lead_id).filter((id): id is string => !!id))
+      new Set(agendas.map((a) => a.lead_id).filter((id): id is string => !!id))
     )
     if (leadIds.length > 0) {
       const { data: leadsData } = await supabase
@@ -144,7 +158,7 @@ export async function getLiveMetricsBuckets(
     }
   }
 
-  for (const p of piecesRes.data || []) {
+  for (const p of pieces) {
     if (contentType && p.content_type !== contentType) continue
     const date = (p.published_at as string | null)?.slice(0, 10)
     if (!date) continue
@@ -155,7 +169,7 @@ export async function getLiveMetricsBuckets(
     else if (p.content_type === 'story') r.views_historias += p.views || 0
   }
 
-  for (const i of interactionsRes.data || []) {
+  for (const i of interactions) {
     const interactionType = i.content_id ? contentTypeById[i.content_id as string] : undefined
     if (contentType && interactionType !== contentType) continue
     const date = (i.bot_triggered_at as string | null)?.slice(0, 10)
@@ -175,7 +189,7 @@ export async function getLiveMetricsBuckets(
     }
   }
 
-  for (const a of agendaRes.data || []) {
+  for (const a of agendas) {
     if (contentType) {
       const agendaType = a.lead_id ? agendaContentTypeByLeadId[a.lead_id as string] : undefined
       if (agendaType !== contentType) continue
