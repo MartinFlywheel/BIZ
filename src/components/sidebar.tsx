@@ -60,21 +60,25 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
         // Mobile: fixed bottom bar, out of document flow, row layout.
         'fixed inset-x-0 bottom-0 z-20 flex h-14 w-full flex-row items-center justify-around',
         'border-t border-white/[0.06] bg-zinc-950/95 backdrop-blur-xl',
-        // Desktop (sm+): restore the original vertical rail.
-        'sm:relative sm:inset-auto sm:my-3 sm:ml-3 sm:h-auto sm:w-16 sm:flex-col sm:justify-start',
-        'sm:rounded-2xl sm:border sm:bg-white/[0.02] sm:py-4'
+        // Desktop (sm+): expanded glass sidebar with labels.
+        'sm:relative sm:inset-auto sm:my-3 sm:ml-3 sm:h-auto sm:w-64 sm:flex-col sm:items-stretch sm:justify-start',
+        'sm:rounded-3xl sm:border sm:border-white/[0.05] sm:bg-white/[0.03] sm:px-4 sm:py-6',
+        'sm:shadow-[inset_0_1px_1px_rgba(255,255,255,0.05),0_4px_20px_rgba(0,0,0,0.5)] sm:backdrop-blur-2xl'
       )}
     >
       {/* Brand — desktop only, mobile keeps the bar compact */}
       <Link
         href={brandHref}
-        className="hidden h-9 w-9 items-center justify-center rounded-lg bg-[#ff453a] shadow-[0_0_14px_rgba(255,69,58,0.5)] sm:flex"
+        className="mb-2 hidden items-center gap-3 px-2 sm:flex"
       >
-        <span className="text-sm font-bold text-white">B</span>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#8B0D1A] to-[#b01021] shadow-[0_0_14px_rgba(139,13,26,0.5)]">
+          <span className="text-sm font-bold text-white">B</span>
+        </div>
+        <span className="text-lg font-bold tracking-tight text-white">BIZ</span>
       </Link>
 
-      {/* Navigation icons */}
-      <nav className="flex flex-1 flex-row items-center justify-around gap-1.5 sm:mt-6 sm:flex-col sm:justify-start">
+      {/* Navigation */}
+      <nav className="flex flex-1 flex-row items-center justify-around gap-1.5 sm:mt-8 sm:flex-col sm:items-stretch sm:justify-start">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + '/')
@@ -84,22 +88,19 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
               href={item.href}
               title={item.label}
               className={cn(
-                'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-200',
+                'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-all duration-300',
+                'sm:h-auto sm:w-full sm:justify-start sm:gap-3 sm:px-3 sm:py-2.5 sm:text-sm sm:font-medium',
                 isActive
-                  ? 'bg-white/[0.07] text-white'
-                  : 'text-zinc-500 hover:bg-white/[0.04] hover:text-white/90'
+                  ? 'bg-white/[0.07] text-white sm:bg-gradient-to-r sm:from-[#8B0D1A] sm:to-transparent sm:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_8px_20px_rgba(139,13,26,0.25)]'
+                  : 'text-zinc-500 hover:bg-white/[0.04] hover:text-white/90 sm:text-zinc-400'
               )}
             >
-              {/* Active accent bar — Raycast signature */}
+              {/* Active accent bar — desktop pill only */}
               {isActive && (
-                <span className="absolute -left-1 top-1/2 hidden h-5 w-0.5 -translate-y-1/2 rounded-full bg-[#ff453a] shadow-[0_0_8px_rgba(255,69,58,0.7)] sm:block" />
+                <span className="absolute left-0 top-1/2 hidden h-6 w-1 -translate-y-1/2 rounded-r-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)] sm:block" />
               )}
-              <item.icon className="h-[18px] w-[18px]" />
-
-              {/* Tooltip — desktop only (hover-based, meaningless on touch) */}
-              <span className="pointer-events-none absolute left-full ml-3 z-50 hidden whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100 sm:block">
-                {item.label}
-              </span>
+              <item.icon className="h-[18px] w-[18px] shrink-0" />
+              <span className="hidden sm:inline">{item.label}</span>
             </Link>
           )
         })}
@@ -115,17 +116,14 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
       </nav>
 
       {/* Footer — desktop only; notifications/carruseles/avatar/logout */}
-      <div className="mt-4 hidden flex-col items-center gap-1.5 border-t border-white/[0.06] pt-4 sm:flex">
+      <div className="mt-4 hidden flex-col gap-1.5 border-t border-white/[0.05] pt-4 sm:flex">
         {userType === 'agency' && !restricted && (
           <Link
             href="/notifications"
-            title="Notificaciones"
-            className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/90"
+            className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-white/[0.04] hover:text-white/90"
           >
-            <Bell className="h-[18px] w-[18px]" />
-            <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100">
-              Notificaciones
-            </span>
+            <Bell className="h-[18px] w-[18px] shrink-0" />
+            <span>Notificaciones</span>
           </Link>
         )}
 
@@ -135,32 +133,29 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
             href="https://carruseles-three.vercel.app"
             target="_blank"
             rel="noopener noreferrer"
-            title="Carruseles"
-            className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/90"
+            className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-white/[0.04] hover:text-white/90"
           >
-            <GalleryHorizontal className="h-[18px] w-[18px]" />
-            <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100">
-              Carruseles
-            </span>
+            <GalleryHorizontal className="h-[18px] w-[18px] shrink-0" />
+            <span>Carruseles</span>
           </a>
         )}
 
-        <div
-          title={userName}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] font-mono text-xs font-medium text-white/90"
-        >
-          {userName.charAt(0).toUpperCase()}
+        <div className="mt-2 flex items-center gap-3 px-3 py-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] font-mono text-xs font-medium text-white/90">
+            {userName.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex flex-col overflow-hidden">
+            <span className="truncate text-sm font-medium text-white/90">{userName}</span>
+            <span className="truncate text-xs text-zinc-500">{userType === 'agency' ? 'Agencia' : 'Cliente'}</span>
+          </div>
         </div>
 
         <button
           onClick={handleSignOut}
-          title="Cerrar sesión"
-          className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/90"
+          className="group relative mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-[#8B0D1A]/10 hover:text-red-400"
         >
-          <LogOut className="h-[18px] w-[18px]" />
-          <span className="pointer-events-none absolute left-full ml-3 z-50 whitespace-nowrap rounded-md border border-white/[0.08] bg-zinc-900/95 px-2 py-1 text-xs font-medium text-white/90 opacity-0 shadow-lg backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100">
-            Cerrar sesión
-          </span>
+          <LogOut className="h-[18px] w-[18px] shrink-0" />
+          <span>Cerrar sesión</span>
         </button>
       </div>
     </aside>

@@ -7,8 +7,7 @@ export function Card({ className, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        // Raycast surface: pure-dark card, ultra-thin border, soft radius
-        'rounded-xl border border-white/[0.06] bg-white/[0.02] p-6',
+        'glass-panel rounded-2xl p-6',
         className
       )}
       {...props}

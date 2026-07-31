@@ -22,9 +22,9 @@ export default async function PortalLayout({
   if (!profile) redirect('/login')
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-black">
-      {/* Raycast warm glow bleeding down from the top */}
-      <div className="raycast-glow inset-x-0 top-0 h-[60vh]" />
+    <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
+      {/* Ambient glow bleeding down from the top */}
+      <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60" />
 
       <Sidebar userType={profile.user_type} userName={profile.full_name} />
 

@@ -30,8 +30,8 @@ export default async function AgencyLayout({
   // exist for them), so stop here instead of rendering an empty shell.
   if (restricted && !profile.client_id) {
     return (
-      <div className="relative flex h-screen overflow-hidden bg-black">
-        <div className="raycast-glow inset-x-0 top-0 h-[60vh]" />
+      <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
+        <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60" />
         <Sidebar userType="agency" userName={profile.full_name} homeHref="/login" restricted />
         <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-14 sm:pb-0">
           <p className="text-center text-sm text-zinc-500">Tu cuenta no tiene un cliente asignado. Contactá a un admin.</p>
@@ -41,9 +41,10 @@ export default async function AgencyLayout({
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-black">
-      {/* Raycast warm glow bleeding down from the top */}
-      <div className="raycast-glow inset-x-0 top-0 h-[60vh]" />
+    <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
+      {/* Ambient glow bleeding down from the top and sides */}
+      <div className="ambient-glow inset-x-0 -top-40 h-[80vh] w-full opacity-60" />
+      <div className="ambient-glow -left-40 top-1/4 h-[60vh] w-[60vh] rounded-full opacity-40 blur-3xl" />
 
       <Sidebar
         userType="agency"

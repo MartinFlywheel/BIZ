@@ -2,36 +2,36 @@
 
 /* =====================================================
    BIZ CRM — Design System
-   "Raycast" OLED look: pure black, warm red ambient glow,
-   ultra-thin borders, clean sans typography, mono metrics.
+   Glassmorphism look: Deep black, crimson red ambient glow,
+   semi-transparent panels, clean sans typography.
 
    Helper utilities (use directly):
-   - .glass-panel       → subtle dark surface (Raycast card)
-   - .glass-interactive → surface + smooth hover
-   - .raycast-glow      → warm radial glow for page background
+   - .glass-panel       → strong glassmorphism surface
+   - .glass-interactive → glassmorphism + smooth hover
+   - .ambient-glow      → crimson radial glow for page background
    ===================================================== */
 
 @theme inline {
-  /* Backgrounds — OLED pure black base */
-  --color-background: #000000;
-  --color-surface: rgba(255, 255, 255, 0.02);
-  --color-surface-hover: rgba(255, 255, 255, 0.04);
+  /* Backgrounds — Deep Black base (#0B0B0B) */
+  --color-background: #0B0B0B;
+  --color-surface: rgba(255, 255, 255, 0.03);
+  --color-surface-hover: rgba(255, 255, 255, 0.06);
 
-  /* Borders — ultra-thin */
-  --color-subtle: rgba(255, 255, 255, 0.06);
+  /* Borders — soft semi-transparent */
+  --color-subtle: rgba(255, 255, 255, 0.05);
   --color-subtle-hover: rgba(255, 255, 255, 0.1);
   --color-border-strong: rgba(255, 255, 255, 0.12);
 
-  /* Text */
-  --color-primary: rgba(255, 255, 255, 0.92);
+  /* Text — Off White (#F5F2ED) */
+  --color-primary: #F5F2ED;
   --color-secondary: #a1a1aa;
   --color-muted: #52525b;
-  --color-foreground: rgba(255, 255, 255, 0.92);
+  --color-foreground: #F5F2ED;
 
-  /* Accent — Raycast warm red */
-  --color-accent: #ff453a;
-  --color-accent-hover: #ff6961;
-  --color-accent-muted: rgba(255, 69, 58, 0.15);
+  /* Accent — Crimson Red (#8B0D1A) */
+  --color-accent: #8B0D1A;
+  --color-accent-hover: #b01021;
+  --color-accent-muted: rgba(139, 13, 26, 0.15);
 
   /* Status colors */
   --color-success: #34d399;
@@ -79,32 +79,40 @@ body {
 
 @layer utilities {
 
-  /* Raycast surface — barely-there dark card with a fine border */
+  /* Glassmorphism surface — deep semi-transparent card with inner glow/border and blur */
   .glass-panel {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5);
   }
 
   /* Interactive surface — adds smooth hover */
   .glass-interactive {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    transition: all 0.3s ease;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .glass-interactive:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.06);
     border-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1), 0 8px 30px rgba(139, 13, 26, 0.15);
   }
 
-  /* Raycast warm glow — radial red light bleeding up from behind */
-  .raycast-glow {
+  /* Ambient warm glow — radial red light bleeding up from behind */
+  .ambient-glow {
     position: absolute;
     pointer-events: none;
     z-index: 0;
-    background: radial-gradient(ellipse 80% 60% at 50% 0%,
-        rgba(255, 69, 58, 0.18) 0%,
-        rgba(255, 69, 58, 0.06) 35%,
+    background: radial-gradient(ellipse at center,
+        rgba(139, 13, 26, 0.3) 0%,
+        rgba(139, 13, 26, 0.1) 40%,
         transparent 70%);
   }
 }

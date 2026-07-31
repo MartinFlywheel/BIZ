@@ -15,9 +15,9 @@ export function MetricCard({ title, value, subtitle, alert }: MetricCardProps) {
   return (
     <Card
       className={cn(
-        'transition-all duration-200 hover:border-white/[0.1] hover:bg-white/[0.04]',
+        'glass-interactive',
         isFailing &&
-        'border-[#ff453a]/25 bg-[#ff453a]/[0.06] hover:border-[#ff453a]/40 hover:bg-[#ff453a]/[0.1]'
+        'border-[#8B0D1A]/30 bg-[#8B0D1A]/[0.08] shadow-[inset_0_1px_1px_rgba(255,255,255,0.1),0_4px_30px_rgba(139,13,26,0.2)] hover:border-[#8B0D1A]/50 hover:bg-[#8B0D1A]/[0.12] hover:shadow-[inset_0_1px_1px_rgba(255,255,255,0.15),0_8px_40px_rgba(139,13,26,0.3)]'
       )}
     >
       <CardTitle className={cn(isFailing && 'text-red-300/80')}>{title}</CardTitle>
