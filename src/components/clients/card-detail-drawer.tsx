@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser, Link2, Check, Maximize2 } from 'lucide-react'
+import { X, ExternalLink, Calendar, Tag, Target, User, FileText, Mic, Play, Pause, Square, Trash2, RotateCcw, Video, Film, Heading, Bold, Eraser, Link2, Check, Maximize2, ChevronDown } from 'lucide-react'
 import { updatePipelineItem, type PipelineItem, type PipelineStage } from '@/lib/actions/content-pipeline'
 import { createClient } from '@/lib/supabase/client'
 import { OBJETIVOS, objectiveColor } from '@/lib/types'
@@ -139,8 +139,77 @@ function LinkField({ icon: Icon, label, value, placeholder, onChange }: {
   )
 }
 
-// ── Script editor — lightweight rich text (headings + bold) via
+// ── Script editor — lightweight rich text (headings + bold + size/font) via
 // contentEditable/execCommand, no external editor dependency ────────────────
+
+// execCommand('fontSize') only accepts the legacy 1–7 scale — map friendlier
+// labels onto it instead of exposing that scale directly.
+const TEXT_SIZES = [
+  { label: 'Pequeño', value: '2' },
+  { label: 'Normal', value: '3' },
+  { label: 'Grande', value: '5' },
+  { label: 'Enorme', value: '7' },
+]
+
+const TEXT_FONTS = [
+  { label: 'Predeterminada', value: '' },
+  { label: 'Serif', value: 'Georgia, serif' },
+  { label: 'Monoespaciada', value: '"Courier New", monospace' },
+]
+
+// A toolbar dropdown for a value execCommand applies to the current
+// selection. Native <select> elements steal focus on click, which collapses
+// the contentEditable selection before onChange fires — so this uses the
+// same button+popover pattern as the Título/Negrita buttons instead
+// (mousedown preventDefault keeps focus, and the selection, in the editor).
+function ToolbarDropdown({ label, options, onPick, isFocus }: {
+  label: string
+  options: { label: string; value: string }[]
+  onPick: (value: string) => void
+  isFocus: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        title={label}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1 rounded-md px-2 py-1 text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.06] transition-colors ${isFocus ? 'text-[13px]' : 'text-[11px]'}`}
+      >
+        {label} <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-40 rounded-lg border border-white/[0.08] bg-zinc-900 py-1 shadow-xl">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onPick(opt.value); setOpen(false) }}
+              className="block w-full px-3 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
+              style={opt.value && options === TEXT_FONTS ? { fontFamily: opt.value } : undefined}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initialValue: string; onChange: (html: string) => void; variant?: 'compact' | 'focus' }) {
   const editorRef = useRef<HTMLDivElement>(null)
@@ -182,6 +251,8 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initial
         >
           <Bold className="h-3 w-3" /> Negrita
         </button>
+        <ToolbarDropdown label="Tamaño" options={TEXT_SIZES} isFocus={isFocus} onPick={(v) => exec('fontSize', v)} />
+        <ToolbarDropdown label="Fuente" options={TEXT_FONTS} isFocus={isFocus} onPick={(v) => exec('fontName', v || 'inherit')} />
         <button
           type="button"
           title="Quitar formato"
