@@ -245,6 +245,25 @@ export async function deleteAgencyUserAction(userId: string): Promise<{ success:
 
   const admin = createAdminClient()
 
+  // Several tables FK to users(id) with no ON DELETE behavior, so deleting
+  // the profile row outright fails the moment this person has anything
+  // pointing at them (leads assigned to them was the one that surfaced this —
+  // a setter/closer with thousands of leads couldn't be deleted at all).
+  // Unassign what's just a pointer (their name stays out of it entirely),
+  // and drop what's NOT NULL / meaningless once they're gone (their own
+  // notifications, team_assignments rows, authored content notes).
+  const [leadsRes, callsRes, tasksRes, teamRes, notesRes, notifRes] = await Promise.all([
+    admin.from('leads').update({ assigned_to: null }).eq('assigned_to', userId),
+    admin.from('sales_calls').update({ caller_id: null }).eq('caller_id', userId),
+    admin.from('onboarding_tasks').update({ assigned_to: null }).eq('assigned_to', userId),
+    admin.from('team_assignments').delete().eq('user_id', userId),
+    admin.from('content_notes').delete().eq('author_id', userId),
+    admin.from('notifications').delete().eq('user_id', userId),
+  ])
+  for (const r of [leadsRes, callsRes, tasksRes, teamRes, notesRes, notifRes]) {
+    if (r.error) return { success: false, error: r.error.message }
+  }
+
   // users.id references auth.users(id) with no ON DELETE CASCADE, so the
   // profile row has to go first or the auth deletion is rejected by the FK.
   const { error: deleteRowError } = await admin.from('users').delete().eq('id', userId)
