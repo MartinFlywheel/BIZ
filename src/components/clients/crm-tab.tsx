@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
-import type { LeadStage, Lead, ContentPiece, Interaction } from '@/lib/types'
+import type { LeadStage, Lead, ContentPiece, Interaction, Client } from '@/lib/types'
 import {
   updateLeadStageAction,
   updateLeadFieldsAction,
@@ -22,11 +22,12 @@ import { saveAvatarsAction } from '@/lib/actions/clients'
 
 type SubTab = 'leads' | 'agendas' | 'equipo'
 
-interface AgencyUser { id: string; full_name: string; email: string; role: string }
+interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null }
 
 interface Props {
   leads: Lead[]
   agencyUsers: AgencyUser[]
+  allClients?: Client[]
   contentPieces: ContentPiece[]
   interactions?: Interaction[]
   clientId: string
@@ -900,7 +901,7 @@ const ROLES = [
   { value: 'editor', label: 'Editor' },
 ]
 
-function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId: string; agencyUsers: AgencyUser[]; isAdmin: boolean; currentUserId?: string }) {
+function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }: { clientId: string; agencyUsers: AgencyUser[]; allClients: { id: string; name: string }[]; isAdmin: boolean; currentUserId?: string }) {
   const [stats, setStats] = useState<Record<string, { agendas: number; shows: number; cerradas: number }>>({})
   const [loading, setLoading] = useState(true)
   const [localUsers, setLocalUsers] = useState(agencyUsers)
@@ -972,6 +973,20 @@ function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId
     }
   }
 
+  async function changeClientId(userId: string, newClientId: string) {
+    setSaving(userId)
+    const result = await updateAgencyUserAction(userId, { client_id: newClientId })
+      .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
+    setSaving(null)
+    if (result.success) {
+      // Reassigned away from this client — they no longer belong in this list.
+      if (newClientId !== clientId) setLocalUsers(prev => prev.filter(u => u.id !== userId))
+      else setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, client_id: newClientId } : u))
+    } else {
+      alert(result.error)
+    }
+  }
+
   async function handleDeleteUser(userId: string, name: string) {
     if (!confirm(`¿Eliminar a ${name} del equipo? Se borra su cuenta por completo y pierde acceso al dashboard de inmediato.`)) return
     setSaving(userId)
@@ -1001,7 +1016,7 @@ function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              {['Nombre', 'Correo personal', 'Rol', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
+              {['Nombre', 'Correo personal', 'Rol', 'Cliente', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 whitespace-nowrap first:pl-4">
                   {h}
                 </th>
@@ -1011,13 +1026,13 @@ function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-zinc-600 text-xs">
+                <td colSpan={10} className="py-12 text-center text-zinc-600 text-xs">
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Cargando estadísticas...
                 </td>
               </tr>
             ) : localUsers.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
+                <td colSpan={10} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
               </tr>
             ) : (
               localUsers.map(user => {
@@ -1090,6 +1105,29 @@ function EquipoTab({ clientId, agencyUsers, isAdmin, currentUserId }: { clientId
                       ) : (
                         <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-medium border ${badge.color}`}>
                           {badge.label}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Cliente — admin-only reassignment, doesn't apply to admins themselves (unscoped) */}
+                    <td className="px-3 py-2">
+                      {user.role === 'admin' ? (
+                        <span className="text-xs text-zinc-600">— (todos)</span>
+                      ) : isAdmin ? (
+                        <select
+                          value={user.client_id ?? ''}
+                          disabled={isSaving}
+                          onChange={e => changeClientId(user.id, e.target.value)}
+                          className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 focus:outline-none focus:border-zinc-600 disabled:opacity-50 [&>option]:bg-zinc-900"
+                        >
+                          <option value="" disabled>Sin asignar</option>
+                          {allClients.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-xs text-zinc-500">
+                          {allClients.find(c => c.id === user.client_id)?.name ?? 'Sin asignar'}
                         </span>
                       )}
                     </td>
@@ -1338,7 +1376,7 @@ function ConfigurarAvatarsModal({
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export function CrmTab({ leads, agencyUsers, contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {
+export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -1402,7 +1440,7 @@ export function CrmTab({ leads, agencyUsers, contentPieces, interactions, client
         <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} agencyUsers={agencyUsers} />
       )}
       {activeSubTab === 'equipo' && (
-        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} isAdmin={isAdmin} currentUserId={currentUserId} />
+        <EquipoTab clientId={clientId} agencyUsers={agencyUsers} allClients={allClients} isAdmin={isAdmin} currentUserId={currentUserId} />
       )}
 
       {showAvatarConfig && (

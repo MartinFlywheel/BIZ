@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getClient } from '@/lib/actions/clients'
+import { getClient, getClients } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
 import { getLeads } from '@/lib/actions/leads'
@@ -33,8 +33,9 @@ export default async function ClientDetailPage({
   const isSetter = viewer?.role === 'setter'
 
   try {
-    const [client, campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
+    const [client, allClients, campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
       getClient(id),
+      getClients(),
       getCampaigns(id),
       getContentPieces(id),
       getContentMetricsByClient(id),
@@ -55,6 +56,7 @@ export default async function ClientDetailPage({
       <Suspense fallback={null}>
         <ClientDetail
           client={client}
+          allClients={allClients}
           campaigns={campaigns}
           contentPieces={contentPieces}
           contentMetrics={contentMetrics}

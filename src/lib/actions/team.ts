@@ -75,20 +75,29 @@ export async function getAgendaTeamStats(clientId: string): Promise<Record<strin
   const data = await fetchAllRows((from, to) =>
     supabase
       .from('agenda_records')
-      .select('closer, estado')
+      .select('closer, setter, estado')
       .eq('client_id', clientId)
-      .not('closer', 'is', null)
       .range(from, to)
   )
 
   const stats: Record<string, { agendas: number; shows: number; cerradas: number }> = {}
+
+  function bump(name: string | null | undefined, estado: string | null) {
+    const key = name?.trim()
+    if (!key) return
+    if (!stats[key]) stats[key] = { agendas: 0, shows: 0, cerradas: 0 }
+    stats[key].agendas++
+    if (estado === 'Show' || estado === 'No Cerrado' || estado === 'Cerrado') stats[key].shows++
+    if (estado === 'Cerrado') stats[key].cerradas++
+  }
+
+  // A setter's number is "leads they booked" and a closer's is "calls they
+  // took" — different roles on the same row, so both get credit for it
+  // (unless it's literally the same name in both fields, which would
+  // otherwise double-count one row as two agendas for that person).
   for (const r of data) {
-    const closer = r.closer?.trim()
-    if (!closer) continue
-    if (!stats[closer]) stats[closer] = { agendas: 0, shows: 0, cerradas: 0 }
-    stats[closer].agendas++
-    if (r.estado === 'Show' || r.estado === 'No Cerrado' || r.estado === 'Cerrado') stats[closer].shows++
-    if (r.estado === 'Cerrado') stats[closer].cerradas++
+    bump(r.setter, r.estado)
+    if (r.closer?.trim() && r.closer.trim() !== r.setter?.trim()) bump(r.closer, r.estado)
   }
 
   return stats
@@ -106,7 +115,7 @@ const SELF_ROLE_CHANGE_PASSWORD = 'Holakase6.'
 // anyone else) to admin via the role dropdown.
 export async function updateAgencyUserAction(
   userId: string,
-  fields: { full_name?: string; email?: string; role?: string },
+  fields: { full_name?: string; email?: string; role?: string; client_id?: string | null },
   confirmPassword?: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()

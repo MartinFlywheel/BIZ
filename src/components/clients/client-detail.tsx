@@ -28,10 +28,12 @@ interface AgencyUser {
   full_name: string
   email: string
   role: string
+  client_id?: string | null
 }
 
 interface Props {
   client: Client
+  allClients?: Client[]
   campaigns: Campaign[]
   contentPieces: ContentPiece[]
   contentMetrics: ContentMetric[]
@@ -62,7 +64,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
+export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -142,6 +144,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
               <CrmTab
                 leads={leads}
                 agencyUsers={agencyUsers}
+                allClients={allClients}
                 contentPieces={contentPieces}
                 interactions={interactions}
                 clientId={client.id}
