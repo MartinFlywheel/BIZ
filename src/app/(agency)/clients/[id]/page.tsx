@@ -30,6 +30,7 @@ export default async function ClientDetailPage({
     ? await supabase.from('users').select('role').eq('id', authUser.id).single()
     : { data: null }
   const isAdmin = viewer?.role === 'admin'
+  const isSetter = viewer?.role === 'setter'
 
   try {
     const [client, campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
@@ -69,6 +70,7 @@ export default async function ClientDetailPage({
           contentAnalytics={contentAnalytics}
           funnelTotals={funnelTotals}
           isAdmin={isAdmin}
+          isSetter={isSetter}
           currentUserId={authUser?.id}
         />
       </Suspense>

@@ -28,8 +28,27 @@ export async function getClient(id: string) {
   return data
 }
 
+// Client record mutations (create/update/delete) are agency-strategy actions
+// — same admin-only bar as team management, since delete cascades a
+// client's entire history and none of it was gated server-side before.
+async function assertAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: { user: currentUser } } = await supabase.auth.getUser()
+  if (!currentUser) throw new Error('No autenticado')
+
+  const { data: caller } = await supabase
+    .from('users')
+    .select('role, user_type')
+    .eq('id', currentUser.id)
+    .single()
+
+  if (!caller || caller.user_type !== 'agency' || caller.role !== 'admin') {
+    throw new Error('Solo un admin puede realizar esta acción')
+  }
+}
+
 export async function createClientAction(formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
+  await assertAdmin(supabase)
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
 
@@ -58,6 +77,7 @@ export async function createClientAction(formData: FormData): Promise<{ calendly
 
 export async function updateClientAction(id: string, formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
+  await assertAdmin(supabase)
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
 
@@ -138,6 +158,7 @@ export async function saveAvatarsAction(
 
 export async function deleteClientAction(id: string) {
   const supabase = await createClient()
+  await assertAdmin(supabase)
   const { error } = await supabase.from('clients').delete().eq('id', id)
 
   if (error) throw error

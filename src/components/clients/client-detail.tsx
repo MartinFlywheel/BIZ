@@ -48,6 +48,9 @@ interface Props {
   funnelTotals: ClientFunnelTotals
   readOnly?: boolean
   isAdmin?: boolean
+  // Setters only work leads/agendas — every other tab (analytics, content,
+  // pipeline, calls, competitors) is agency/strategy info they don't need.
+  isSetter?: boolean
   currentUserId?: string
 }
 
@@ -59,11 +62,13 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, currentUserId }: Props) {
+export function ClientDetail({ client, campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialTab = searchParams.get('tab') ?? undefined
+  // Setters are locked to CRM regardless of a ?tab= in the URL — filtering
+  // the tab bar alone wouldn't stop someone from just typing the query param.
+  const initialTab = isSetter ? 'crm' : (searchParams.get('tab') ?? undefined)
   const initialCardId = searchParams.get('card') ?? undefined
   const badge = statusBadge[client.status] || statusBadge.prospect
 
@@ -73,7 +78,9 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
     router.push('/clients')
   }
 
-  const tabs = [
+  const tabs = isSetter ? [
+    { id: 'crm', label: 'CRM', count: leads.length },
+  ] : [
     { id: 'analytics', label: 'Analítica' },
     { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
     { id: 'pipeline', label: 'Pipeline Contenido' },
@@ -96,7 +103,7 @@ export function ClientDetail({ client, campaigns: _campaigns, contentPieces, con
             <p className="mt-1 text-sm text-zinc-300">{formatCurrency(client.monthly_fee)}/mes</p>
           )}
         </div>
-        {!readOnly && (
+        {!readOnly && isAdmin && (
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
               <Pencil className="h-3.5 w-3.5" />
