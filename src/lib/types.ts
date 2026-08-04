@@ -525,3 +525,53 @@ export interface IncomingMessage {
   read_at: string | null
   created_at: string
 }
+
+// =====================================================
+// Product & Delivery Module
+// =====================================================
+
+export type ProductRiskLevel = 'green' | 'yellow' | 'red'
+
+export interface ProgramStudent {
+  id: string
+  client_id: string // Relacionado al Cliente de la Agencia (ej. Mane)
+  lead_id: string | null // Relacionado al Lead del CRM si existía antes
+  full_name: string
+  phone: string
+  email: string
+  start_date: string
+  current_day: number
+  risk_level: ProductRiskLevel
+  created_at: string
+  updated_at: string
+}
+
+export interface OnboardingData {
+  id: string
+  student_id: string
+  form_responses: Record<string, unknown>
+  photos: string[]
+  submitted_at: string
+}
+
+export interface FollowUp {
+  id: string
+  student_id: string
+  day_number: number
+  sent_at: string | null
+  status: 'pending' | 'sent' | 'failed'
+  notes: string | null
+}
+
+export type AiMessageStatus = 'pending' | 'approved' | 'rejected' | 'sent'
+
+export interface AiMessageQueue {
+  id: string
+  student_id: string
+  follow_up_id: string | null
+  message_text: string | null
+  audio_url: string | null
+  status: AiMessageStatus
+  generated_at: string
+  reviewed_at: string | null
+}

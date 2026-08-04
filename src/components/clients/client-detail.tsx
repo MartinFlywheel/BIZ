@@ -16,6 +16,7 @@ import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTab } from './crm-tab'
+import { ProductTab } from './product-tab'
 import { Pencil, Trash2 } from 'lucide-react'
 import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
@@ -88,7 +89,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
     { id: 'pipeline', label: 'Script' },
     { id: 'crm', label: 'CRM', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
-{ id: 'competencia', label: 'Competencia', count: competitors.length },
+    { id: 'competencia', label: 'Competencia', count: competitors.length },
     { id: 'producto', label: 'Producto' },
   ]
 
@@ -165,7 +166,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
               />
             )}
 
-{activeTab === 'competencia' && (
+            {activeTab === 'competencia' && (
               <ClientCompetitors
                 competitors={competitors}
                 competitorReels={competitorReels}
@@ -174,9 +175,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
             )}
 
             {activeTab === 'producto' && (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-16 text-center">
-                <p className="text-sm text-zinc-500">Próximamente</p>
-              </div>
+              <ProductTab clientId={client.id} />
             )}
           </>
         )}

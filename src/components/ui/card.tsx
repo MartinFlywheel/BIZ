@@ -33,6 +33,10 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingEle
   )
 }
 
+export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn(className)} {...props} />
+}
+
 export function CardValue({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
