@@ -84,11 +84,12 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
     { id: 'crm', label: 'CRM', count: leads.length },
   ] : [
     { id: 'analytics', label: 'Analítica' },
-    { id: 'content_metrics', label: 'Contenido y Métricas', count: contentPieces.length },
-    { id: 'pipeline', label: 'Pipeline Contenido' },
+    { id: 'content_metrics', label: 'Contenido', count: contentPieces.length },
+    { id: 'pipeline', label: 'Script' },
     { id: 'crm', label: 'CRM', count: leads.length },
     { id: 'calls', label: 'Llamadas', count: calls.length },
 { id: 'competencia', label: 'Competencia', count: competitors.length },
+    { id: 'producto', label: 'Producto' },
   ]
 
   return (
@@ -170,6 +171,12 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
                 competitorReels={competitorReels}
                 clientId={client.id}
               />
+            )}
+
+            {activeTab === 'producto' && (
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-16 text-center">
+                <p className="text-sm text-zinc-500">Próximamente</p>
+              </div>
             )}
           </>
         )}
