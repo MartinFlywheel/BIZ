@@ -170,8 +170,8 @@ function pct(num: number, den: number): string {
 const contentTypeLabel: Record<string, string> = {
     reel: 'Reel',
     story: 'Story',
-    post: 'Post',
-    live: 'Live',
+    post: 'Carrusel',
+    live: 'Vivo',
 }
 
 type SortKey = 'recent' | 'views' | 'revenue' | 'comments'
@@ -183,12 +183,14 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
     { key: 'comments', label: 'Comentarios' },
 ]
 
-type TypeFilter = 'all' | 'reel' | 'story'
+type TypeFilter = 'all' | 'reel' | 'story' | 'post' | 'live'
 
 const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'all', label: 'Todo' },
     { key: 'reel', label: 'Reels' },
     { key: 'story', label: 'Historias' },
+    { key: 'post', label: 'Carruseles' },
+    { key: 'live', label: 'Vivos' },
 ]
 
 export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions, clientId, contentAnalytics, funnelTotals }: Props) {
