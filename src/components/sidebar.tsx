@@ -11,6 +11,7 @@ import {
   Bell,
   LogOut,
   GalleryHorizontal,
+  Bot,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -125,6 +126,21 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
             <Bell className="h-[18px] w-[18px] shrink-0" />
             <span>Notificaciones</span>
           </Link>
+        )}
+
+        {userType === 'agency' && !restricted && (
+          // Bot ATV Consultor — corre localmente (atv-agent-prototype, puerto
+          // 3001). Solo abre la pestaña; hay que tener `npm run dev` corriendo
+          // en esa carpeta de antemano para que cargue.
+          <a
+            href="http://localhost:3001/chat"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-white/[0.04] hover:text-white/90"
+          >
+            <Bot className="h-[18px] w-[18px] shrink-0" />
+            <span>ATV Consultor</span>
+          </a>
         )}
 
         {userType === 'agency' && !restricted && (
