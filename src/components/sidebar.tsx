@@ -129,11 +129,14 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
         )}
 
         {userType === 'agency' && !restricted && (
-          // Bot ATV Consultor — corre localmente (atv-agent-prototype, puerto
-          // 3001). Solo abre la pestaña; hay que tener `npm run dev` corriendo
-          // en esa carpeta de antemano para que cargue.
+          // Bot ATV Consultor — deployado como proyecto propio de Vercel.
+          // Pega a una ruta del mismo origen (/api/atv-bot-link) para que
+          // las cookies de Supabase viajen solas; esa ruta revalida "admin
+          // de agencia" del lado del servidor y redirige con un token
+          // firmado de vida corta que el bot cambia por su propia cookie
+          // de sesión.
           <a
-            href="http://localhost:3001/chat"
+            href="/api/atv-bot-link"
             target="_blank"
             rel="noopener noreferrer"
             className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-white/[0.04] hover:text-white/90"
