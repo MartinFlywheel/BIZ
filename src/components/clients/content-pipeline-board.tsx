@@ -214,7 +214,7 @@ function KanbanColumn({
       </div>
 
       {/* Cards */}
-      <div className="flex flex-col gap-2 px-2 pb-2 min-h-[80px]">
+      <div className="flex flex-col gap-2 px-2 pb-2 min-h-[80px] max-h-[600px] overflow-y-auto">
         {items.map((item) => (
           <KanbanCard
             key={item.id}
