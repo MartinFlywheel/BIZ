@@ -21,10 +21,19 @@ function base64url(input: string): string {
   return Buffer.from(input, 'utf8').toString('base64url')
 }
 
-export function signAtvBotBridgeToken(secret: string): string {
+// userId/userName viajan en el payload firmado para que el bot pueda
+// atribuir cada conversación compartida a quién la inició, sin tener que
+// volver a consultarle nada a biz-crm en cada request — el bot arrastra
+// estos mismos campos a su propia cookie de sesión al cambiar este token.
+export function signAtvBotBridgeToken(
+  secret: string,
+  identity?: { userId: string; userName?: string | null }
+): string {
   const payload = JSON.stringify({
     purpose: BRIDGE_TOKEN_PURPOSE,
     exp: Date.now() + BRIDGE_TOKEN_TTL_MS,
+    userId: identity?.userId,
+    userName: identity?.userName ?? undefined,
   })
   const body = base64url(payload)
   const signature = createHmac('sha256', secret).update(body).digest('base64url')

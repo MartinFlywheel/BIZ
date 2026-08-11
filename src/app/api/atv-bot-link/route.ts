@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
   const { data: profile } = await supabase
     .from('users')
-    .select('user_type, role')
+    .select('user_type, role, full_name')
     .eq('id', user.id)
     .single()
 
@@ -41,6 +41,6 @@ export async function GET(request: Request) {
     )
   }
 
-  const token = signAtvBotBridgeToken(secret)
+  const token = signAtvBotBridgeToken(secret, { userId: user.id, userName: profile.full_name })
   return NextResponse.redirect(`${botUrl}/chat?t=${token}`)
 }
