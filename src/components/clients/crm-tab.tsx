@@ -189,17 +189,32 @@ function SectionHead({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600 border-b border-zinc-800 pb-1 mb-3">{children}</p>
 }
 
+// "nivel_2" -> "Nivel 2", "zona_papada" -> "Zona papada" — sin diccionario
+// fijo de nombres, porque el flujo de ManyChat puede sumar campos nuevos
+// sin que este código se tenga que tocar.
+function prettifyFieldKey(key: string): string {
+  const spaced = key.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function prettifyFieldValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Sí' : 'No'
+  return String(value).replace(/_/g, ' ')
+}
+
 interface DrawerProps {
   lead: Lead
   agencyUsers: AgencyUser[]
   contentPieces: ContentPiece[]
   avatarList: readonly string[]
+  qualificationData?: Record<string, unknown>
   onClose: () => void
   onUpdated: (updated: Lead) => void
   onDeleted: (id: string) => void
 }
 
-function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, onClose, onUpdated, onDeleted }: DrawerProps) {
+function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificationData, onClose, onUpdated, onDeleted }: DrawerProps) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [local, setLocal] = useState<Lead>(lead)
@@ -378,6 +393,26 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, onClose, onU
             </div>
           </div>
 
+          {/* Ficha de calificación — lo que recolectó el flujo de ManyChat
+              (nivel, zona, edad, ocupación, etc.). Solo aparece si hay algo
+              guardado; los campos que sume el flujo se muestran solos, sin
+              tocar este componente. */}
+          {qualificationData && Object.keys(qualificationData).length > 0 && (
+            <div>
+              <SectionHead>Ficha de Calificación (ManyChat)</SectionHead>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                {Object.entries(qualificationData).map(([key, value]) => (
+                  <div key={key}>
+                    <span className="text-zinc-500 block mb-0.5 text-[10px] uppercase tracking-wider">
+                      {prettifyFieldKey(key)}
+                    </span>
+                    <span className="text-zinc-300">{prettifyFieldValue(value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Notas */}
           <div>
             <SectionHead>Notas</SectionHead>
@@ -555,6 +590,35 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
     }
     return s
   }, [interactions])
+
+  // Para mostrar la "ficha de calificación" (prequalification_data) en el
+  // drawer del lead. Se busca primero por interaction_id (el link que arma
+  // el webhook) y, si un lead viejo todavía no lo tiene, por ig_username
+  // como respaldo.
+  const interactionById = useMemo(() => {
+    const m = new Map<string, Interaction>()
+    for (const i of interactions ?? []) m.set(i.id, i)
+    return m
+  }, [interactions])
+
+  const interactionByUsername = useMemo(() => {
+    const m = new Map<string, Interaction>()
+    for (const i of interactions ?? []) {
+      if (!i.ig_username) continue
+      const key = i.ig_username.toLowerCase()
+      const existing = m.get(key)
+      if (!existing || i.updated_at > existing.updated_at) m.set(key, i)
+    }
+    return m
+  }, [interactions])
+
+  function qualificationDataFor(l: Lead): Record<string, unknown> | undefined {
+    const match =
+      (l.interaction_id && interactionById.get(l.interaction_id)) ||
+      (l.ig_username && interactionByUsername.get(l.ig_username.toLowerCase())) ||
+      null
+    return match?.prequalification_data
+  }
 
   const activeFilterCount = stageFilter.size + ctaFilter.size + interactionFilter.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
 
@@ -890,6 +954,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
           avatarList={avatarList}
+          qualificationData={qualificationDataFor(localLeads.find(l => l.id === openLead.id) ?? openLead)}
           onClose={() => setOpenLead(null)}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}

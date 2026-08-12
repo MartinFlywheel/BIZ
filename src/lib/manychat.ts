@@ -40,6 +40,50 @@ export function resolveClassification(payload: Record<string, unknown>): Classif
   return isQualified ? 'conversacion_real' : 'chat_abierto'
 }
 
+// Campos que ya tienen un significado fijo en el payload — todo lo demás
+// que llegue (sea porque se armó a mano campo por campo en el editor de
+// ManyChat, o porque viene adentro de custom_fields) se guarda como parte
+// de la ficha de calificación.
+const RESERVED_PAYLOAD_KEYS = new Set([
+  'ig_username', 'instagram_user_handle', 'username', 'instagram_username',
+  'full_name', 'name', 'first_name', 'last_name',
+  'email', 'phone', 'phone_number',
+  'subscriber_id', 'id',
+  'classification', 'event', 'stage', 'tags', 'custom_fields', 'qualified', 'pieceId',
+])
+
+// ManyChat manda los custom fields de dos formas distintas según cómo se
+// arme la solicitud: como objeto plano ({"nivel": "..."}) si se escriben a
+// mano, o como el array [{name, value}, ...] que trae "Full Contact Data"
+// de forma nativa. Se soportan ambas, más cualquier campo suelto que se
+// haya agregado directo al cuerpo (fuera de "custom_fields").
+function extractCustomFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+
+  const raw = payload.custom_fields
+  if (Array.isArray(raw)) {
+    for (const entry of raw) {
+      if (entry && typeof entry === 'object' && 'name' in entry) {
+        const name = (entry as { name?: unknown }).name
+        const value = (entry as { value?: unknown }).value
+        if (typeof name === 'string' && value !== null && value !== undefined && value !== '') {
+          result[name] = value
+        }
+      }
+    }
+  } else if (raw && typeof raw === 'object') {
+    Object.assign(result, raw as Record<string, unknown>)
+  }
+
+  for (const [key, value] of Object.entries(payload)) {
+    if (RESERVED_PAYLOAD_KEYS.has(key)) continue
+    if (value === null || value === undefined || value === '') continue
+    result[key] = value
+  }
+
+  return result
+}
+
 export interface InteractionParams {
   clientId: string
   contentId: string | null
@@ -52,18 +96,20 @@ export interface InteractionParams {
 }
 
 // Records a ManyChat interaction. When the incoming event is anything other
-// than "chat_abierto", first looks for a recent chat_abierto row from the
-// same person and promotes it in place — so a two-call ManyChat flow (entry,
-// then reply) produces ONE interaction that upgrades over time, instead of
-// two separate rows that would double-count "chats abiertos".
-export async function upsertInteraction(supabase: AdminClient, params: InteractionParams): Promise<void> {
+// than "chat_abierto", first looks for a recent promotable row from the
+// same person and promotes it in place — so a multi-call ManyChat flow
+// (entry, quiz answers, reply) produces ONE interaction that upgrades over
+// time, instead of separate rows that would double-count "chats abiertos".
+// Returns the id of the interaction row that was written to, so the caller
+// can link it back onto the lead (leads.interaction_id).
+export async function upsertInteraction(supabase: AdminClient, params: InteractionParams): Promise<string> {
   const now = new Date().toISOString()
 
   if (params.classification !== 'chat_abierto' && params.igUsername) {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const { data: existing } = await supabase
       .from('interactions')
-      .select('id')
+      .select('id, prequalification_data')
       .eq('client_id', params.clientId)
       .eq('ig_username', params.igUsername)
       .in('classification', PROMOTABLE_FROM[params.classification])
@@ -73,34 +119,49 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
       .maybeSingle()
 
     if (existing) {
+      // Merge, don't replace — earlier steps in the ManyChat quiz (nivel,
+      // zona) may have already landed custom fields on this row before this
+      // later call (edad, ocupación) arrives.
+      const mergedFields = {
+        ...((existing.prequalification_data as Record<string, unknown>) || {}),
+        ...(params.customFields || {}),
+      }
       await supabase
         .from('interactions')
         .update({
           classification: params.classification,
           prospect_responded_at: now,
           qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
+          prequalification_data: mergedFields,
           updated_at: now,
         })
         .eq('id', existing.id)
-      return
+      return existing.id
     }
   }
 
-  await supabase.from('interactions').insert({
-    client_id: params.clientId,
-    content_id: params.contentId,
-    ig_username: params.igUsername,
-    prospect_name: params.fullName,
-    classification: params.classification,
-    source: 'manychat',
-    manychat_subscriber_id: params.subscriberId,
-    keyword_used: params.keywordUsed,
-    bot_triggered_at: now,
-    prospect_responded_at: params.classification !== 'chat_abierto' ? now : null,
-    qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
-    prequalification_data: params.customFields || {},
-    promoted_to_lead: true,
-  })
+  const { data: inserted, error: insertError } = await supabase
+    .from('interactions')
+    .insert({
+      client_id: params.clientId,
+      content_id: params.contentId,
+      ig_username: params.igUsername,
+      prospect_name: params.fullName,
+      classification: params.classification,
+      source: 'manychat',
+      manychat_subscriber_id: params.subscriberId,
+      keyword_used: params.keywordUsed,
+      bot_triggered_at: now,
+      prospect_responded_at: params.classification !== 'chat_abierto' ? now : null,
+      qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
+      prequalification_data: params.customFields || {},
+      promoted_to_lead: true,
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !inserted) throw insertError || new Error('Failed to insert interaction')
+  return inserted.id
 }
 
 // ── Shared handler for the per-piece webhook URLs ───────────────────────────
@@ -144,6 +205,12 @@ export async function handlePieceWebhook(
       payload.id ||
       ''
     ).toString()
+
+    // Whatever ManyChat's flow has collected so far (nivel, zona, edad,
+    // ocupación, etc.) — passed through as-is into prequalification_data,
+    // no fixed schema on this side so the flow can add fields without a
+    // code change here.
+    const customFields = extractCustomFields(payload)
 
     if (!igUsername && !subscriberId) {
       return NextResponse.json({ error: 'Missing identifier' }, { status: 400 })
@@ -231,7 +298,7 @@ export async function handlePieceWebhook(
     // Register interaction — classification is forced by which URL was
     // called, falling back to the payload/default resolution otherwise.
     const classification = forcedClassification || resolveClassification(payload)
-    await upsertInteraction(supabase, {
+    const interactionId = await upsertInteraction(supabase, {
       clientId,
       contentId,
       igUsername,
@@ -239,7 +306,13 @@ export async function handlePieceWebhook(
       subscriberId,
       keywordUsed: pieceId,
       classification,
+      customFields,
     })
+
+    // Link the lead to its interaction so the CRM can show the
+    // prequalification_data (nivel/zona/edad/ocupación/etc.) on the lead's
+    // card — kept current on every call, not just the first.
+    await supabase.from('leads').update({ interaction_id: interactionId }).eq('id', leadId)
 
     // Increment chats on content_metrics
     if (contentId) {
