@@ -3,9 +3,20 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
-export type Classification = 'chat_abierto' | 'conversacion_real' | 'disqualified'
+export type Classification = 'chat_abierto' | 'conversacion_real' | 'lead_calificado' | 'disqualified'
 
-const VALID_CLASSIFICATIONS: Classification[] = ['chat_abierto', 'conversacion_real', 'disqualified']
+const VALID_CLASSIFICATIONS: Classification[] = ['chat_abierto', 'conversacion_real', 'lead_calificado', 'disqualified']
+
+// Qué clasificaciones anteriores puede "promover en el lugar" cada
+// clasificación nueva — chat_abierto -> conversacion_real -> lead_calificado
+// es una progresión, así que promover a una etapa tiene que poder
+// encontrar la fila en CUALQUIER etapa previa, no solo en chat_abierto.
+const PROMOTABLE_FROM: Record<Classification, Classification[]> = {
+  chat_abierto: [],
+  conversacion_real: ['chat_abierto'],
+  lead_calificado: ['chat_abierto', 'conversacion_real'],
+  disqualified: ['chat_abierto', 'conversacion_real', 'lead_calificado'],
+}
 
 // Resolves the interaction's classification from an explicit field in the
 // ManyChat payload (classification / event / stage), falling back to the
@@ -55,7 +66,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
       .select('id')
       .eq('client_id', params.clientId)
       .eq('ig_username', params.igUsername)
-      .eq('classification', 'chat_abierto')
+      .in('classification', PROMOTABLE_FROM[params.classification])
       .gte('bot_triggered_at', since)
       .order('bot_triggered_at', { ascending: false })
       .limit(1)
@@ -67,7 +78,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
         .update({
           classification: params.classification,
           prospect_responded_at: now,
-          qualified_at: params.classification === 'conversacion_real' ? now : null,
+          qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
           updated_at: now,
         })
         .eq('id', existing.id)
@@ -86,7 +97,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
     keyword_used: params.keywordUsed,
     bot_triggered_at: now,
     prospect_responded_at: params.classification !== 'chat_abierto' ? now : null,
-    qualified_at: params.classification === 'conversacion_real' ? now : null,
+    qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
     prequalification_data: params.customFields || {},
     promoted_to_lead: true,
   })

@@ -43,7 +43,7 @@ export function CsvImport({ clientId }: Props) {
         headers.forEach((h, idx) => { row[h] = values[idx] || '' })
 
         const classification = (row.classification || row.clasificacion || 'chat_abierto') as InteractionClassification
-        if (!['chat_abierto', 'conversacion_real', 'disqualified'].includes(classification)) continue
+        if (!['chat_abierto', 'conversacion_real', 'lead_calificado', 'disqualified'].includes(classification)) continue
 
         parsed.push({
           ig_username: row.ig_username || row.username || undefined,

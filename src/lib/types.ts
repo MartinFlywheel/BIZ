@@ -29,7 +29,7 @@ export type ClientStatus = 'prospect' | 'onboarding' | 'active' | 'paused' | 'ch
 
 export type ContentType = 'reel' | 'story' | 'post' | 'live'
 
-export type InteractionClassification = 'chat_abierto' | 'conversacion_real' | 'disqualified'
+export type InteractionClassification = 'chat_abierto' | 'conversacion_real' | 'lead_calificado' | 'disqualified'
 
 export type InteractionSource = 'manychat' | 'gohighlevel' | 'manual' | 'api'
 

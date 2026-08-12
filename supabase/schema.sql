@@ -129,7 +129,7 @@ CREATE TABLE interactions (
   ig_user_id TEXT,
   ig_username TEXT,
   prospect_name TEXT,
-  classification TEXT CHECK (classification IN ('chat_abierto', 'conversacion_real', 'disqualified')) DEFAULT 'chat_abierto',
+  classification TEXT CHECK (classification IN ('chat_abierto', 'conversacion_real', 'lead_calificado', 'disqualified')) DEFAULT 'chat_abierto',
   source TEXT CHECK (source IN ('manychat', 'gohighlevel', 'manual', 'api')) DEFAULT 'manual',
   manychat_subscriber_id TEXT,
   keyword_used TEXT,

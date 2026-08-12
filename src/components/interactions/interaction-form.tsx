@@ -43,6 +43,7 @@ export function InteractionForm({ clientId, campaigns, contentPieces, onClose }:
         <Select id="classification" name="classification" label="Clasificación" options={[
           { value: 'chat_abierto', label: 'Chat Abierto (bot trigger)' },
           { value: 'conversacion_real', label: 'Conversación Real (respondió filtro)' },
+          { value: 'lead_calificado', label: 'Lead Calificado' },
           { value: 'disqualified', label: 'Descalificado' },
         ]} />
         <Input id="keyword_used" name="keyword_used" label="Keyword Usada" placeholder="INFO" />
