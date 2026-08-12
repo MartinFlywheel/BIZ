@@ -35,11 +35,13 @@ export async function createInteractionAction(formData: FormData) {
     keyword_used: (formData.get('keyword_used') as string) || null,
     bot_triggered_at: (formData.get('bot_triggered_at') as string) || new Date().toISOString(),
     prospect_responded_at:
-      classification === 'conversacion_real' || classification === 'disqualified'
+      classification === 'conversacion_real' || classification === 'lead_calificado' || classification === 'disqualified'
         ? new Date().toISOString()
         : null,
     qualified_at:
-      classification === 'conversacion_real' ? new Date().toISOString() : null,
+      classification === 'conversacion_real' || classification === 'lead_calificado'
+        ? new Date().toISOString()
+        : null,
   })
 
   if (error) throw error
@@ -104,11 +106,11 @@ export async function bulkImportInteractionsAction(
     keyword_used: row.keyword_used || null,
     bot_triggered_at: row.bot_triggered_at || new Date().toISOString(),
     prospect_responded_at:
-      row.classification === 'conversacion_real' || row.classification === 'disqualified'
+      row.classification === 'conversacion_real' || row.classification === 'lead_calificado' || row.classification === 'disqualified'
         ? row.bot_triggered_at || new Date().toISOString()
         : null,
     qualified_at:
-      row.classification === 'conversacion_real'
+      row.classification === 'conversacion_real' || row.classification === 'lead_calificado'
         ? row.bot_triggered_at || new Date().toISOString()
         : null,
   }))

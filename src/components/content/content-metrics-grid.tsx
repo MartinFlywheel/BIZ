@@ -218,7 +218,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
             if (!i.content_id) continue
             const entry = counts.get(i.content_id) ?? { chats: 0, conversaciones: 0 }
             entry.chats += 1
-            if (i.classification === 'conversacion_real') entry.conversaciones += 1
+            if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') entry.conversaciones += 1
             counts.set(i.content_id, entry)
         }
         return counts

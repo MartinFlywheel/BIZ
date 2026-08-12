@@ -62,7 +62,7 @@ export function ContentConversationTable({ contentPieces, interactions }: Props)
       s.chats += 1
       if (i.classification === 'chat_abierto') {
         s.chatAbiertoEvidence += 1
-      } else if (i.classification === 'conversacion_real') {
+      } else if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') {
         s.conversaciones += 1
         if (i.prospect_responded_at !== i.bot_triggered_at) s.chatAbiertoEvidence += 1
       }

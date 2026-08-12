@@ -182,7 +182,7 @@ export async function getLiveMetricsBuckets(
     if (interactionType === 'reel') r.chats_abiertos_reel += 1
     else if (interactionType === 'story') r.chats_abiertos_historia += 1
 
-    if (i.classification === 'conversacion_real') {
+    if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') {
       r.conversaciones += 1
       if (interactionType === 'reel') r.conversaciones_reel += 1
       else if (interactionType === 'story') r.conversaciones_historia += 1

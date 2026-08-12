@@ -487,7 +487,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [stageFilter, setStageFilter] = useState<Set<string>>(new Set())
   const [ctaFilter, setCtaFilter] = useState<Set<string>>(new Set())
-  const [interactionFilter, setInteractionFilter] = useState<Set<'real' | 'chat_only'>>(new Set())
+  const [interactionFilter, setInteractionFilter] = useState<Set<'real' | 'chat_only' | 'qualified'>>(new Set())
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const filtersRef = useRef<HTMLDivElement>(null)
@@ -534,11 +534,24 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
 
   // Leads with at least one real conversation (from either ManyChat webhook —
   // the "chat abierto" one and the "conversación real" one both write to
-  // interactions, this just reads the classification back out)
+  // interactions, this just reads the classification back out). Lead
+  // calificado cuenta también: la promoción pisa la clasificación de la
+  // misma fila en el lugar, así que alguien calificado ya no tiene ninguna
+  // fila con classification 'conversacion_real' — solo la de 'lead_calificado'.
   const realConversationUsernames = useMemo(() => {
     const s = new Set<string>()
     for (const i of interactions ?? []) {
-      if (i.classification === 'conversacion_real' && i.ig_username) s.add(i.ig_username.toLowerCase())
+      if ((i.classification === 'conversacion_real' || i.classification === 'lead_calificado') && i.ig_username) {
+        s.add(i.ig_username.toLowerCase())
+      }
+    }
+    return s
+  }, [interactions])
+
+  const qualifiedUsernames = useMemo(() => {
+    const s = new Set<string>()
+    for (const i of interactions ?? []) {
+      if (i.classification === 'lead_calificado' && i.ig_username) s.add(i.ig_username.toLowerCase())
     }
     return s
   }, [interactions])
@@ -560,14 +573,18 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
       if (ctaFilter.size > 0 && (!l.content_id || !ctaFilter.has(l.content_id))) return false
       if (interactionFilter.size > 0) {
         const hasReal = l.ig_username ? realConversationUsernames.has(l.ig_username.toLowerCase()) : false
-        const matches = (interactionFilter.has('real') && hasReal) || (interactionFilter.has('chat_only') && !hasReal)
+        const hasQualified = l.ig_username ? qualifiedUsernames.has(l.ig_username.toLowerCase()) : false
+        const matches =
+          (interactionFilter.has('real') && hasReal) ||
+          (interactionFilter.has('chat_only') && !hasReal) ||
+          (interactionFilter.has('qualified') && hasQualified)
         if (!matches) return false
       }
       if (dateFrom && l.created_at < dateFrom) return false
       if (dateTo && l.created_at.slice(0, 10) > dateTo) return false
       return true
     }),
-    [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, dateFrom, dateTo]
+    [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, qualifiedUsernames, dateFrom, dateTo]
   )
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -656,6 +673,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                     {([
                       { id: 'real' as const, label: 'Conversación real' },
                       { id: 'chat_only' as const, label: 'Solo chat abierto (sin responder)' },
+                      { id: 'qualified' as const, label: 'Lead calificado' },
                     ]).map(opt => (
                       <label key={opt.id} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
                         <input
