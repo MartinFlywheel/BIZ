@@ -636,8 +636,22 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
       if (stageFilter.size > 0 && !stageFilter.has(l.stage)) return false
       if (ctaFilter.size > 0 && (!l.content_id || !ctaFilter.has(l.content_id))) return false
       if (interactionFilter.size > 0) {
-        const hasReal = l.ig_username ? realConversationUsernames.has(l.ig_username.toLowerCase()) : false
-        const hasQualified = l.ig_username ? qualifiedUsernames.has(l.ig_username.toLowerCase()) : false
+        // Se combinan las dos señales en vez de que una reemplace a la otra:
+        // interaction_id es más preciso (no depende de que el username
+        // matchee como texto), pero solo apunta a la interacción MÁS
+        // RECIENTE de ese lead — si la persona vuelve a comentar en otro
+        // Reel más adelante, ese link pasa a apuntar a un "chat abierto"
+        // nuevo y perdería el historial de que ya había llegado a
+        // calificado. El chequeo por username (que mira TODAS las
+        // interacciones de esa persona) cubre ese caso.
+        const linkedInteraction = l.interaction_id ? interactionById.get(l.interaction_id) : undefined
+        const linkedReal =
+          linkedInteraction?.classification === 'conversacion_real' || linkedInteraction?.classification === 'lead_calificado'
+        const linkedQualified = linkedInteraction?.classification === 'lead_calificado'
+
+        const hasReal = linkedReal || (l.ig_username ? realConversationUsernames.has(l.ig_username.toLowerCase()) : false)
+        const hasQualified = linkedQualified || (l.ig_username ? qualifiedUsernames.has(l.ig_username.toLowerCase()) : false)
+
         const matches =
           (interactionFilter.has('real') && hasReal) ||
           (interactionFilter.has('chat_only') && !hasReal) ||
@@ -648,7 +662,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
       if (dateTo && l.created_at.slice(0, 10) > dateTo) return false
       return true
     }),
-    [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, qualifiedUsernames, dateFrom, dateTo]
+    [localLeads, search, stageFilter, ctaFilter, interactionFilter, realConversationUsernames, qualifiedUsernames, interactionById, dateFrom, dateTo]
   )
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
