@@ -129,7 +129,7 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
         )}
 
         {userType === 'agency' && !restricted && (
-          // Bot ATV Consultor — deployado como proyecto propio de Vercel.
+          // Bot SG Consultor — deployado como proyecto propio de Vercel.
           // Pega a una ruta del mismo origen (/api/atv-bot-link) para que
           // las cookies de Supabase viajen solas; esa ruta revalida "admin
           // de agencia" del lado del servidor y redirige con un token
@@ -142,7 +142,7 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
             className="group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-400 transition-all duration-300 hover:bg-white/[0.04] hover:text-white/90"
           >
             <Bot className="h-[18px] w-[18px] shrink-0" />
-            <span>ATV Consultor</span>
+            <span>SG Consultor</span>
           </a>
         )}
 
