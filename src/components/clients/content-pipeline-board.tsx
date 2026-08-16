@@ -43,20 +43,28 @@ function KanbanCard({
   const [dragging, setDragging] = useState(false)
   const wasDragged = useRef(false)
 
-  async function handleDelete(e: React.MouseEvent) {
+  function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
-    await deletePipelineItem(item.id, clientId)
+    // Optimista: la tarjeta desaparece al instante, el borrado real en la
+    // base de datos sigue en segundo plano — antes se esperaba la ida y
+    // vuelta al servidor antes de sacarla de la pantalla, que es lo que se
+    // sentía lento.
     onDeleted(item.id)
+    deletePipelineItem(item.id, clientId).catch((err) => {
+      console.error('No se pudo eliminar la tarjeta:', err)
+    })
   }
 
   const stageIdx = STAGES.findIndex((s) => s.id === item.stage)
   const nextStage = stageIdx < STAGES.length - 1 ? STAGES[stageIdx + 1] : null
   const prevStage = stageIdx > 0 ? STAGES[stageIdx - 1] : null
 
-  async function moveToStage(e: React.MouseEvent, stage: PipelineStage) {
+  function moveToStage(e: React.MouseEvent, stage: PipelineStage) {
     e.stopPropagation()
-    await updatePipelineItem(item.id, clientId, { stage })
     onMoved(item.id, stage)
+    updatePipelineItem(item.id, clientId, { stage }).catch((err) => {
+      console.error('No se pudo mover la tarjeta:', err)
+    })
   }
 
   return (
@@ -153,6 +161,7 @@ function KanbanColumn({
   onMoved,
   onDeleted,
   onAdded,
+  onAddResolved,
 }: {
   stage: typeof STAGES[number]
   items: PipelineItem[]
@@ -161,6 +170,7 @@ function KanbanColumn({
   onMoved: (id: string, toStage: PipelineStage, fromStage: PipelineStage) => void
   onDeleted: (id: string, stage: PipelineStage) => void
   onAdded: (item: PipelineItem) => void
+  onAddResolved: (tempId: string, item: PipelineItem | null) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -169,23 +179,53 @@ function KanbanColumn({
 
   useEffect(() => { if (adding) addInputRef.current?.focus() }, [adding])
 
-  async function handleDrop(e: React.DragEvent) {
+  function handleDrop(e: React.DragEvent) {
     e.preventDefault()
     setDragOver(false)
     const itemId = e.dataTransfer.getData('itemId')
     const fromStage = e.dataTransfer.getData('fromStage') as PipelineStage
     if (!itemId || fromStage === stage.id) return
-    await updatePipelineItem(itemId, clientId, { stage: stage.id })
     onMoved(itemId, stage.id, fromStage)
+    updatePipelineItem(itemId, clientId, { stage: stage.id }).catch((err) => {
+      console.error('No se pudo mover la tarjeta:', err)
+    })
   }
 
-  async function handleAdd() {
+  function handleAdd() {
     const trimmed = newTitle.trim()
     if (!trimmed) { setAdding(false); return }
-    const created = await createPipelineItem(clientId, trimmed, stage.id)
-    onAdded(created)
     setNewTitle('')
     setAdding(false)
+
+    // Tarjeta optimista con id temporal — aparece al instante; cuando el
+    // servidor responde con la fila real, se reemplaza en su lugar (o se
+    // saca si la creación falló).
+    const tempId = `temp-${crypto.randomUUID()}`
+    onAdded({
+      id: tempId,
+      client_id: clientId,
+      title: trimmed,
+      description: null,
+      script: null,
+      reference_url: null,
+      raw_video_url: null,
+      edited_video_url: null,
+      assigned_to: null,
+      due_date: null,
+      angle: null,
+      objective: null,
+      audio_url: null,
+      stage: stage.id,
+      position: 0,
+      created_at: new Date().toISOString(),
+    })
+
+    createPipelineItem(clientId, trimmed, stage.id)
+      .then((created) => onAddResolved(tempId, created))
+      .catch((err) => {
+        console.error('No se pudo crear la tarjeta:', err)
+        onAddResolved(tempId, null)
+      })
   }
 
   return (
@@ -332,6 +372,24 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
     }))
   }
 
+  // Reconcilia la tarjeta optimista una vez que el servidor responde: la
+  // reemplaza por la fila real (item !== null) o la saca si la creación
+  // falló (item === null). Busca por id en todas las columnas porque el
+  // usuario pudo haber arrastrado la tarjeta a otra columna mientras tanto.
+  function handleAddResolved(tempId: string, item: PipelineItem | null) {
+    setColumns((prev) => {
+      const next = { ...prev }
+      for (const stage of Object.keys(next) as PipelineStage[]) {
+        if (next[stage].some((i) => i.id === tempId)) {
+          next[stage] = item
+            ? next[stage].map((i) => (i.id === tempId ? item : i))
+            : next[stage].filter((i) => i.id !== tempId)
+        }
+      }
+      return next
+    })
+  }
+
   function handleItemUpdated(updates: Partial<PipelineItem>) {
     if (!selectedItem) return
     const fromStage = selectedItem.stage
@@ -381,6 +439,7 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
             onMoved={handleMoved}
             onDeleted={handleDeleted}
             onAdded={(item) => handleAdded(stage.id, item)}
+            onAddResolved={handleAddResolved}
           />
         ))}
       </div>
