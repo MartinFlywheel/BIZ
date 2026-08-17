@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Plus, Trash2, GripVertical, X, Check } from 'lucide-react'
 import {
@@ -25,17 +25,19 @@ const STAGES: { id: PipelineStage; label: string; color: string; dot: string }[]
   { id: 'publicados',   label: 'Publicados',   color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', dot: 'bg-emerald-400' },
 ]
 
+function isTempId(id: string) {
+  return id.startsWith('temp-')
+}
+
 // ── Card ─────────────────────────────────────────────────────────────────────
 
 function KanbanCard({
   item,
-  clientId,
   onOpen,
   onMoved,
   onDeleted,
 }: {
   item: PipelineItem
-  clientId: string
   onOpen: () => void
   onMoved: (id: string, stage: PipelineStage) => void
   onDeleted: (id: string) => void
@@ -45,14 +47,7 @@ function KanbanCard({
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
-    // Optimista: la tarjeta desaparece al instante, el borrado real en la
-    // base de datos sigue en segundo plano — antes se esperaba la ida y
-    // vuelta al servidor antes de sacarla de la pantalla, que es lo que se
-    // sentía lento.
     onDeleted(item.id)
-    deletePipelineItem(item.id, clientId).catch((err) => {
-      console.error('No se pudo eliminar la tarjeta:', err)
-    })
   }
 
   const stageIdx = STAGES.findIndex((s) => s.id === item.stage)
@@ -62,9 +57,6 @@ function KanbanCard({
   function moveToStage(e: React.MouseEvent, stage: PipelineStage) {
     e.stopPropagation()
     onMoved(item.id, stage)
-    updatePipelineItem(item.id, clientId, { stage }).catch((err) => {
-      console.error('No se pudo mover la tarjeta:', err)
-    })
   }
 
   return (
@@ -156,39 +148,62 @@ function KanbanCard({
 function KanbanColumn({
   stage,
   items,
-  clientId,
   onOpen,
-  onMoved,
+  onReorder,
   onDeleted,
-  onAdded,
-  onAddResolved,
+  onAdd,
 }: {
   stage: typeof STAGES[number]
   items: PipelineItem[]
-  clientId: string
   onOpen: (item: PipelineItem) => void
-  onMoved: (id: string, toStage: PipelineStage, fromStage: PipelineStage) => void
+  onReorder: (id: string, toStage: PipelineStage, fromStage: PipelineStage, toIndex: number) => void
   onDeleted: (id: string, stage: PipelineStage) => void
-  onAdded: (item: PipelineItem) => void
-  onAddResolved: (tempId: string, item: PipelineItem | null) => void
+  onAdd: (stage: PipelineStage, title: string) => void
 }) {
   const [dragOver, setDragOver] = useState(false)
+  const [dropIndex, setDropIndex] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const addInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { if (adding) addInputRef.current?.focus() }, [adding])
 
+  // Se fija en el punto medio vertical de cada tarjeta para decidir si la
+  // que se está arrastrando entraría antes o después de ella — así el
+  // usuario suelta "por encima o por debajo" de una tarjeta puntual en vez
+  // de solo poder mandarla al tope de la columna.
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setDragOver(true)
+    const cardEls = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[data-kanban-index]')
+    let index = items.length
+    for (const el of Array.from(cardEls)) {
+      const rect = el.getBoundingClientRect()
+      if (e.clientY < rect.top + rect.height / 2) {
+        index = Number(el.dataset.kanbanIndex)
+        break
+      }
+    }
+    setDropIndex(index)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    // dragleave dispara también al pasar a una tarjeta hija — si el mouse
+    // sigue dentro de la columna, ignorarlo evita que el indicador titile.
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return
+    setDragOver(false)
+    setDropIndex(null)
+  }
+
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
-    setDragOver(false)
     const itemId = e.dataTransfer.getData('itemId')
     const fromStage = e.dataTransfer.getData('fromStage') as PipelineStage
-    if (!itemId || fromStage === stage.id) return
-    onMoved(itemId, stage.id, fromStage)
-    updatePipelineItem(itemId, clientId, { stage: stage.id }).catch((err) => {
-      console.error('No se pudo mover la tarjeta:', err)
-    })
+    const targetIndex = dropIndex ?? items.length
+    setDragOver(false)
+    setDropIndex(null)
+    if (!itemId) return
+    onReorder(itemId, stage.id, fromStage, targetIndex)
   }
 
   function handleAdd() {
@@ -196,44 +211,15 @@ function KanbanColumn({
     if (!trimmed) { setAdding(false); return }
     setNewTitle('')
     setAdding(false)
-
-    // Tarjeta optimista con id temporal — aparece al instante; cuando el
-    // servidor responde con la fila real, se reemplaza en su lugar (o se
-    // saca si la creación falló).
-    const tempId = `temp-${crypto.randomUUID()}`
-    onAdded({
-      id: tempId,
-      client_id: clientId,
-      title: trimmed,
-      description: null,
-      script: null,
-      reference_url: null,
-      raw_video_url: null,
-      edited_video_url: null,
-      assigned_to: null,
-      due_date: null,
-      angle: null,
-      objective: null,
-      audio_url: null,
-      stage: stage.id,
-      position: 0,
-      created_at: new Date().toISOString(),
-    })
-
-    createPipelineItem(clientId, trimmed, stage.id)
-      .then((created) => onAddResolved(tempId, created))
-      .catch((err) => {
-        console.error('No se pudo crear la tarjeta:', err)
-        onAddResolved(tempId, null)
-      })
+    onAdd(stage.id, trimmed)
   }
 
   return (
     <div
       className={`flex flex-col gap-2 min-w-[220px] max-w-[220px] rounded-xl border transition-colors
         ${dragOver ? 'border-white/[0.15] bg-white/[0.04]' : 'border-white/[0.06] bg-white/[0.02]'}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Column header */}
@@ -255,16 +241,24 @@ function KanbanColumn({
 
       {/* Cards */}
       <div className="flex flex-col gap-2 px-2 pb-2 min-h-[80px] max-h-[600px] overflow-y-auto">
-        {items.map((item) => (
-          <KanbanCard
-            key={item.id}
-            item={item}
-            clientId={clientId}
-            onOpen={() => onOpen(item)}
-            onMoved={(id, toStage) => onMoved(id, toStage, stage.id)}
-            onDeleted={(id) => onDeleted(id, stage.id)}
-          />
+        {items.map((item, idx) => (
+          <Fragment key={item.id}>
+            {dragOver && dropIndex === idx && (
+              <div className="h-1 rounded-full bg-blue-400/80" />
+            )}
+            <div data-kanban-index={idx}>
+              <KanbanCard
+                item={item}
+                onOpen={() => onOpen(item)}
+                onMoved={(id, toStage) => onReorder(id, toStage, stage.id, 0)}
+                onDeleted={(id) => onDeleted(id, stage.id)}
+              />
+            </div>
+          </Fragment>
         ))}
+        {dragOver && dropIndex === items.length && (
+          <div className="h-1 rounded-full bg-blue-400/80" />
+        )}
 
         {/* Add card inline */}
         {adding ? (
@@ -321,7 +315,30 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  function openCard(item: PipelineItem | null) {
+  // Toda tarjeta creada muestra un id temporal en pantalla al instante, antes
+  // de que el servidor confirme la fila real — así crear se siente
+  // inmediato. Este mapa deja que cualquier acción posterior sobre esa misma
+  // tarjeta (abrirla, moverla, editarla, borrarla) espere el id real en vez
+  // de mandar un update/delete contra un id que todavía no existe en la
+  // base (lo cual antes fallaba en silencio y la tarjeta terminaba
+  // "pisándose sola" con la respuesta vieja de la creación).
+  const pendingCreatesRef = useRef<Map<string, Promise<PipelineItem>>>(new Map())
+  const cancelledTempIdsRef = useRef<Set<string>>(new Set())
+
+  async function openCard(item: PipelineItem | null) {
+    if (item) {
+      const pending = pendingCreatesRef.current.get(item.id)
+      if (pending) {
+        try {
+          const created = await pending
+          item = { ...item, id: created.id, position: created.position, created_at: created.created_at }
+        } catch {
+          // La creación falló — el manejador de creación ya la saca del
+          // tablero, así que acá no hay nada válido para abrir.
+          return
+        }
+      }
+    }
     setSelectedItem(item)
     const params = new URLSearchParams(searchParams.toString())
     if (item) {
@@ -345,14 +362,76 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId])
 
-  function handleMoved(id: string, toStage: PipelineStage, fromStage: PipelineStage) {
+  // Espera el id real de una tarjeta recién creada (si hace falta) antes de
+  // devolverlo — así cualquier guardado contra el servidor apunta siempre a
+  // una fila que ya existe.
+  async function resolveRealId(id: string): Promise<string> {
+    const pending = pendingCreatesRef.current.get(id)
+    if (!pending) return id
+    const created = await pending
+    return created.id
+  }
+
+  function persistUpdate(id: string, fields: Parameters<typeof updatePipelineItem>[2]) {
+    resolveRealId(id)
+      .then((realId) => updatePipelineItem(realId, clientId, fields))
+      .catch((err) => console.error('No se pudo guardar el cambio:', err))
+  }
+
+  function persistDelete(id: string) {
+    if (isTempId(id) && pendingCreatesRef.current.has(id)) {
+      // Todavía no existe en el servidor — se marca para que, cuando la
+      // creación responda, se borre la fila recién creada en vez de
+      // resucitar la tarjeta que el usuario ya sacó.
+      cancelledTempIdsRef.current.add(id)
+      return
+    }
+    deletePipelineItem(id, clientId).catch((err) => console.error('No se pudo eliminar la tarjeta:', err))
+  }
+
+  // Reordena una tarjeta dentro de su columna o entre columnas, soltándola
+  // en el índice exacto (calculado en KanbanColumn a partir de por encima o
+  // por debajo de qué tarjeta se soltó) en vez de solo mandarla al tope.
+  function handleReorder(id: string, toStage: PipelineStage, fromStage: PipelineStage, toIndex: number) {
     setColumns((prev) => {
-      const item = prev[fromStage].find((i) => i.id === id)
-      if (!item) return prev
+      const sourceItems = prev[fromStage]
+      const dragged = sourceItems.find((i) => i.id === id)
+      if (!dragged) return prev
+
+      const sameColumn = fromStage === toStage
+      const destItems = sameColumn ? sourceItems : prev[toStage]
+      const withoutItem = destItems.filter((i) => i.id !== id)
+
+      let insertAt = Math.min(toIndex, withoutItem.length)
+      if (sameColumn) {
+        const srcIndex = sourceItems.findIndex((i) => i.id === id)
+        if (srcIndex < toIndex) insertAt = Math.max(0, insertAt - 1)
+      }
+
+      const reordered = [
+        ...withoutItem.slice(0, insertAt),
+        { ...dragged, stage: toStage },
+        ...withoutItem.slice(insertAt),
+      ]
+
+      reordered.forEach((item, idx) => {
+        const original = destItems.find((i) => i.id === item.id)
+        const positionChanged = !original || original.position !== idx
+        const isDragged = item.id === id
+        if (!positionChanged && !(isDragged && !sameColumn)) return
+        persistUpdate(item.id, {
+          position: idx,
+          ...(isDragged && !sameColumn ? { stage: toStage } : {}),
+        })
+      })
+
+      const finalDest = reordered.map((item, idx) => ({ ...item, position: idx }))
+
+      if (sameColumn) return { ...prev, [toStage]: finalDest }
       return {
         ...prev,
-        [fromStage]: prev[fromStage].filter((i) => i.id !== id),
-        [toStage]: [{ ...item, stage: toStage }, ...prev[toStage]],
+        [fromStage]: sourceItems.filter((i) => i.id !== id),
+        [toStage]: finalDest,
       }
     })
   }
@@ -363,31 +442,74 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
       [stage]: prev[stage].filter((i) => i.id !== id),
     }))
     if (selectedItem?.id === id) openCard(null)
+    persistDelete(id)
   }
 
-  function handleAdded(stage: PipelineStage, item: PipelineItem) {
-    setColumns((prev) => ({
-      ...prev,
-      [stage]: [...prev[stage], item],
-    }))
-  }
+  function handleAdd(stage: PipelineStage, title: string) {
+    const tempId = `temp-${crypto.randomUUID()}`
+    const optimisticItem: PipelineItem = {
+      id: tempId,
+      client_id: clientId,
+      title,
+      description: null,
+      script: null,
+      reference_url: null,
+      raw_video_url: null,
+      edited_video_url: null,
+      assigned_to: null,
+      due_date: null,
+      angle: null,
+      objective: null,
+      audio_url: null,
+      stage,
+      position: 0,
+      created_at: new Date().toISOString(),
+    }
+    setColumns((prev) => ({ ...prev, [stage]: [...prev[stage], optimisticItem] }))
 
-  // Reconcilia la tarjeta optimista una vez que el servidor responde: la
-  // reemplaza por la fila real (item !== null) o la saca si la creación
-  // falló (item === null). Busca por id en todas las columnas porque el
-  // usuario pudo haber arrastrado la tarjeta a otra columna mientras tanto.
-  function handleAddResolved(tempId: string, item: PipelineItem | null) {
-    setColumns((prev) => {
-      const next = { ...prev }
-      for (const stage of Object.keys(next) as PipelineStage[]) {
-        if (next[stage].some((i) => i.id === tempId)) {
-          next[stage] = item
-            ? next[stage].map((i) => (i.id === tempId ? item : i))
-            : next[stage].filter((i) => i.id !== tempId)
+    const promise = createPipelineItem(clientId, title, stage)
+    pendingCreatesRef.current.set(tempId, promise)
+
+    promise
+      .then((created) => {
+        pendingCreatesRef.current.delete(tempId)
+        if (cancelledTempIdsRef.current.has(tempId)) {
+          cancelledTempIdsRef.current.delete(tempId)
+          deletePipelineItem(created.id, clientId).catch((err) =>
+            console.error('No se pudo limpiar la tarjeta cancelada:', err)
+          )
+          return
         }
-      }
-      return next
-    })
+        // Se fusiona en vez de reemplazar: conserva cualquier edición local
+        // que haya pasado mientras la creación seguía en curso (título
+        // reescrito, script, etapa movida a mano) y solo adopta del
+        // servidor lo que el cliente no podía inventar.
+        setColumns((prev) => {
+          const next = { ...prev }
+          for (const s of Object.keys(next) as PipelineStage[]) {
+            const idx = next[s].findIndex((i) => i.id === tempId)
+            if (idx === -1) continue
+            const local = next[s][idx]
+            next[s] = [
+              ...next[s].slice(0, idx),
+              { ...local, id: created.id, position: created.position, created_at: created.created_at },
+              ...next[s].slice(idx + 1),
+            ]
+          }
+          return next
+        })
+        setSelectedItem((prev) =>
+          prev?.id === tempId ? { ...prev, id: created.id, position: created.position, created_at: created.created_at } : prev
+        )
+      })
+      .catch((err) => {
+        pendingCreatesRef.current.delete(tempId)
+        console.error('No se pudo crear la tarjeta:', err)
+        const wasCancelled = cancelledTempIdsRef.current.delete(tempId)
+        if (!wasCancelled) {
+          setColumns((prev) => ({ ...prev, [stage]: prev[stage].filter((i) => i.id !== tempId) }))
+        }
+      })
   }
 
   function handleItemUpdated(updates: Partial<PipelineItem>) {
@@ -434,12 +556,10 @@ export function ContentPipelineBoard({ clientId, initialCardId }: { clientId: st
             key={stage.id}
             stage={stage}
             items={columns[stage.id]}
-            clientId={clientId}
             onOpen={(item) => openCard(item)}
-            onMoved={handleMoved}
+            onReorder={handleReorder}
             onDeleted={handleDeleted}
-            onAdded={(item) => handleAdded(stage.id, item)}
-            onAddResolved={handleAddResolved}
+            onAdd={handleAdd}
           />
         ))}
       </div>
