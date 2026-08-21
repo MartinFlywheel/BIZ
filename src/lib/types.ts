@@ -165,6 +165,10 @@ export interface ContentPiece {
   shares: number
   saves: number
   reach: number
+  hook: string | null
+  avg_watch_time_seconds: number | null
+  total_interactions: number
+  story_expires_at: string | null
   metrics_source: MetricsSource
   metrics_updated_at: string | null
   created_at: string

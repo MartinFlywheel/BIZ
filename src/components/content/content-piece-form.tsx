@@ -85,6 +85,20 @@ export function ContentPieceForm({ clientId, onClose }: Props) {
                     </select>
                 </div>
 
+                {/* Hook */}
+                <div className="space-y-1.5">
+                    <label htmlFor="hook" className="block text-sm font-medium text-zinc-400">
+                        Hook usado
+                    </label>
+                    <textarea
+                        id="hook"
+                        name="hook"
+                        rows={2}
+                        placeholder="La línea de apertura que engancha en los primeros segundos..."
+                        className="flex w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 resize-none"
+                    />
+                </div>
+
                 {/* IG permalink */}
                 <Input
                     id="ig_permalink"

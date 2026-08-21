@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { getAppUrl } from '@/lib/env'
 
 export async function linkInstagramAccount(clientId: string, igAccountId: string) {
   const supabase = await createClient()
@@ -97,11 +98,13 @@ export async function syncClientContent(clientId: string): Promise<{
       // Real numbers, not placeholders — the daily cron (sync-instagram)
       // would eventually backfill these anyway, but that meant a manual
       // "Sincronizar" click showed 0 views on anything it hadn't already
-      // seen until up to 24h later.
-      let insights = { impressions: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0 }
+      // seen until up to 24h later. "impressions" was deprecated April
+      // 2025 in favor of a universal "views" metric — same fix applied
+      // here as in the cron.
+      let insights = { views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0, total_interactions: 0 }
       try {
         const insightsRes = await fetch(
-          `https://graph.instagram.com/${media.id}/insights?metric=impressions,reach,likes,comments,shares,saved&access_token=${token}`
+          `https://graph.instagram.com/${media.id}/insights?metric=views,reach,likes,comments,shares,saved,total_interactions&access_token=${token}`
         )
         if (insightsRes.ok) {
           const insightsData = await insightsRes.json()
@@ -111,12 +114,39 @@ export async function syncClientContent(clientId: string): Promise<{
         }
       } catch {}
 
+      let avgWatchTime: number | null = null
+      if (contentType === 'reel') {
+        try {
+          const watchRes = await fetch(
+            `https://graph.instagram.com/${media.id}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
+          )
+          if (watchRes.ok) {
+            const watchData = await watchRes.json()
+            const ms = watchData.data?.[0]?.values?.[0]?.value
+            if (typeof ms === 'number') avgWatchTime = Math.round(ms / 1000)
+          }
+        } catch {}
+      }
+
       const { data: existing } = await supabase
         .from('content_pieces')
         .select('id')
         .eq('ig_media_id', media.id)
         .eq('client_id', clientId)
         .maybeSingle()
+
+      const metricFields = {
+        views: insights.views,
+        reach: insights.reach,
+        likes: insights.likes,
+        comments: insights.comments,
+        shares: insights.shares,
+        saves: insights.saved,
+        total_interactions: insights.total_interactions,
+        ...(avgWatchTime !== null && { avg_watch_time_seconds: avgWatchTime }),
+        metrics_source: 'meta_api' as const,
+        metrics_updated_at: new Date().toISOString(),
+      }
 
       if (existing) {
         await supabase
@@ -125,14 +155,7 @@ export async function syncClientContent(clientId: string): Promise<{
             ig_thumbnail_url: thumbnail,
             ig_permalink: media.permalink,
             caption: media.caption,
-            views: insights.impressions,
-            reach: insights.reach,
-            likes: insights.likes,
-            comments: insights.comments,
-            shares: insights.shares,
-            saves: insights.saved,
-            metrics_source: 'meta_api',
-            metrics_updated_at: new Date().toISOString(),
+            ...metricFields,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
@@ -145,14 +168,7 @@ export async function syncClientContent(clientId: string): Promise<{
           ig_thumbnail_url: thumbnail,
           caption: media.caption,
           published_at: media.timestamp,
-          views: insights.impressions,
-          reach: insights.reach,
-          likes: insights.likes,
-          comments: insights.comments,
-          shares: insights.shares,
-          saves: insights.saved,
-          metrics_source: 'meta_api',
-          metrics_updated_at: new Date().toISOString(),
+          ...metricFields,
         })
       }
 
@@ -208,7 +224,7 @@ export async function quickAddLatestReels(clientId: string, limit = 10): Promise
         target: 'client',
         ig_handle: igHandle,
         instagram_profile_url: `https://www.instagram.com/${igHandle}/`,
-        callback_url: `https://holding-chi.vercel.app/api/webhooks/client-content-sync`,
+        callback_url: `${getAppUrl()}/api/webhooks/client-content-sync`,
       }),
     })
 

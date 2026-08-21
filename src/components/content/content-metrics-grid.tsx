@@ -645,6 +645,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                 <ContentFunnelForm
                     contentPiece={selectedPiece}
                     existingMetric={selectedMetric}
+                    chatStats={interactionCountsByPiece.get(selectedPiece.id) ?? null}
                     onClose={() => setSelectedPiece(null)}
                 />
             )}

@@ -6,6 +6,7 @@ import { upsertContentMetrics } from '@/lib/actions/content'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { formatNumber } from '@/lib/utils'
 import type { ContentPiece } from '@/lib/types'
 
 export interface ContentMetric {
@@ -27,10 +28,20 @@ export interface ContentMetric {
 interface Props {
     contentPiece: ContentPiece
     existingMetric?: ContentMetric | null
+    chatStats?: { chats: number; conversaciones: number } | null
     onClose: () => void
 }
 
-export function ContentFunnelForm({ contentPiece, existingMetric, onClose }: Props) {
+function StatTile({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wider text-zinc-500">{label}</p>
+            <p className="text-sm font-mono font-semibold text-zinc-100">{value}</p>
+        </div>
+    )
+}
+
+export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, onClose }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
@@ -65,6 +76,45 @@ export function ContentFunnelForm({ contentPiece, existingMetric, onClose }: Pro
             title="Métricas de Funnel"
             description={description}
         >
+            <div className="space-y-5">
+                {/* Estadísticas reales de la pieza (Meta API o carga manual) */}
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                        Estadísticas
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                        <StatTile label="Views" value={formatNumber(contentPiece.views)} />
+                        <StatTile label="Alcance" value={formatNumber(contentPiece.reach)} />
+                        <StatTile label="Interacciones" value={formatNumber(contentPiece.total_interactions || (contentPiece.likes + contentPiece.comments + contentPiece.shares + contentPiece.saves))} />
+                        <StatTile label="Likes" value={formatNumber(contentPiece.likes)} />
+                        <StatTile label="Comentarios" value={formatNumber(contentPiece.comments)} />
+                        <StatTile label="Guardados" value={formatNumber(contentPiece.saves)} />
+                        <StatTile label="Chats abiertos" value={formatNumber(chatStats?.chats ?? 0)} />
+                        <StatTile label="Conversaciones" value={formatNumber(chatStats?.conversaciones ?? 0)} />
+                        {contentPiece.avg_watch_time_seconds != null ? (
+                            <StatTile label="Retención (avg.)" value={`${contentPiece.avg_watch_time_seconds}s`} />
+                        ) : (
+                            <StatTile label="Retención (avg.)" value="—" />
+                        )}
+                    </div>
+                    {contentPiece.metrics_source === 'meta_api' && contentPiece.metrics_updated_at && (
+                        <p className="mt-2 text-[10px] text-zinc-600">
+                            Actualizado automáticamente {new Date(contentPiece.metrics_updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                    )}
+                    {contentPiece.content_type === 'story' && contentPiece.story_expires_at && new Date(contentPiece.story_expires_at) < new Date() && (
+                        <p className="mt-2 text-[10px] text-amber-500">
+                            Esta historia ya expiró — estos son los últimos números que Instagram entregó antes de que desapareciera.
+                        </p>
+                    )}
+                    {contentPiece.hook && (
+                        <div className="mt-3 rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-wider text-violet-400/80 mb-1">Hook usado</p>
+                            <p className="text-xs text-zinc-300 leading-snug">{contentPiece.hook}</p>
+                        </div>
+                    )}
+                </div>
+
             <form onSubmit={handleSubmit} className="space-y-5">
                 {/* Funnel Section */}
                 <div>
@@ -203,6 +253,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, onClose }: Pro
                     </Button>
                 </div>
             </form>
+            </div>
         </Dialog>
     )
 }

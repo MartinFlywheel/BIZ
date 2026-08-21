@@ -4,6 +4,55 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// "impressions" was deprecated April 21, 2025 — Meta merged
+// impressions/plays/video_views into one universal "views" metric.
+// Requesting the old name either 400s or silently returns nothing,
+// which is why pieces kept syncing at 0.
+const GENERAL_METRICS = 'views,reach,likes,comments,shares,saved,total_interactions'
+
+interface Insights {
+  views: number
+  reach: number
+  likes: number
+  comments: number
+  shares: number
+  saved: number
+  total_interactions: number
+}
+
+async function fetchInsights(mediaId: string, token: string): Promise<Insights> {
+  const insights: Insights = { views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0, total_interactions: 0 }
+  try {
+    const res = await fetch(
+      `https://graph.instagram.com/${mediaId}/insights?metric=${GENERAL_METRICS}&access_token=${token}`
+    )
+    if (res.ok) {
+      const data = await res.json()
+      for (const metric of data.data || []) {
+        if (metric.name in insights) insights[metric.name as keyof Insights] = metric.values?.[0]?.value || 0
+      }
+    }
+  } catch {}
+  return insights
+}
+
+// Reels-only — average watch time isn't part of the general metric set
+// and Meta rejects the whole request if you mix incompatible metrics for
+// the media type, so this is its own call. Comes back in milliseconds.
+async function fetchReelWatchTime(mediaId: string, token: string): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `https://graph.instagram.com/${mediaId}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const ms = data.data?.[0]?.values?.[0]?.value
+    return typeof ms === 'number' ? Math.round(ms / 1000) : null
+  } catch {
+    return null
+  }
+}
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -48,18 +97,8 @@ export async function GET(request: Request) {
           : media.media_type === 'CAROUSEL_ALBUM' ? 'post'
           : 'post'
 
-        let insights = { impressions: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0 }
-        try {
-          const insightsRes = await fetch(
-            `https://graph.instagram.com/${media.id}/insights?metric=impressions,reach,likes,comments,shares,saved&access_token=${token}`
-          )
-          if (insightsRes.ok) {
-            const insightsData = await insightsRes.json()
-            for (const metric of insightsData.data || []) {
-              insights[metric.name as keyof typeof insights] = metric.values?.[0]?.value || 0
-            }
-          }
-        } catch {}
+        const insights = await fetchInsights(media.id, token)
+        const avgWatchTime = contentType === 'reel' ? await fetchReelWatchTime(media.id, token) : null
 
         const { data: existing } = await supabase
           .from('content_pieces')
@@ -68,20 +107,23 @@ export async function GET(request: Request) {
           .eq('client_id', client.id)
           .maybeSingle()
 
+        const metricFields = {
+          views: insights.views,
+          reach: insights.reach,
+          likes: insights.likes,
+          comments: insights.comments,
+          shares: insights.shares,
+          saves: insights.saved,
+          total_interactions: insights.total_interactions,
+          ...(avgWatchTime !== null && { avg_watch_time_seconds: avgWatchTime }),
+          metrics_source: 'meta_api' as const,
+          metrics_updated_at: new Date().toISOString(),
+        }
+
         if (existing) {
           await supabase
             .from('content_pieces')
-            .update({
-              views: insights.impressions,
-              reach: insights.reach,
-              likes: insights.likes,
-              comments: insights.comments,
-              shares: insights.shares,
-              saves: insights.saved,
-              metrics_source: 'meta_api',
-              metrics_updated_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            })
+            .update({ ...metricFields, updated_at: new Date().toISOString() })
             .eq('id', existing.id)
         } else {
           await supabase.from('content_pieces').insert({
@@ -92,14 +134,7 @@ export async function GET(request: Request) {
             ig_thumbnail_url: media.thumbnail_url,
             caption: media.caption,
             published_at: media.timestamp,
-            views: insights.impressions,
-            reach: insights.reach,
-            likes: insights.likes,
-            comments: insights.comments,
-            shares: insights.shares,
-            saves: insights.saved,
-            metrics_source: 'meta_api',
-            metrics_updated_at: new Date().toISOString(),
+            ...metricFields,
           })
         }
 
