@@ -20,7 +20,8 @@ const RANK: Record<string, number> = { lead_calificado: 2, conversacion_real: 1 
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const validSecrets = [process.env.CRON_SECRET, process.env.BACKFILL_SECRET].filter(Boolean)
+  if (!validSecrets.some((s) => authHeader === `Bearer ${s}`)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
