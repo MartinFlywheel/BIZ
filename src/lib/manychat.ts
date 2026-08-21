@@ -180,13 +180,29 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
 // broken at random so it doesn't always favor whichever setter sorts
 // first. Returns null if the client has no setter on the team.
 async function pickBalancedSetter(supabase: AdminClient, clientId: string): Promise<string | null> {
-  const { data: setters } = await supabase
+  const baseQuery = () => supabase
     .from('users')
     .select('id, lead_weight')
     .eq('user_type', 'agency')
     .eq('is_active', true)
     .eq('client_id', clientId)
     .eq('role', 'setter')
+
+  let { data: setters, error: settersError } = await baseQuery()
+
+  // lead_weight (supabase/025-setter-lead-weight.sql) might not be
+  // migrated onto the live DB yet — fall back to an even split instead of
+  // silently assigning no one. 42703 = undefined_column.
+  if (settersError?.code === '42703') {
+    const fallback = await supabase
+      .from('users')
+      .select('id')
+      .eq('user_type', 'agency')
+      .eq('is_active', true)
+      .eq('client_id', clientId)
+      .eq('role', 'setter')
+    setters = fallback.data?.map((s) => ({ ...s, lead_weight: 1 })) ?? null
+  }
 
   if (!setters || setters.length === 0) return null
   if (setters.length === 1) return setters[0].id

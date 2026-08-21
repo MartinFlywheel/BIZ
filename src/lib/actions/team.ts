@@ -22,37 +22,52 @@ export async function getTeamAssignments(clientId: string) {
 // everyone else is tied to the one client they were added under. Pass
 // clientId to get that client's roster (admins + their assigned people);
 // omit it for the old unscoped global list (e.g. the agency-wide /calls page).
-export async function getAgencyUsers(clientId?: string) {
-  const supabase = await createClient()
-  const base = supabase
-    .from('users')
-    .select('id, full_name, email, role, client_id, lead_weight')
-    .eq('user_type', 'agency')
-    .eq('is_active', true)
+interface AgencyUserRow {
+  id: string
+  full_name: string
+  email: string
+  role: string
+  client_id: string | null
+  lead_weight?: number
+}
 
-  if (!clientId) {
-    const { data, error } = await base.order('full_name')
-    if (error) throw error
-    return data
+export async function getAgencyUsers(clientId?: string) {
+  async function query(withWeight: boolean) {
+    const supabase = await createClient()
+    const cols = `id, full_name, email, role, client_id${withWeight ? ', lead_weight' : ''}`
+    const base = () => supabase.from('users').select<string, AgencyUserRow>(cols).eq('user_type', 'agency').eq('is_active', true)
+
+    if (!clientId) {
+      const { data, error } = await base().order('full_name')
+      if (error) throw error
+      return data
+    }
+
+    // Two plain .eq() queries + merge, instead of building a raw .or() filter
+    // string from clientId (avoids PostgREST filter-syntax injection).
+    const [adminsRes, teamRes] = await Promise.all([
+      base().eq('role', 'admin'),
+      base().eq('client_id', clientId),
+    ])
+
+    if (adminsRes.error) throw adminsRes.error
+    if (teamRes.error) throw teamRes.error
+
+    const byId = new Map([...adminsRes.data, ...teamRes.data].map((u) => [u.id, u]))
+    return [...byId.values()].sort((a, b) => a.full_name.localeCompare(b.full_name))
   }
 
-  // Two plain .eq() queries + merge, instead of building a raw .or() filter
-  // string from clientId (avoids PostgREST filter-syntax injection).
-  const [adminsRes, teamRes] = await Promise.all([
-    base.eq('role', 'admin'),
-    supabase
-      .from('users')
-      .select('id, full_name, email, role, client_id, lead_weight')
-      .eq('user_type', 'agency')
-      .eq('is_active', true)
-      .eq('client_id', clientId),
-  ])
-
-  if (adminsRes.error) throw adminsRes.error
-  if (teamRes.error) throw teamRes.error
-
-  const byId = new Map([...adminsRes.data, ...teamRes.data].map((u) => [u.id, u]))
-  return [...byId.values()].sort((a, b) => a.full_name.localeCompare(b.full_name))
+  try {
+    return await query(true)
+  } catch (error) {
+    // lead_weight (supabase/025-setter-lead-weight.sql) might not be
+    // migrated onto the live DB yet — degrade instead of taking down every
+    // client page that renders the team roster. 42703 = undefined_column;
+    // anything else is a real error and should still surface.
+    if ((error as { code?: string } | null)?.code !== '42703') throw error
+    const data = await query(false)
+    return data.map((u) => ({ ...u, lead_weight: 1 }))
+  }
 }
 
 export async function createAssignmentAction(formData: FormData) {
