@@ -1129,7 +1129,11 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              {['Nombre', 'Correo personal', 'Rol', 'Cliente', '% Leads', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
+              {[
+                'Nombre', 'Correo personal', 'Rol', 'Cliente',
+                ...(isAdmin ? ['% Leads'] : []),
+                'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', '',
+              ].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 whitespace-nowrap first:pl-4">
                   {h}
                 </th>
@@ -1139,13 +1143,13 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={11} className="py-12 text-center text-zinc-600 text-xs">
+                <td colSpan={isAdmin ? 11 : 10} className="py-12 text-center text-zinc-600 text-xs">
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Cargando estadísticas...
                 </td>
               </tr>
             ) : localUsers.length === 0 ? (
               <tr>
-                <td colSpan={11} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
+                <td colSpan={isAdmin ? 11 : 10} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
               </tr>
             ) : (
               (() => {
@@ -1252,29 +1256,31 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
 
                     {/* % Leads — reparto de lead_calificado, solo aplica a setters. Peso
                         relativo editable por admin; el % mostrado es contra el resto de
-                        setters de este cliente, se recalcula solo si suman o restan gente. */}
-                    <td className="px-3 py-2 text-center">
-                      {user.role !== 'setter' ? (
-                        <span className="text-xs text-zinc-700">—</span>
-                      ) : isAdmin ? (
-                        <div className="flex items-center justify-center gap-1.5">
-                          <input
-                            type="number"
-                            min={1}
-                            value={user.lead_weight ?? 1}
-                            disabled={isSaving}
-                            onChange={e => updateWeight(user.id, parseInt(e.target.value, 10))}
-                            className="w-12 rounded border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 text-center focus:outline-none focus:border-zinc-600 disabled:opacity-50"
-                            title="Peso relativo — no hace falta que sumen 100"
-                          />
-                          <span className="text-[11px] font-mono text-zinc-500">
-                            {totalSetterWeight > 0 ? `${(((user.lead_weight ?? 1) / totalSetterWeight) * 100).toFixed(0)}%` : '—'}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-zinc-700">—</span>
-                      )}
-                    </td>
+                        setters de este cliente, se recalcula solo si suman o restan gente.
+                        Toda la columna (header incluido) está oculta para quien no sea
+                        admin — un setter no debe ni enterarse de que existe. */}
+                    {isAdmin && (
+                      <td className="px-3 py-2 text-center">
+                        {user.role !== 'setter' ? (
+                          <span className="text-xs text-zinc-700">—</span>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <input
+                              type="number"
+                              min={1}
+                              value={user.lead_weight ?? 1}
+                              disabled={isSaving}
+                              onChange={e => updateWeight(user.id, parseInt(e.target.value, 10))}
+                              className="w-12 rounded border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 text-center focus:outline-none focus:border-zinc-600 disabled:opacity-50"
+                              title="Peso relativo — no hace falta que sumen 100"
+                            />
+                            <span className="text-[11px] font-mono text-zinc-500">
+                              {totalSetterWeight > 0 ? `${(((user.lead_weight ?? 1) / totalSetterWeight) * 100).toFixed(0)}%` : '—'}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                    )}
 
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.agendas}</td>
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.shows}</td>
