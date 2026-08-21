@@ -369,11 +369,14 @@ export async function handlePieceWebhook(
     // called, falling back to the payload/default resolution otherwise.
     const classification = forcedClassification || resolveClassification(payload)
 
-    // Auto-assign a setter the moment a lead reaches lead_calificado —
-    // load-balanced across whichever setters are on this client's team, so
-    // it self-corrects to an even split instead of relying on coin-flip
-    // luck. Never overwrites a setter someone already assigned by hand.
-    if (classification === 'lead_calificado' && !existingLead?.assigned_to) {
+    // Auto-assign a setter the moment a lead reaches conversación real or
+    // lead_calificado — load-balanced across whichever setters are on this
+    // client's team (same weights either way), so it self-corrects to an
+    // even split instead of relying on coin-flip luck. Never overwrites a
+    // setter someone already assigned by hand. Chat abierto stays
+    // unassigned — nobody's earned ownership of a lead that hasn't
+    // responded yet.
+    if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
       const setterId = await pickBalancedSetter(supabase, clientId)
       if (setterId) {
         await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
