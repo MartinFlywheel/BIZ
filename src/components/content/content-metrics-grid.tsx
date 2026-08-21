@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
@@ -9,6 +9,7 @@ import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { ContentConversationTable } from './content-conversation-table'
 import { deleteContentAction } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
+import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
 import type { ContentPiece, Interaction } from '@/lib/types'
@@ -131,7 +132,6 @@ function WebhookBanner() {
 interface Props {
     contentPieces: ContentPiece[]
     contentMetrics: ContentMetric[]
-    interactions?: Interaction[]
     clientId: string
     contentAnalytics: ContentAnalytics
     funnelTotals: ClientFunnelTotals
@@ -200,7 +200,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'live', label: 'Vivos' },
 ]
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions, clientId, contentAnalytics, funnelTotals }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
@@ -208,7 +208,18 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, interactions
     const [quickAddToast, setQuickAddToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [sortBy, setSortBy] = useState<SortKey>('recent')
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+    const [interactions, setInteractions] = useState<Interaction[]>([])
     const router = useRouter()
+
+    // Fetched here instead of received as a prop — clients/[id]/page.tsx no
+    // longer pulls the whole interactions table (a dozen-plus paginated
+    // requests on a busy client) into the initial page load just for this
+    // tab's per-piece chat counts.
+    useEffect(() => {
+        let cancelled = false
+        getInteractions(clientId).then((data) => { if (!cancelled) setInteractions(data as unknown as Interaction[]) })
+        return () => { cancelled = true }
+    }, [clientId])
 
     // Per-piece Chats/Conversaciones, live from interactions (all-time,
     // matching the all-time views/likes/etc. already on each piece)

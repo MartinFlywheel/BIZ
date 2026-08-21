@@ -7,7 +7,6 @@ import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
 import { getLeadsCount } from '@/lib/actions/leads'
 import { getCalls, getCallFolders } from '@/lib/actions/calls'
-import { getInteractions } from '@/lib/actions/interactions'
 import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
 import { getCompetitors, getCompetitorReelsByClient } from '@/lib/actions/competitors'
 import { getContentAnalytics } from '@/lib/actions/content-analytics'
@@ -47,7 +46,6 @@ export default async function PortalDashboardPage() {
     calls,
     callFolders,
     agendaLeadOptions,
-    interactions,
     leadFunnel,
     competitors,
     competitorReels,
@@ -62,7 +60,6 @@ export default async function PortalDashboardPage() {
     getCalls(undefined, clientId),
     getCallFolders(clientId),
     getAgendaLeadOptions(clientId),
-    getInteractions(clientId),
     getClientLeadFunnel(clientId),
     getCompetitors(clientId),
     getCompetitorReelsByClient(clientId),
@@ -82,7 +79,6 @@ export default async function PortalDashboardPage() {
         callFolders={callFolders}
         agendaLeadOptions={agendaLeadOptions}
         agencyUsers={[]}
-        interactions={interactions}
         leadFunnel={leadFunnel}
         competitors={competitors}
         competitorReels={competitorReels}

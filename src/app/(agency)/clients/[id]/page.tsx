@@ -7,7 +7,6 @@ import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/conte
 import { getLeadsCount } from '@/lib/actions/leads'
 import { getCalls, getCallFolders } from '@/lib/actions/calls'
 import { getAgencyUsers } from '@/lib/actions/team'
-import { getInteractions } from '@/lib/actions/interactions'
 import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
 import { getCompetitors, getCompetitorReelsByClient } from '@/lib/actions/competitors'
 import { getContentAnalytics } from '@/lib/actions/content-analytics'
@@ -33,14 +32,15 @@ export default async function ClientDetailPage({
   const isSetter = viewer?.role === 'setter'
 
   try {
-    // The full leads list (every column, joined to clients/users/interactions)
-    // used to be fetched here unconditionally — for a client with thousands of
-    // leads that's a dozen-plus paginated round trips before ANY tab could
-    // render, even Analítica or Contenido which never touch leads at all.
-    // Only a cheap count ships with the initial page now; the CRM tab fetches
-    // its own full rows on demand (see CrmTabLazy in crm-tab.tsx) and the
-    // Llamadas tab fetches just the id/name it needs (ClientCallsList).
-    const [client, allClients, campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
+    // The full leads and interactions lists (every column, joined tables)
+    // used to be fetched here unconditionally — for a client with thousands
+    // of either, that's a dozen-plus paginated round trips before ANY tab
+    // could render, even Analítica which touches neither. Only a cheap
+    // leads count ships with the initial page now; the CRM tab fetches its
+    // own full leads+interactions on demand (CrmTabLazy in crm-tab.tsx),
+    // Contenido fetches just interactions (ContentMetricsGrid), and
+    // Llamadas fetches just the id/name it needs (ClientCallsList).
+    const [client, allClients, campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
       getClient(id),
       getClients(),
       getCampaigns(id),
@@ -51,7 +51,6 @@ export default async function ClientDetailPage({
       getCallFolders(id),
       getAgendaLeadOptions(id),
       getAgencyUsers(id),
-      getInteractions(id),
       getClientLeadFunnel(id),
       getCompetitors(id),
       getCompetitorReelsByClient(id),
@@ -72,7 +71,6 @@ export default async function ClientDetailPage({
           callFolders={callFolders}
           agendaLeadOptions={agendaLeadOptions}
           agencyUsers={agencyUsers}
-          interactions={interactions}
           leadFunnel={leadFunnel}
           competitors={competitors}
           competitorReels={competitorReels}

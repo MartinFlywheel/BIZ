@@ -14,6 +14,7 @@ import {
   createLeadAction,
   getLeadsForViewer,
 } from '@/lib/actions/leads'
+import { getInteractions } from '@/lib/actions/interactions'
 import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -1536,13 +1537,19 @@ function ConfigurarAvatarsModal({
 // never touch leads at all (Analítica, Contenido, Script...). The setter
 // visibility scoping that used to live in clients/[id]/page.tsx moved into
 // getLeadsForViewer itself, so it still applies here unchanged.
-export function CrmTabLazy(props: Omit<Props, 'leads'>) {
+export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions'>) {
   const [leads, setLeads] = useState<Lead[] | null>(null)
+  const [interactions, setInteractions] = useState<Interaction[]>([])
 
   useEffect(() => {
     let cancelled = false
-    getLeadsForViewer(props.clientId).then((data) => {
-      if (!cancelled) setLeads(data as unknown as Lead[])
+    Promise.all([
+      getLeadsForViewer(props.clientId),
+      getInteractions(props.clientId),
+    ]).then(([leadsData, interactionsData]) => {
+      if (cancelled) return
+      setLeads(leadsData as unknown as Lead[])
+      setInteractions(interactionsData as unknown as Interaction[])
     })
     return () => { cancelled = true }
   }, [props.clientId])
@@ -1551,7 +1558,7 @@ export function CrmTabLazy(props: Omit<Props, 'leads'>) {
     return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando leads...</div>
   }
 
-  return <CrmTab {...props} leads={leads} />
+  return <CrmTab {...props} leads={leads} interactions={interactions} />
 }
 
 export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {

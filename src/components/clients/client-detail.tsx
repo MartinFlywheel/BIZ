@@ -18,7 +18,7 @@ import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTabLazy } from './crm-tab'
 import { ProductTab } from './product-tab'
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, Interaction, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
+import type { Client, Campaign, ContentPiece, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
@@ -43,7 +43,6 @@ interface Props {
   callFolders: CallFolder[]
   agendaLeadOptions: AgendaLeadOption[]
   agencyUsers: AgencyUser[]
-  interactions: Interaction[]
   leadFunnel: ClientFunnelAggregate
   competitors: Competitor[]
   competitorReels: Record<string, CompetitorReel[]>
@@ -65,7 +64,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
+export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -131,7 +130,6 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
               <ContentMetricsGrid
                 contentPieces={contentPieces}
                 contentMetrics={contentMetrics}
-                interactions={interactions}
                 clientId={client.id}
                 contentAnalytics={contentAnalytics}
                 funnelTotals={funnelTotals}
@@ -147,7 +145,6 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
                 agencyUsers={agencyUsers}
                 allClients={allClients}
                 contentPieces={contentPieces}
-                interactions={interactions}
                 clientId={client.id}
                 customAvatars={client.custom_avatars}
                 isAdmin={isAdmin}

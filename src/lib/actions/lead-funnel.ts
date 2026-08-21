@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 // =====================================================
 // Funnel computed from leads — single source of truth
@@ -52,10 +53,15 @@ const STAGE_ORDER = [
 export async function getClientLeadFunnel(clientId: string): Promise<ClientFunnelAggregate> {
   const supabase = await createClient()
 
-  const { data: leads } = await supabase
-    .from('leads')
-    .select('id, stage, close_value, content_id')
-    .eq('client_id', clientId)
+  // Was a bare .select() capped at Supabase's 1000-row default — silently
+  // undercounted the funnel for any client past 1000 leads, no error.
+  const leads = await fetchAllRows((from, to) =>
+    supabase
+      .from('leads')
+      .select('id, stage, close_value, content_id')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
 
   if (!leads || leads.length === 0) {
     return {
