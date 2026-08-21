@@ -12,6 +12,7 @@ import {
   updateLeadFieldsAction,
   deleteLeadAction,
   createLeadAction,
+  getLeadsForViewer,
 } from '@/lib/actions/leads'
 import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
@@ -1526,6 +1527,32 @@ function ConfigurarAvatarsModal({
 }
 
 // ── Main Export ───────────────────────────────────────────────────────────────
+
+// Fetches the CRM tab's full lead rows only once this tab actually opens.
+// clients/[id]/page.tsx now ships just a leads *count* with the initial
+// page load — for a client with thousands of leads, eagerly fetching every
+// row (joined to clients/users/interactions, a dozen-plus paginated
+// requests) was the slowest thing on every tab view, including ones that
+// never touch leads at all (Analítica, Contenido, Script...). The setter
+// visibility scoping that used to live in clients/[id]/page.tsx moved into
+// getLeadsForViewer itself, so it still applies here unchanged.
+export function CrmTabLazy(props: Omit<Props, 'leads'>) {
+  const [leads, setLeads] = useState<Lead[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getLeadsForViewer(props.clientId).then((data) => {
+      if (!cancelled) setLeads(data as unknown as Lead[])
+    })
+    return () => { cancelled = true }
+  }, [props.clientId])
+
+  if (!leads) {
+    return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando leads...</div>
+  }
+
+  return <CrmTab {...props} leads={leads} />
+}
 
 export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')

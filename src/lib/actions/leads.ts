@@ -20,6 +20,62 @@ export async function getLeads(clientId?: string) {
   })
 }
 
+// Cheap count for tab badges — a client with thousands of leads shouldn't
+// have to pull every row (with its two joins) across a dozen paginated
+// requests just to show a number next to the CRM tab.
+export async function getLeadsCount(clientId: string): Promise<number> {
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('leads')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+// Bare id/name for the "which lead is this call about" lookup in the
+// Llamadas tab — no joins, none of the CRM tab's full row, so it stays
+// fast even for a client with thousands of leads.
+export async function getLeadOptions(clientId: string): Promise<{ id: string; full_name: string | null; ig_username: string | null }[]> {
+  const supabase = await createClient()
+  return fetchAllRows((from, to) =>
+    supabase
+      .from('leads')
+      .select('id, full_name, ig_username')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
+}
+
+// The full, richly-joined lead list the CRM tab actually renders — kept
+// out of the client page's initial load (see clients/[id]/page.tsx) and
+// fetched on demand once someone opens the CRM tab, since a client with
+// thousands of leads made that the single slowest thing on every page
+// view regardless of which tab was open. Carries the same setter scoping
+// clients/[id]/page.tsx used to apply itself: a setter only sees
+// lead_calificado leads assigned to them; every earlier stage (chat
+// abierto, conversación real) stays visible to the whole team, same as
+// before. Auth/role are re-derived from the session here, not trusted
+// from the caller, since this now runs from a client component.
+export async function getLeadsForViewer(clientId: string) {
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const { data: viewer } = authUser
+    ? await supabase.from('users').select('role').eq('id', authUser.id).single()
+    : { data: null }
+  const isSetter = viewer?.role === 'setter'
+
+  const leads = await getLeads(clientId)
+  if (!isSetter) return leads
+
+  return leads.filter((lead) => {
+    const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
+    const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser?.id
+    return !isQualifiedForSomeoneElse
+  })
+}
+
 export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string): Promise<{ agendaError: string | null }> {
   const supabase = await createClient()
 

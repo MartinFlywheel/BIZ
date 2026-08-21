@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getClient, getClients } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
-import { getLeads } from '@/lib/actions/leads'
+import { getLeadsCount } from '@/lib/actions/leads'
 import { getCalls, getCallFolders } from '@/lib/actions/calls'
 import { getAgencyUsers } from '@/lib/actions/team'
 import { getInteractions } from '@/lib/actions/interactions'
@@ -33,13 +33,20 @@ export default async function ClientDetailPage({
   const isSetter = viewer?.role === 'setter'
 
   try {
-    const [client, allClients, campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
+    // The full leads list (every column, joined to clients/users/interactions)
+    // used to be fetched here unconditionally — for a client with thousands of
+    // leads that's a dozen-plus paginated round trips before ANY tab could
+    // render, even Analítica or Contenido which never touch leads at all.
+    // Only a cheap count ships with the initial page now; the CRM tab fetches
+    // its own full rows on demand (see CrmTabLazy in crm-tab.tsx) and the
+    // Llamadas tab fetches just the id/name it needs (ClientCallsList).
+    const [client, allClients, campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals] = await Promise.all([
       getClient(id),
       getClients(),
       getCampaigns(id),
       getContentPieces(id),
       getContentMetricsByClient(id),
-      getLeads(id),
+      getLeadsCount(id),
       getCalls(undefined, id),
       getCallFolders(id),
       getAgendaLeadOptions(id),
@@ -52,21 +59,6 @@ export default async function ClientDetailPage({
       getClientFunnelTotals(id),
     ])
 
-    // Only the lead_calificado node's leads get split up per-setter — chat
-    // abierto and conversación real (agendamiento) stay exactly as they
-    // were, visible to every setter on the team, since those still need
-    // whoever's free to work them. A qualified lead assigned to someone
-    // else is the only thing hidden from a setter here; unassigned or
-    // earlier-stage leads (including manually created ones with no linked
-    // interaction) show to everyone same as before.
-    const visibleLeads = isSetter
-      ? leads.filter((lead) => {
-          const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
-          const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser?.id
-          return !isQualifiedForSomeoneElse
-        })
-      : leads
-
     return (
       <Suspense fallback={null}>
         <ClientDetail
@@ -75,7 +67,7 @@ export default async function ClientDetailPage({
           campaigns={campaigns}
           contentPieces={contentPieces}
           contentMetrics={contentMetrics}
-          leads={visibleLeads}
+          leadsCount={leadsCount}
           calls={calls}
           callFolders={callFolders}
           agendaLeadOptions={agendaLeadOptions}

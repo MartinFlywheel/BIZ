@@ -15,10 +15,10 @@ import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
-import { CrmTab } from './crm-tab'
+import { CrmTabLazy } from './crm-tab'
 import { ProductTab } from './product-tab'
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, Interaction, Lead, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
+import type { Client, Campaign, ContentPiece, Interaction, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
 import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
@@ -38,7 +38,7 @@ interface Props {
   campaigns: Campaign[]
   contentPieces: ContentPiece[]
   contentMetrics: ContentMetric[]
-  leads: Lead[]
+  leadsCount: number
   calls: SalesCall[]
   callFolders: CallFolder[]
   agendaLeadOptions: AgendaLeadOption[]
@@ -65,7 +65,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leads, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
+export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, interactions, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -82,12 +82,12 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
   }
 
   const tabs = isSetter ? [
-    { id: 'crm', label: 'CRM', count: leads.length },
+    { id: 'crm', label: 'CRM', count: leadsCount },
   ] : [
     { id: 'analytics', label: 'Analítica' },
     { id: 'content_metrics', label: 'Contenido', count: contentPieces.length },
     { id: 'pipeline', label: 'Script' },
-    { id: 'crm', label: 'CRM', count: leads.length },
+    { id: 'crm', label: 'CRM', count: leadsCount },
     { id: 'calls', label: 'Llamadas', count: calls.length },
     { id: 'competencia', label: 'Competencia', count: competitors.length },
     { id: 'producto', label: 'Producto' },
@@ -143,8 +143,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
             )}
 
             {activeTab === 'crm' && (
-              <CrmTab
-                leads={leads}
+              <CrmTabLazy
                 agencyUsers={agencyUsers}
                 allClients={allClients}
                 contentPieces={contentPieces}
@@ -160,7 +159,6 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
               <ClientCallsList
                 clientId={client.id}
                 calls={calls}
-                leads={leads}
                 callFolders={callFolders}
                 agendaLeadOptions={agendaLeadOptions}
               />

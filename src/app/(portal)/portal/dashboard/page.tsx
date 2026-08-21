@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { getClient } from '@/lib/actions/clients'
 import { getCampaigns } from '@/lib/actions/campaigns'
 import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
-import { getLeads } from '@/lib/actions/leads'
+import { getLeadsCount } from '@/lib/actions/leads'
 import { getCalls, getCallFolders } from '@/lib/actions/calls'
 import { getInteractions } from '@/lib/actions/interactions'
 import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
@@ -43,7 +43,7 @@ export default async function PortalDashboardPage() {
     campaigns,
     contentPieces,
     contentMetrics,
-    leads,
+    leadsCount,
     calls,
     callFolders,
     agendaLeadOptions,
@@ -58,8 +58,8 @@ export default async function PortalDashboardPage() {
     getCampaigns(clientId),
     getContentPieces(clientId),
     getContentMetricsByClient(clientId),
-    getLeads(clientId),
-    getCalls(),
+    getLeadsCount(clientId),
+    getCalls(undefined, clientId),
     getCallFolders(clientId),
     getAgendaLeadOptions(clientId),
     getInteractions(clientId),
@@ -70,9 +70,6 @@ export default async function PortalDashboardPage() {
     getClientFunnelTotals(clientId),
   ])
 
-  const clientLeadIds = new Set(leads.map((l: { id: string }) => l.id))
-  const clientCalls = calls.filter((c: { lead_id: string }) => clientLeadIds.has(c.lead_id))
-
   return (
     <Suspense fallback={null}>
       <ClientDetail
@@ -80,8 +77,8 @@ export default async function PortalDashboardPage() {
         campaigns={campaigns}
         contentPieces={contentPieces}
         contentMetrics={contentMetrics}
-        leads={leads}
-        calls={clientCalls}
+        leadsCount={leadsCount}
+        calls={calls}
         callFolders={callFolders}
         agendaLeadOptions={agendaLeadOptions}
         agencyUsers={[]}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -8,15 +8,21 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { createCallAction, createCallFolder, renameCallFolder, deleteCallFolder, moveCall } from '@/lib/actions/calls'
+import { getLeadOptions } from '@/lib/actions/leads'
 import { formatDate } from '@/lib/utils'
 import { ExternalLink, Clock, Mic, Plus, X, Phone, Folder, FolderPlus, ChevronRight, CheckCircle2, XCircle, Trash2, Pencil } from 'lucide-react'
-import type { SalesCall, Lead, CallFolder, CallBucket } from '@/lib/types'
+import type { SalesCall, CallFolder, CallBucket } from '@/lib/types'
 import type { AgendaLeadOption } from '@/lib/actions/agenda-records'
+
+interface LeadOption {
+    id: string
+    full_name: string | null
+    ig_username: string | null
+}
 
 interface Props {
     clientId: string
     calls: SalesCall[]
-    leads: Lead[]
     callFolders: CallFolder[]
     agendaLeadOptions: AgendaLeadOption[]
 }
@@ -74,7 +80,7 @@ function flattenFolders(folders: CallFolder[], bucket: CallBucket, parentId: str
     return children.flatMap((f) => [{ folder: f, depth }, ...flattenFolders(folders, bucket, f.id, depth + 1)])
 }
 
-export function ClientCallsList({ clientId, calls, leads, callFolders, agendaLeadOptions }: Props) {
+export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOptions }: Props) {
     const [location, setLocation] = useState<Location>({ bucket: null, folderId: null })
     const [showForm, setShowForm] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -85,10 +91,20 @@ export function ClientCallsList({ clientId, calls, leads, callFolders, agendaLea
     const [renameValue, setRenameValue] = useState('')
     const [scheduledAt, setScheduledAt] = useState('')
     const [selectedAgendaLead, setSelectedAgendaLead] = useState<AgendaLeadOption | null>(null)
+    const [leadOptions, setLeadOptions] = useState<LeadOption[]>([])
     const router = useRouter()
 
-    const leadsMap = new Map<string, Lead>()
-    for (const l of leads) leadsMap.set(l.id, l)
+    // Bare id/name, fetched separately from the CRM tab's full rows — this
+    // list is small (calls, not leads) and only needs a name to show next
+    // to each one, not the whole lead record.
+    useEffect(() => {
+        let cancelled = false
+        getLeadOptions(clientId).then((data) => { if (!cancelled) setLeadOptions(data) })
+        return () => { cancelled = true }
+    }, [clientId])
+
+    const leadsMap = new Map<string, LeadOption>()
+    for (const l of leadOptions) leadsMap.set(l.id, l)
 
     const cerradaCount = calls.filter((c) => c.bucket === 'cerrada').length
     const noCerradaCount = calls.filter((c) => c.bucket === 'no_cerrada').length
