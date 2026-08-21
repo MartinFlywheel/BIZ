@@ -11,11 +11,16 @@ const VALID_CLASSIFICATIONS: Classification[] = ['chat_abierto', 'conversacion_r
 // clasificación nueva — chat_abierto -> conversacion_real -> lead_calificado
 // es una progresión, así que promover a una etapa tiene que poder
 // encontrar la fila en CUALQUIER etapa previa, no solo en chat_abierto.
+// Incluye la propia clasificación destino: si el nodo de ManyChat se
+// dispara dos veces para la misma persona (reintento, flujo con loop, CTA
+// tocado de nuevo), la segunda llamada tiene que encontrar y actualizar la
+// fila que ya quedó en esa etapa — si no, no matchea nada y cae al INSERT,
+// duplicando la interacción en vez de "promoverla en el lugar".
 const PROMOTABLE_FROM: Record<Classification, Classification[]> = {
   chat_abierto: [],
-  conversacion_real: ['chat_abierto'],
-  lead_calificado: ['chat_abierto', 'conversacion_real'],
-  disqualified: ['chat_abierto', 'conversacion_real', 'lead_calificado'],
+  conversacion_real: ['chat_abierto', 'conversacion_real'],
+  lead_calificado: ['chat_abierto', 'conversacion_real', 'lead_calificado'],
+  disqualified: ['chat_abierto', 'conversacion_real', 'lead_calificado', 'disqualified'],
 }
 
 // Resolves the interaction's classification from an explicit field in the
