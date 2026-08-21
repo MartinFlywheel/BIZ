@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveClassification, upsertInteraction } from '@/lib/manychat'
+import { resolveClassification, upsertInteraction, pickBalancedSetter } from '@/lib/manychat'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
     // ── Step 4: Upsert lead ──────────────────────────────────────
     const { data: existingLead } = await supabase
       .from('leads')
-      .select('id, stage, first_touch_content_id')
+      .select('id, stage, first_touch_content_id, assigned_to')
       .eq('client_id', clientId)
       .eq('ig_username', igUsername)
       .maybeSingle()
@@ -181,7 +181,7 @@ export async function POST(request: Request) {
     const classification = resolveClassification(payload)
 
     try {
-      await upsertInteraction(supabase, {
+      const interactionId = await upsertInteraction(supabase, {
         clientId,
         contentId,
         igUsername,
@@ -191,6 +191,22 @@ export async function POST(request: Request) {
         classification,
         customFields,
       })
+
+      // This route lacked both of these — leads coming through it never
+      // got linked back to their interaction (breaking the CRM's own
+      // classification lookup for them) and never got auto-assigned to a
+      // setter, even though the newer per-piece webhook (src/lib/manychat.ts
+      // handlePieceWebhook) has done both since it was built. Same rules
+      // here: conversación real or lead_calificado claims a setter,
+      // load-balanced by weight, never overwriting a manual assignment.
+      await supabase.from('leads').update({ interaction_id: interactionId }).eq('id', leadId)
+
+      if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
+        const setterId = await pickBalancedSetter(supabase, clientId)
+        if (setterId) {
+          await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
+        }
+      }
     } catch (err) {
       console.error('[ManyChat] Interaction upsert error:', err)
     }

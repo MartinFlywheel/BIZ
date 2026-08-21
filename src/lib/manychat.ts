@@ -179,7 +179,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
 // 100 — adding/removing a setter just re-normalizes automatically. Ties are
 // broken at random so it doesn't always favor whichever setter sorts
 // first. Returns null if the client has no setter on the team.
-async function pickBalancedSetter(supabase: AdminClient, clientId: string): Promise<string | null> {
+export async function pickBalancedSetter(supabase: AdminClient, clientId: string): Promise<string | null> {
   const baseQuery = () => supabase
     .from('users')
     .select('id, lead_weight')
