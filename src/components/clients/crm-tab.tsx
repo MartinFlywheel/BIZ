@@ -718,12 +718,12 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           </button>
 
           {filtersOpen && (
-            <div className="absolute top-full right-0 mt-1.5 w-72 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 max-h-[70vh] overflow-y-auto">
+            <div className="absolute top-full right-0 mt-1.5 w-80 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 max-h-[70vh] overflow-y-auto overflow-x-hidden">
               <div className="p-3 space-y-4">
                 {/* Estado del pipeline */}
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Estado del pipeline</p>
-                  <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                  <div className="space-y-1">
                     {LEAD_STAGES.map(stage => (
                       <label key={stage.id} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
                         <input
@@ -795,7 +795,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                 {ctaOptions.length > 0 && (
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">CTA</p>
-                    <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                    <div className="space-y-1 max-h-56 overflow-y-auto pr-1">
                       {ctaOptions.map(([contentId, keyword]) => (
                         <label key={contentId} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
                           <input
