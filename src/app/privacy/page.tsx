@@ -54,10 +54,7 @@ export default function PrivacyPage() {
             <p>
               Usted tiene derecho a consultar, modificar o solicitar la baja (eliminación) de sus datos personales. Para ejercer estos derechos o realizar consultas sobre esta Política de Privacidad, por favor contáctenos a:
             </p>
-            <p className="mt-2 font-medium text-zinc-50">contacto@agencia-ejemplo.com</p>
-            <p className="mt-1 text-xs text-zinc-500 italic">
-              (Nota: Reemplace este correo con el email de contacto real de su agencia)
-            </p>
+            <p className="mt-2 font-medium text-zinc-50">martinsenel5@gmail.com</p>
           </section>
         </div>
 
