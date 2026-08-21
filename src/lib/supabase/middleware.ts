@@ -4,8 +4,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Early exit: never process auth logic for /login or /api routes
-  if (pathname.startsWith('/login') || pathname.startsWith('/api')) {
+  // Early exit: never process auth logic for /login, /api, or the public
+  // legal pages (Meta's App Review needs to reach these without a session).
+  if (
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/api') ||
+    pathname.startsWith('/privacy') ||
+    pathname.startsWith('/terms')
+  ) {
     return NextResponse.next({ request })
   }
 
