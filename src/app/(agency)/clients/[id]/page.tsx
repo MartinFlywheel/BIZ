@@ -52,6 +52,13 @@ export default async function ClientDetailPage({
       getClientFunnelTotals(id),
     ])
 
+    // Setters only ever see the CRM tab, and only their own leads there —
+    // Torcuato shouldn't see Magui's leads (name/phone/IG included) or vice
+    // versa. Admins (and every other role) keep the full client roster.
+    const visibleLeads = isSetter
+      ? leads.filter((lead) => lead.assigned_to === authUser?.id)
+      : leads
+
     return (
       <Suspense fallback={null}>
         <ClientDetail
@@ -60,7 +67,7 @@ export default async function ClientDetailPage({
           campaigns={campaigns}
           contentPieces={contentPieces}
           contentMetrics={contentMetrics}
-          leads={leads}
+          leads={visibleLeads}
           calls={calls}
           callFolders={callFolders}
           agendaLeadOptions={agendaLeadOptions}
