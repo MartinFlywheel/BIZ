@@ -26,7 +26,7 @@ export async function getAgencyUsers(clientId?: string) {
   const supabase = await createClient()
   const base = supabase
     .from('users')
-    .select('id, full_name, email, role, client_id')
+    .select('id, full_name, email, role, client_id, lead_weight')
     .eq('user_type', 'agency')
     .eq('is_active', true)
 
@@ -42,7 +42,7 @@ export async function getAgencyUsers(clientId?: string) {
     base.eq('role', 'admin'),
     supabase
       .from('users')
-      .select('id, full_name, email, role, client_id')
+      .select('id, full_name, email, role, client_id, lead_weight')
       .eq('user_type', 'agency')
       .eq('is_active', true)
       .eq('client_id', clientId),
@@ -115,7 +115,7 @@ const SELF_ROLE_CHANGE_PASSWORD = 'Holakase6.'
 // anyone else) to admin via the role dropdown.
 export async function updateAgencyUserAction(
   userId: string,
-  fields: { full_name?: string; email?: string; role?: string; client_id?: string | null },
+  fields: { full_name?: string; email?: string; role?: string; client_id?: string | null; lead_weight?: number },
   confirmPassword?: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()

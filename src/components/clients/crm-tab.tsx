@@ -22,7 +22,7 @@ import { saveAvatarsAction } from '@/lib/actions/clients'
 
 type SubTab = 'leads' | 'agendas' | 'equipo'
 
-interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null }
+interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null; lead_weight?: number }
 
 interface Props {
   leads: Lead[]
@@ -1084,6 +1084,22 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
     }
   }
 
+  // Relative weight for lead_calificado auto-assignment (pickBalancedSetter
+  // in src/lib/manychat.ts) — not a percentage that has to add up to 100,
+  // just each setter's share relative to the others on this client's team.
+  async function updateWeight(userId: string, weight: number) {
+    if (!Number.isFinite(weight) || weight <= 0) return
+    setSaving(userId)
+    const result = await updateAgencyUserAction(userId, { lead_weight: weight })
+      .catch(e => ({ success: false as const, error: e instanceof Error ? e.message : '' }))
+    setSaving(null)
+    if (result.success) {
+      setLocalUsers(prev => prev.map(u => u.id === userId ? { ...u, lead_weight: weight } : u))
+    } else {
+      alert(result.error)
+    }
+  }
+
   async function handleDeleteUser(userId: string, name: string) {
     if (!confirm(`¿Eliminar a ${name} del equipo? Se borra su cuenta por completo y pierde acceso al dashboard de inmediato.`)) return
     setSaving(userId)
@@ -1113,7 +1129,7 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
         <table className="w-full min-w-[720px] border-collapse">
           <thead>
             <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-              {['Nombre', 'Correo personal', 'Rol', 'Cliente', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
+              {['Nombre', 'Correo personal', 'Rol', 'Cliente', '% Leads', 'Total Agendas', 'Total Shows', 'Ventas Cerradas', 'Show Rate', 'Close Rate', ''].map((h, i) => (
                 <th key={i} className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-zinc-500 whitespace-nowrap first:pl-4">
                   {h}
                 </th>
@@ -1123,16 +1139,21 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-zinc-600 text-xs">
+                <td colSpan={11} className="py-12 text-center text-zinc-600 text-xs">
                   <Loader2 className="h-4 w-4 animate-spin inline mr-2" />Cargando estadísticas...
                 </td>
               </tr>
             ) : localUsers.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
+                <td colSpan={11} className="py-12 text-center text-zinc-600 text-xs">Sin miembros de equipo</td>
               </tr>
             ) : (
-              localUsers.map(user => {
+              (() => {
+                const totalSetterWeight = localUsers
+                  .filter(u => u.role === 'setter')
+                  .reduce((sum, u) => sum + (u.lead_weight ?? 1), 0)
+
+                return localUsers.map(user => {
                 const s = stats[user.full_name] ?? { agendas: 0, shows: 0, cerradas: 0 }
                 const showRate = s.agendas > 0 ? (s.shows / s.agendas) * 100 : 0
                 const closeRate = s.shows > 0 ? (s.cerradas / s.shows) * 100 : 0
@@ -1229,6 +1250,34 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
                       )}
                     </td>
 
+                    {/* % Leads — reparto de lead_calificado, solo aplica a setters. Peso
+                        relativo editable por admin; el % mostrado es contra el resto de
+                        setters de este cliente, se recalcula solo si suman o restan gente. */}
+                    <td className="px-3 py-2 text-center">
+                      {user.role !== 'setter' ? (
+                        <span className="text-xs text-zinc-700">—</span>
+                      ) : isAdmin ? (
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="number"
+                            min={1}
+                            value={user.lead_weight ?? 1}
+                            disabled={isSaving}
+                            onChange={e => updateWeight(user.id, parseInt(e.target.value, 10))}
+                            className="w-12 rounded border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-xs text-zinc-200 text-center focus:outline-none focus:border-zinc-600 disabled:opacity-50"
+                            title="Peso relativo — no hace falta que sumen 100"
+                          />
+                          <span className="text-[11px] font-mono text-zinc-500">
+                            {totalSetterWeight > 0 ? `${(((user.lead_weight ?? 1) / totalSetterWeight) * 100).toFixed(0)}%` : '—'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs font-mono text-zinc-400">
+                          {totalSetterWeight > 0 ? `${(((user.lead_weight ?? 1) / totalSetterWeight) * 100).toFixed(0)}%` : '—'}
+                        </span>
+                      )}
+                    </td>
+
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.agendas}</td>
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.shows}</td>
                     <td className="px-3 py-3 text-sm font-mono text-center font-semibold text-emerald-400">{s.cerradas}</td>
@@ -1257,6 +1306,7 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
                   </tr>
                 )
               })
+              })()
             )}
           </tbody>
         </table>

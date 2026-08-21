@@ -169,19 +169,20 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
   return inserted.id
 }
 
-// Picks whichever active setter on the client's team currently has the
-// fewest assigned leads — self-balancing instead of a coin flip, so the
-// split stays close to even (50/50 with two setters, 1/N with N) over time
-// rather than drifting on a lucky streak. Ties (e.g. both setters brand new,
-// or an exact tie right now) are broken at random so it doesn't always
-// favor whichever setter happens to sort first. The setter pool is just
-// "this client's team members with role=setter" — the existing team roster
-// (Configuración → Equipo) IS the configuration; there's no separate list
-// to maintain here. Returns null if the client has no setter on the team.
+// Picks whichever active setter on the client's team is furthest below
+// their target share right now (assigned count ÷ their lead_weight, lowest
+// ratio wins) — self-balancing instead of a coin flip, so the split
+// converges on each setter's configured share over time rather than
+// drifting on a lucky streak. Equal weights (the default, lead_weight=1 for
+// everyone) means an even 50/50, 1/3-1/3-1/3, etc. Admins can skew this per
+// setter from the Equipo tab; weights are relative, not required to sum to
+// 100 — adding/removing a setter just re-normalizes automatically. Ties are
+// broken at random so it doesn't always favor whichever setter sorts
+// first. Returns null if the client has no setter on the team.
 async function pickBalancedSetter(supabase: AdminClient, clientId: string): Promise<string | null> {
   const { data: setters } = await supabase
     .from('users')
-    .select('id')
+    .select('id, lead_weight')
     .eq('user_type', 'agency')
     .eq('is_active', true)
     .eq('client_id', clientId)
@@ -202,9 +203,19 @@ async function pickBalancedSetter(supabase: AdminClient, clientId: string): Prom
     if (row.assigned_to) counts.set(row.assigned_to, (counts.get(row.assigned_to) || 0) + 1)
   }
 
-  const minCount = Math.min(...counts.values())
-  const leastLoaded = setterIds.filter((id) => counts.get(id) === minCount)
-  return leastLoaded[Math.floor(Math.random() * leastLoaded.length)]
+  let bestRatio = Infinity
+  let candidates: string[] = []
+  for (const s of setters) {
+    const weight = s.lead_weight || 1
+    const ratio = counts.get(s.id)! / weight
+    if (ratio < bestRatio) {
+      bestRatio = ratio
+      candidates = [s.id]
+    } else if (ratio === bestRatio) {
+      candidates.push(s.id)
+    }
+  }
+  return candidates[Math.floor(Math.random() * candidates.length)]
 }
 
 // ── Shared handler for the per-piece webhook URLs ───────────────────────────
