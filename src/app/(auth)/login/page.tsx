@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -106,6 +107,16 @@ export default function LoginPage() {
             {loading ? 'Ingresando...' : 'Ingresar'}
           </Button>
         </form>
+
+        <div className="flex justify-center space-x-4 text-xs text-zinc-500 pt-4">
+          <Link href="/privacy" className="hover:text-zinc-300 transition-colors">
+            Política de Privacidad
+          </Link>
+          <span>&middot;</span>
+          <Link href="/terms" className="hover:text-zinc-300 transition-colors">
+            Términos y Condiciones
+          </Link>
+        </div>
       </div>
     </div>
   )
