@@ -169,6 +169,44 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
   return inserted.id
 }
 
+// Picks whichever active setter on the client's team currently has the
+// fewest assigned leads — self-balancing instead of a coin flip, so the
+// split stays close to even (50/50 with two setters, 1/N with N) over time
+// rather than drifting on a lucky streak. Ties (e.g. both setters brand new,
+// or an exact tie right now) are broken at random so it doesn't always
+// favor whichever setter happens to sort first. The setter pool is just
+// "this client's team members with role=setter" — the existing team roster
+// (Configuración → Equipo) IS the configuration; there's no separate list
+// to maintain here. Returns null if the client has no setter on the team.
+async function pickBalancedSetter(supabase: AdminClient, clientId: string): Promise<string | null> {
+  const { data: setters } = await supabase
+    .from('users')
+    .select('id')
+    .eq('user_type', 'agency')
+    .eq('is_active', true)
+    .eq('client_id', clientId)
+    .eq('role', 'setter')
+
+  if (!setters || setters.length === 0) return null
+  if (setters.length === 1) return setters[0].id
+
+  const setterIds = setters.map((s) => s.id)
+  const { data: assignedLeads } = await supabase
+    .from('leads')
+    .select('assigned_to')
+    .eq('client_id', clientId)
+    .in('assigned_to', setterIds)
+
+  const counts = new Map<string, number>(setterIds.map((id) => [id, 0]))
+  for (const row of assignedLeads || []) {
+    if (row.assigned_to) counts.set(row.assigned_to, (counts.get(row.assigned_to) || 0) + 1)
+  }
+
+  const minCount = Math.min(...counts.values())
+  const leastLoaded = setterIds.filter((id) => counts.get(id) === minCount)
+  return leastLoaded[Math.floor(Math.random() * leastLoaded.length)]
+}
+
 // ── Shared handler for the per-piece webhook URLs ───────────────────────────
 // Two ManyChat "External Request" nodes call the same logic with a different
 // forced classification, so which node fires depends only on where it sits
@@ -257,7 +295,7 @@ export async function handlePieceWebhook(
     // Upsert lead
     const { data: existingLead } = await supabase
       .from('leads')
-      .select('id, first_touch_content_id')
+      .select('id, first_touch_content_id, assigned_to')
       .eq('client_id', clientId)
       .eq('ig_username', igUsername)
       .maybeSingle()
@@ -303,6 +341,18 @@ export async function handlePieceWebhook(
     // Register interaction — classification is forced by which URL was
     // called, falling back to the payload/default resolution otherwise.
     const classification = forcedClassification || resolveClassification(payload)
+
+    // Auto-assign a setter the moment a lead reaches lead_calificado —
+    // load-balanced across whichever setters are on this client's team, so
+    // it self-corrects to an even split instead of relying on coin-flip
+    // luck. Never overwrites a setter someone already assigned by hand.
+    if (classification === 'lead_calificado' && !existingLead?.assigned_to) {
+      const setterId = await pickBalancedSetter(supabase, clientId)
+      if (setterId) {
+        await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
+      }
+    }
+
     const interactionId = await upsertInteraction(supabase, {
       clientId,
       contentId,
