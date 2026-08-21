@@ -11,7 +11,7 @@ export async function getLeads(clientId?: string) {
   return fetchAllRows((from, to) => {
     let query = supabase
       .from('leads')
-      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name)')
+      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification)')
       .order('updated_at', { ascending: false })
       .range(from, to)
 

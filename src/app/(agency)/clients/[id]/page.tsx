@@ -52,11 +52,19 @@ export default async function ClientDetailPage({
       getClientFunnelTotals(id),
     ])
 
-    // Setters only ever see the CRM tab, and only their own leads there —
-    // Torcuato shouldn't see Magui's leads (name/phone/IG included) or vice
-    // versa. Admins (and every other role) keep the full client roster.
+    // Only the lead_calificado node's leads get split up per-setter — chat
+    // abierto and conversación real (agendamiento) stay exactly as they
+    // were, visible to every setter on the team, since those still need
+    // whoever's free to work them. A qualified lead assigned to someone
+    // else is the only thing hidden from a setter here; unassigned or
+    // earlier-stage leads (including manually created ones with no linked
+    // interaction) show to everyone same as before.
     const visibleLeads = isSetter
-      ? leads.filter((lead) => lead.assigned_to === authUser?.id)
+      ? leads.filter((lead) => {
+          const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
+          const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser?.id
+          return !isQualifiedForSomeoneElse
+        })
       : leads
 
     return (
