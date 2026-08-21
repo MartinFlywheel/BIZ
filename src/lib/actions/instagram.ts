@@ -94,6 +94,23 @@ export async function syncClientContent(clientId: string): Promise<{
 
       const thumbnail = pickThumbnail(media)
 
+      // Real numbers, not placeholders — the daily cron (sync-instagram)
+      // would eventually backfill these anyway, but that meant a manual
+      // "Sincronizar" click showed 0 views on anything it hadn't already
+      // seen until up to 24h later.
+      let insights = { impressions: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0 }
+      try {
+        const insightsRes = await fetch(
+          `https://graph.instagram.com/${media.id}/insights?metric=impressions,reach,likes,comments,shares,saved&access_token=${token}`
+        )
+        if (insightsRes.ok) {
+          const insightsData = await insightsRes.json()
+          for (const metric of insightsData.data || []) {
+            if (metric.name in insights) insights[metric.name as keyof typeof insights] = metric.values?.[0]?.value || 0
+          }
+        }
+      } catch {}
+
       const { data: existing } = await supabase
         .from('content_pieces')
         .select('id')
@@ -108,6 +125,12 @@ export async function syncClientContent(clientId: string): Promise<{
             ig_thumbnail_url: thumbnail,
             ig_permalink: media.permalink,
             caption: media.caption,
+            views: insights.impressions,
+            reach: insights.reach,
+            likes: insights.likes,
+            comments: insights.comments,
+            shares: insights.shares,
+            saves: insights.saved,
             metrics_source: 'meta_api',
             metrics_updated_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -122,12 +145,12 @@ export async function syncClientContent(clientId: string): Promise<{
           ig_thumbnail_url: thumbnail,
           caption: media.caption,
           published_at: media.timestamp,
-          views: 0,
-          likes: 0,
-          comments: 0,
-          shares: 0,
-          saves: 0,
-          reach: 0,
+          views: insights.impressions,
+          reach: insights.reach,
+          likes: insights.likes,
+          comments: insights.comments,
+          shares: insights.shares,
+          saves: insights.saved,
           metrics_source: 'meta_api',
           metrics_updated_at: new Date().toISOString(),
         })
