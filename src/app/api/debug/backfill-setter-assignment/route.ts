@@ -4,6 +4,7 @@ import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 // One-time catch-up: the auto-assignment feature only fires on NEW webhook
 // events, and the old base ManyChat webhook (src/app/api/webhooks/manychat/
@@ -39,19 +40,25 @@ export async function GET(request: Request) {
     fetchAllRows((from, to) =>
       supabase
         .from('interactions')
-        .select('client_id, ig_username, classification')
+        .select('id, client_id, ig_username, classification')
         .in('classification', ['conversacion_real', 'lead_calificado'])
         .range(from, to)
     ),
   ])
 
-  // Best (highest-rank) classification per client_id + lowercased ig_username.
-  const bestByKey = new Map<string, string>()
+  // Best (highest-rank) classification + a matching interaction id, per
+  // client_id + lowercased ig_username. Fetched in bulk up front so the
+  // per-lead loop below never needs its own DB round trip (that per-lead
+  // query was the reason this endpoint originally blew past Vercel's
+  // function timeout on a real-sized backlog).
+  const bestByKey = new Map<string, { classification: string; interactionId: string }>()
   for (const i of interactions) {
     if (!i.ig_username) continue
     const key = `${i.client_id}:${i.ig_username.toLowerCase()}`
     const current = bestByKey.get(key)
-    if (!current || RANK[i.classification] > RANK[current]) bestByKey.set(key, i.classification)
+    if (!current || RANK[i.classification] > RANK[current.classification]) {
+      bestByKey.set(key, { classification: i.classification, interactionId: i.id })
+    }
   }
 
   const qualifying = leads.filter((l) => {
@@ -95,7 +102,11 @@ export async function GET(request: Request) {
       if (row.assigned_to) counts.set(row.assigned_to, (counts.get(row.assigned_to) || 0) + 1)
     }
 
-    let assigned = 0
+    // The round-robin ratio depends on running counts, so picking the
+    // setter per lead must stay sequential — but the actual writes don't
+    // depend on each other, so they're fired in parallel batches instead
+    // of one at a time.
+    const pending: PromiseLike<unknown>[] = []
     for (const lead of clientLeads) {
       let bestRatio = Infinity
       let candidates: string[] = []
@@ -109,25 +120,20 @@ export async function GET(request: Request) {
       const key = `${clientId}:${lead.ig_username!.toLowerCase()}`
       const updates: Record<string, unknown> = { assigned_to: setterId }
       if (!lead.interaction_id) {
-        // Backfill the link too, same fallback the UI already leans on —
-        // grab whichever interaction row matched this key.
-        const { data: interactionRow } = await supabase
-          .from('interactions')
-          .select('id')
-          .eq('client_id', clientId)
-          .ilike('ig_username', lead.ig_username!)
-          .eq('classification', bestByKey.get(key))
-          .limit(1)
-          .maybeSingle()
-        if (interactionRow) updates.interaction_id = interactionRow.id
+        const match = bestByKey.get(key)
+        if (match) updates.interaction_id = match.interactionId
       }
 
-      await supabase.from('leads').update(updates).eq('id', lead.id)
+      pending.push(supabase.from('leads').update(updates).eq('id', lead.id))
       counts.set(setterId, (counts.get(setterId) || 0) + 1)
-      assigned++
     }
 
-    results.push({ client_id: clientId, qualifying: clientLeads.length, assigned, skipped_no_setters: 0 })
+    const BATCH_SIZE = 25
+    for (let i = 0; i < pending.length; i += BATCH_SIZE) {
+      await Promise.all(pending.slice(i, i + BATCH_SIZE))
+    }
+
+    results.push({ client_id: clientId, qualifying: clientLeads.length, assigned: pending.length, skipped_no_setters: 0 })
   }
 
   return NextResponse.json({
