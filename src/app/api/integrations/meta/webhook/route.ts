@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+type AdminClient = ReturnType<typeof createAdminClient>
+
 interface WebhookEntry {
   id: string
   time: number
@@ -72,44 +74,53 @@ export async function POST(request: NextRequest) {
     for (const entry of payload.entry || []) {
       if (entry.messaging) {
         for (const event of entry.messaging) {
-          if (event.message?.is_echo) continue
+          if (!event.message) continue
 
-          if (event.message) {
-            const messageText = event.message.text || null
-            const mediaUrl = event.message.attachments?.[0]?.payload?.url || null
-            const isStoryReply = !!event.message.reply_to
-            const messageType = mediaUrl ? 'media'
-              : isStoryReply ? 'story_reply'
-              : messageText ? 'text'
-              : 'other'
+          // Echoes are messages the page itself sent (ManyChat's bot
+          // replies, or a setter's own manual send bouncing back) — the
+          // sender/recipient are reversed vs. a normal inbound message.
+          const isOutbound = !!event.message.is_echo
+          const igAccountId = isOutbound ? event.sender.id : event.recipient.id
+          const otherPartyId = isOutbound ? event.recipient.id : event.sender.id
 
-            const { data: client } = await supabase
-              .from('clients')
-              .select('id')
-              .eq('ig_account_id', event.recipient.id)
-              .maybeSingle()
+          const messageText = event.message.text || null
+          const mediaUrl = event.message.attachments?.[0]?.payload?.url || null
+          const isStoryReply = !!event.message.reply_to
+          const messageType = mediaUrl ? 'media'
+            : isStoryReply ? 'story_reply'
+            : messageText ? 'text'
+            : 'other'
 
-            const { error: msgError } = await supabase
-              .from('incoming_messages')
-              .upsert({
-                sender_ig_id: event.sender.id,
-                recipient_ig_id: event.recipient.id,
-                message_text: messageText,
-                message_mid: event.message.mid,
-                media_url: mediaUrl,
-                message_type: messageType,
-                status: 'unread',
-                client_id: client?.id || null,
-                webhook_log_id: webhookLogId,
-                received_at: new Date(event.timestamp).toISOString(),
-              }, {
-                onConflict: 'message_mid',
-                ignoreDuplicates: true,
-              })
+          const { data: client } = await supabase
+            .from('clients')
+            .select('id')
+            .eq('ig_account_id', igAccountId)
+            .maybeSingle()
 
-            if (msgError) {
-              console.error('[Meta Webhook] Message insert error:', msgError.message)
-            }
+          const leadId = client ? await resolveLeadId(supabase, client.id, otherPartyId) : null
+
+          const { error: msgError } = await supabase
+            .from('incoming_messages')
+            .upsert({
+              sender_ig_id: event.sender.id,
+              recipient_ig_id: event.recipient.id,
+              message_text: messageText,
+              message_mid: event.message.mid,
+              media_url: mediaUrl,
+              message_type: messageType,
+              status: isOutbound ? 'read' : 'unread',
+              client_id: client?.id || null,
+              lead_id: leadId,
+              direction: isOutbound ? 'outbound' : 'inbound',
+              webhook_log_id: webhookLogId,
+              received_at: new Date(event.timestamp).toISOString(),
+            }, {
+              onConflict: 'message_mid',
+              ignoreDuplicates: true,
+            })
+
+          if (msgError) {
+            console.error('[Meta Webhook] Message insert error:', msgError.message)
           }
         }
       }
@@ -140,4 +151,45 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ received: true }, { status: 200 })
+}
+
+// Matches a lead's Instagram-scoped id (IGSID) to a CRM lead so the chat
+// thread (/clients/[id]/chat/[leadId]) can find it. The webhook payload
+// only ever carries the numeric IGSID, not a username, so: reuse whatever
+// a prior message already resolved for this IGSID before spending a Graph
+// API call resolving it fresh.
+async function resolveLeadId(supabase: AdminClient, clientId: string, igsid: string): Promise<string | null> {
+  const { data: known } = await supabase
+    .from('incoming_messages')
+    .select('lead_id')
+    .eq('client_id', clientId)
+    .or(`sender_ig_id.eq.${igsid},recipient_ig_id.eq.${igsid}`)
+    .not('lead_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (known?.lead_id) return known.lead_id
+
+  const token = process.env.META_SYSTEM_USER_TOKEN
+  if (!token) return null
+
+  try {
+    const res = await fetch(`https://graph.instagram.com/${igsid}?fields=username&access_token=${token}`)
+    if (!res.ok) return null
+    const { username } = await res.json()
+    if (!username) return null
+
+    const { data: lead } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('client_id', clientId)
+      .ilike('ig_username', username)
+      .limit(1)
+      .maybeSingle()
+
+    return lead?.id || null
+  } catch (err) {
+    console.error('[Meta Webhook] IGSID resolve failed:', err)
+    return null
+  }
 }

@@ -508,6 +508,8 @@ export type MessageType = 'text' | 'media' | 'story_reply' | 'reaction' | 'other
 
 export type MessageStatus = 'unread' | 'read' | 'promoted' | 'archived'
 
+export type MessageDirection = 'inbound' | 'outbound'
+
 export interface IncomingMessage {
   id: string
   sender_ig_id: string
@@ -521,6 +523,9 @@ export interface IncomingMessage {
   client_id: string | null
   webhook_log_id: string | null
   promoted_to_interaction_id: string | null
+  direction: MessageDirection
+  lead_id: string | null
+  sent_by: string | null
   received_at: string
   read_at: string | null
   created_at: string

@@ -3,8 +3,9 @@
 import { useState, useMemo, useTransition, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
-import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check } from 'lucide-react'
+import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import type { LeadStage, Lead, ContentPiece, Interaction, Client } from '@/lib/types'
 import {
@@ -883,16 +884,26 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                       </td>
                       <td className="px-2 py-2.5">
                         {lead.ig_username ? (
-                          <a
-                            href={`https://ig.me/m/${lead.ig_username}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="text-xs text-violet-400 hover:text-violet-300 inline-flex items-center gap-1 whitespace-nowrap"
-                          >
-                            @{lead.ig_username}
-                            <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
-                          </a>
+                          <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                            <a
+                              href={`https://ig.me/m/${lead.ig_username}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={e => e.stopPropagation()}
+                              className="text-xs text-violet-400 hover:text-violet-300 inline-flex items-center gap-1"
+                            >
+                              @{lead.ig_username}
+                              <ExternalLink className="h-2.5 w-2.5 flex-shrink-0" />
+                            </a>
+                            <Link
+                              href={`/clients/${clientId}/chat/${lead.id}`}
+                              onClick={e => e.stopPropagation()}
+                              title="Chatear desde el CRM"
+                              className="text-amber-400 hover:text-amber-300"
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" />
+                            </Link>
+                          </span>
                         ) : (
                           <span className="text-zinc-700 text-xs">—</span>
                         )}
