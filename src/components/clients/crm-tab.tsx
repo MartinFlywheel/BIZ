@@ -1272,9 +1272,7 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs font-mono text-zinc-400">
-                          {totalSetterWeight > 0 ? `${(((user.lead_weight ?? 1) / totalSetterWeight) * 100).toFixed(0)}%` : '—'}
-                        </span>
+                        <span className="text-xs text-zinc-700">—</span>
                       )}
                     </td>
 
