@@ -201,11 +201,14 @@ function pctChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100
 }
 
-// Compares month-to-date against the SAME number of days last month — not
-// full calendar month vs full calendar month. Mid-month, a partial current
-// month against a complete previous one would always read as a decline
-// regardless of actual pace, which defeats the point of a "did we go up or
-// down" comparison.
+// Current month-to-date vs the FULL previous calendar month — not the same
+// number of days last month. Was originally day-matched (Jul 1-22 vs Aug
+// 1-22) to avoid a partial month always reading as a decline, but that
+// truncation hid real closed deals that landed in the back half of last
+// month (a client closed 5 sales in July; the day-matched window only
+// covered Jul 1-22 and showed 0). The person reading this already knows
+// the current month isn't over — what they actually want is last month's
+// real total as the reference point, not a fairness-adjusted one.
 //
 // Built on getDashboardMetrics (dateFrom/dateTo scoped) rather than a
 // separate computation, so every number here is guaranteed consistent with
@@ -215,14 +218,12 @@ export async function getMonthOverMonthComparison(clientId: string): Promise<Mon
   const now = new Date()
   const year = now.getFullYear()
   const month = now.getMonth()
-  const day = now.getDate()
 
   const currentStart = new Date(year, month, 1)
 
   const previousMonthFirst = new Date(year, month - 1, 1)
-  const daysInPreviousMonth = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth() + 1, 0).getDate()
   const previousStart = previousMonthFirst
-  const previousEnd = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth(), Math.min(day, daysInPreviousMonth))
+  const previousEnd = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth() + 1, 0)
 
   const currentRange = { start: toDateStr(currentStart), end: toDateStr(now) }
   const previousRange = { start: toDateStr(previousStart), end: toDateStr(previousEnd) }
