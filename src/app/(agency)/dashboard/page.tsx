@@ -1,11 +1,12 @@
 import { Suspense } from 'react'
 import { getClients } from '@/lib/actions/clients'
 import { checkHealthAlerts, calculateFunnel, type FunnelPeriodType } from '@/lib/actions/funnel'
-import { getDashboardMetrics, getBenchmarkAlerts } from '@/lib/actions/metrics'
+import { getDashboardMetrics, getBenchmarkAlerts, getMonthOverMonthComparison } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
+import { MonthComparisonCards } from '@/components/dashboard/month-comparison'
 import { ClientSelector } from '@/components/dashboard/client-selector'
 import { ContentTypeToggle } from '@/components/dashboard/content-type-toggle'
 import { PeriodToggle } from '@/components/dashboard/period-toggle'
@@ -110,10 +111,11 @@ async function ClientDetail({
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
-  // Run both queries in parallel
-  const [funnel, liveMetrics] = await Promise.all([
+  // Run all queries in parallel
+  const [funnel, liveMetrics, monthComparison] = await Promise.all([
     calculateFunnel(clientId, period, undefined, contentType),
     getDashboardMetrics(clientId),
+    getMonthOverMonthComparison(clientId),
   ])
 
   const alerts = liveMetrics ? await getBenchmarkAlerts(clientId, liveMetrics) : []
@@ -137,6 +139,8 @@ async function ClientDetail({
           </div>
         </Card>
       )}
+
+      <MonthComparisonCards comparison={monthComparison} />
 
       {liveMetrics && (
         <div className="space-y-4">

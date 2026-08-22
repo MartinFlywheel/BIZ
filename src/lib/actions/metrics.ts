@@ -119,6 +119,81 @@ export async function getClientFunnelTotals(clientId: string) {
 
 export type ClientFunnelTotals = Awaited<ReturnType<typeof getClientFunnelTotals>>
 
+// ── Month-over-month comparison ──────────────────────────────────────────────
+
+function toDateStr(d: Date): string {
+  return d.toISOString().split('T')[0]
+}
+
+export interface MonthComparisonMetric {
+  current: number
+  previous: number
+  // null = no baseline to compare against (previous was 0 but current isn't) —
+  // a percentage there would be infinite/meaningless, so the UI shows "Nuevo"
+  // instead of a made-up number.
+  deltaPct: number | null
+}
+
+export interface MonthComparison {
+  currentRange: { start: string; end: string }
+  previousRange: { start: string; end: string }
+  chats: MonthComparisonMetric
+  cierres: MonthComparisonMetric
+  facturacion: MonthComparisonMetric
+}
+
+function pctChange(current: number, previous: number): number | null {
+  if (previous === 0) return current === 0 ? 0 : null
+  return ((current - previous) / previous) * 100
+}
+
+// Compares month-to-date against the SAME number of days last month — not
+// full calendar month vs full calendar month. Mid-month, a partial current
+// month against a complete previous one would always read as a decline
+// regardless of actual pace, which defeats the point of a "did we go up or
+// down" comparison.
+export async function getMonthOverMonthComparison(clientId: string): Promise<MonthComparison> {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth()
+  const day = now.getDate()
+
+  const currentStart = new Date(year, month, 1)
+
+  const previousMonthFirst = new Date(year, month - 1, 1)
+  const daysInPreviousMonth = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth() + 1, 0).getDate()
+  const previousStart = previousMonthFirst
+  const previousEnd = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth(), Math.min(day, daysInPreviousMonth))
+
+  const currentRange = { start: toDateStr(currentStart), end: toDateStr(now) }
+  const previousRange = { start: toDateStr(previousStart), end: toDateStr(previousEnd) }
+
+  const [current, previous] = await Promise.all([
+    getEffectiveMetricsForRange(clientId, currentRange.start, currentRange.end),
+    getEffectiveMetricsForRange(clientId, previousRange.start, previousRange.end),
+  ])
+
+  return {
+    currentRange,
+    previousRange,
+    chats: {
+      current: current.chats_abiertos,
+      previous: previous.chats_abiertos,
+      deltaPct: pctChange(current.chats_abiertos, previous.chats_abiertos),
+    },
+    cierres: {
+      current: current.cierres,
+      previous: previous.cierres,
+      deltaPct: pctChange(current.cierres, previous.cierres),
+    },
+    facturacion: {
+      current: current.facturacion,
+      previous: previous.facturacion,
+      deltaPct: pctChange(current.facturacion, previous.facturacion),
+    },
+  }
+}
+
 export async function getBenchmarkAlerts(
   clientId: string,
   metrics: DashboardMetrics
