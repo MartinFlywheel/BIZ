@@ -149,6 +149,7 @@ export interface MonthComparison {
   currentRange: { start: string; end: string }
   previousRange: { start: string; end: string }
   chats: MonthComparisonMetric
+  conversaciones: MonthComparisonMetric
   cierres: MonthComparisonMetric
   facturacion: MonthComparisonMetric
 }
@@ -191,6 +192,11 @@ export async function getMonthOverMonthComparison(clientId: string): Promise<Mon
       current: current.chats_abiertos,
       previous: previous.chats_abiertos,
       deltaPct: pctChange(current.chats_abiertos, previous.chats_abiertos),
+    },
+    conversaciones: {
+      current: current.conversaciones,
+      previous: previous.conversaciones,
+      deltaPct: pctChange(current.conversaciones, previous.conversaciones),
     },
     cierres: {
       current: current.cierres,

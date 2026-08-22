@@ -26,6 +26,7 @@ export function WeeklyTrend({ weeks }: Props) {
               <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
                 <th className="px-4 py-3 font-medium">Semana</th>
                 <th className="px-4 py-3 font-medium">Chats</th>
+                <th className="px-4 py-3 font-medium">Conversaciones</th>
                 <th className="px-4 py-3 font-medium">Ventas (cierres)</th>
                 <th className="px-4 py-3 font-medium">Facturación</th>
               </tr>
@@ -42,6 +43,12 @@ export function WeeklyTrend({ weeks }: Props) {
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-zinc-100">{formatNumber(week.chats_abiertos)}</span>
                         {previous && <DeltaBadge deltaPct={pctChange(week.chats_abiertos, previous.chats_abiertos)} />}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-zinc-100">{formatNumber(week.conversaciones)}</span>
+                        {previous && <DeltaBadge deltaPct={pctChange(week.conversaciones, previous.conversaciones)} />}
                       </div>
                     </td>
                     <td className="px-4 py-3">

@@ -73,8 +73,9 @@ export function MonthComparisonCards({ comparison }: Props) {
           {formatDate(comparison.previousRange.start)} – {formatDate(comparison.previousRange.end)}
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <ComparisonTile title="Chats" metric={comparison.chats} format={formatNumber} />
+        <ComparisonTile title="Conversaciones" metric={comparison.conversaciones} format={formatNumber} />
         <ComparisonTile title="Ventas (cierres)" metric={comparison.cierres} format={formatNumber} />
         <ComparisonTile title="Facturación" metric={comparison.facturacion} format={formatCurrency} />
       </div>
