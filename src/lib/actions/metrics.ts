@@ -35,13 +35,21 @@ export async function getDashboardMetrics(
   // These fetch actual rows (not just a count) to filter/sum client-side,
   // so — unlike the count-only queries above — they need to page past
   // Supabase's 1000-row cap explicitly.
-  const [interactionsRes, convRealRes, leads, views] = await Promise.all([
+  //
+  // Agendas/shows/cierres come from agenda_records.estado — the same
+  // source calculateFunnel/getLiveMetricsBuckets already use. This used
+  // to filter leads.stage against 'agenda_set'/'showed_up'/'closed_won'/
+  // 'closed_lost', values from an old English stage taxonomy that no
+  // longer exists (LEAD_STAGES today is 'agendado'/'cierre'/etc, in
+  // Spanish) — so this always matched zero rows and Tasa de Show-up /
+  // Tasa de Cierre showed 0.0% regardless of real activity.
+  const [interactionsRes, convRealRes, agendaRecords, views] = await Promise.all([
     interactionsQuery,
     convRealQuery,
     fetchAllRows((from, to) => {
-      let q = supabase.from('leads').select('stage').eq('client_id', clientId).range(from, to)
-      if (dateFrom) q = q.gte('created_at', dateFrom)
-      if (dateTo) q = q.lte('created_at', dateTo)
+      let q = supabase.from('agenda_records').select('estado').eq('client_id', clientId).range(from, to)
+      if (dateFrom) q = q.gte('fecha_agenda', dateFrom)
+      if (dateTo) q = q.lte('fecha_agenda', dateTo)
       return q
     }),
     fetchAllRows((from, to) => {
@@ -55,20 +63,23 @@ export async function getDashboardMetrics(
   const chats_abiertos = interactionsRes.count || 0
   const conversaciones_reales = convRealRes.count || 0
 
-  const agendas = leads.filter((l) =>
-    ['agenda_set', 'showed_up', 'closed_won', 'closed_lost'].includes(l.stage)
+  const agendas = agendaRecords.length
+  // "Llamadas" = agendas whose call already happened (excludes 'Pendiente'
+  // bookings that haven't had the chance to show yet).
+  const llamadas = agendaRecords.filter((a) =>
+    a.estado && ['Show', 'No Show', 'No Cerrado', 'Cerrado', 'No Calificado'].includes(a.estado)
   ).length
-  const show_ups = leads.filter((l) =>
-    ['showed_up', 'closed_won'].includes(l.stage)
+  const show_ups = agendaRecords.filter((a) =>
+    a.estado && ['Show', 'No Cerrado', 'Cerrado'].includes(a.estado)
   ).length
-  const cierres = leads.filter((l) => l.stage === 'closed_won').length
+  const cierres = agendaRecords.filter((a) => a.estado === 'Cerrado').length
 
   const total_views = views.reduce((sum, c) => sum + (c.views || 0), 0)
 
   const tasa_respuesta = chats_abiertos > 0
     ? (conversaciones_reales / chats_abiertos) * 100
     : 0
-  const tasa_show_up = agendas > 0 ? (show_ups / agendas) * 100 : 0
+  const tasa_show_up = llamadas > 0 ? (show_ups / llamadas) * 100 : 0
   const tasa_cierre = show_ups > 0 ? (cierres / show_ups) * 100 : 0
 
   return {

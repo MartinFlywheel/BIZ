@@ -7,7 +7,7 @@ interface Props {
   comparison: MonthComparison
 }
 
-function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
+export function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
   if (deltaPct === null) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800 px-2 py-0.5 text-xs font-medium text-zinc-400">

@@ -1,12 +1,13 @@
 import { Suspense } from 'react'
 import { getClients } from '@/lib/actions/clients'
-import { checkHealthAlerts, calculateFunnel, type FunnelPeriodType } from '@/lib/actions/funnel'
+import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType } from '@/lib/actions/funnel'
 import { getDashboardMetrics, getBenchmarkAlerts, getMonthOverMonthComparison } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
 import { MonthComparisonCards } from '@/components/dashboard/month-comparison'
+import { WeeklyTrend } from '@/components/dashboard/weekly-trend'
 import { ClientSelector } from '@/components/dashboard/client-selector'
 import { ContentTypeToggle } from '@/components/dashboard/content-type-toggle'
 import { PeriodToggle } from '@/components/dashboard/period-toggle'
@@ -112,10 +113,11 @@ async function ClientDetail({
   if (!selectedClient) return null
 
   // Run all queries in parallel
-  const [funnel, liveMetrics, monthComparison] = await Promise.all([
+  const [funnel, liveMetrics, monthComparison, weeklyTrend] = await Promise.all([
     calculateFunnel(clientId, period, undefined, contentType),
     getDashboardMetrics(clientId),
     getMonthOverMonthComparison(clientId),
+    getComputedClientMetrics(clientId, 'weekly', 8),
   ])
 
   const alerts = liveMetrics ? await getBenchmarkAlerts(clientId, liveMetrics) : []
@@ -162,7 +164,7 @@ async function ClientDetail({
             <MetricCard
               title="Tasa de Show-up"
               value={formatPercent(liveMetrics.tasa_show_up)}
-              subtitle="Show-ups / Agendas"
+              subtitle="Show-ups / Llamadas"
               alert={alertMap['tasa_show_up']}
             />
             <MetricCard
@@ -174,6 +176,8 @@ async function ClientDetail({
           </div>
         </div>
       )}
+
+      <WeeklyTrend weeks={weeklyTrend} />
     </div>
   )
 }
