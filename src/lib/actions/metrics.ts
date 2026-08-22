@@ -47,7 +47,7 @@ export async function getDashboardMetrics(
     interactionsQuery,
     convRealQuery,
     fetchAllRows((from, to) => {
-      let q = supabase.from('agenda_records').select('estado').eq('client_id', clientId).range(from, to)
+      let q = supabase.from('agenda_records').select('estado, monto_facturacion, monto_upfront').eq('client_id', clientId).range(from, to)
       if (dateFrom) q = q.gte('fecha_agenda', dateFrom)
       if (dateTo) q = q.lte('fecha_agenda', dateTo)
       return q
@@ -72,13 +72,19 @@ export async function getDashboardMetrics(
   const show_ups = agendaRecords.filter((a) =>
     a.estado && ['Show', 'No Cerrado', 'Cerrado'].includes(a.estado)
   ).length
-  const cierres = agendaRecords.filter((a) => a.estado === 'Cerrado').length
+  const cierresRows = agendaRecords.filter((a) => a.estado === 'Cerrado')
+  const cierres = cierresRows.length
+  const facturacion = cierresRows.reduce((sum, a) => sum + (Number(a.monto_facturacion) || 0), 0)
+  const cash_collected = cierresRows.reduce((sum, a) => sum + (Number(a.monto_upfront) || 0), 0)
 
   const total_views = views.reduce((sum, c) => sum + (c.views || 0), 0)
 
   const tasa_respuesta = chats_abiertos > 0
     ? (conversaciones_reales / chats_abiertos) * 100
     : 0
+  // Against conversaciones reales (real conversations), not raw chats —
+  // matches calculateFunnel's own agendamiento rate.
+  const tasa_agendamiento = conversaciones_reales > 0 ? (agendas / conversaciones_reales) * 100 : 0
   const tasa_show_up = llamadas > 0 ? (show_ups / llamadas) * 100 : 0
   const tasa_cierre = show_ups > 0 ? (cierres / show_ups) * 100 : 0
 
@@ -88,8 +94,11 @@ export async function getDashboardMetrics(
     agendas,
     show_ups,
     cierres,
+    facturacion,
+    cash_collected,
     total_views,
     tasa_respuesta,
+    tasa_agendamiento,
     tasa_show_up,
     tasa_cierre,
   }
@@ -145,13 +154,30 @@ export interface MonthComparisonMetric {
   deltaPct: number | null
 }
 
+// Rates (already a %) compare as a point difference, not a relative % change
+// of a percentage — going from 10% to 15% reading as "+50%" would be
+// confusing; "+5 pts" is what it actually means. Point differences are
+// always defined (no division-by-zero case like count-based % change has),
+// so there's no null case here.
+export interface RateComparisonMetric {
+  current: number
+  previous: number
+  deltaPoints: number
+}
+
 export interface MonthComparison {
   currentRange: { start: string; end: string }
   previousRange: { start: string; end: string }
+  views: MonthComparisonMetric
   chats: MonthComparisonMetric
   conversaciones: MonthComparisonMetric
+  agendas: MonthComparisonMetric
   cierres: MonthComparisonMetric
   facturacion: MonthComparisonMetric
+  tasaRespuesta: RateComparisonMetric
+  tasaAgendamiento: RateComparisonMetric
+  tasaShowUp: RateComparisonMetric
+  tasaCierre: RateComparisonMetric
 }
 
 function pctChange(current: number, previous: number): number | null {
@@ -164,6 +190,11 @@ function pctChange(current: number, previous: number): number | null {
 // month against a complete previous one would always read as a decline
 // regardless of actual pace, which defeats the point of a "did we go up or
 // down" comparison.
+//
+// Built on getDashboardMetrics (dateFrom/dateTo scoped) rather than a
+// separate computation, so every number here is guaranteed consistent with
+// what "Métricas en Vivo (CRM)" shows for the same client — same source
+// tables, same classification/estado rules, just date-scoped twice.
 export async function getMonthOverMonthComparison(clientId: string): Promise<MonthComparison> {
   const now = new Date()
   const year = now.getFullYear()
@@ -181,33 +212,31 @@ export async function getMonthOverMonthComparison(clientId: string): Promise<Mon
   const previousRange = { start: toDateStr(previousStart), end: toDateStr(previousEnd) }
 
   const [current, previous] = await Promise.all([
-    getEffectiveMetricsForRange(clientId, currentRange.start, currentRange.end),
-    getEffectiveMetricsForRange(clientId, previousRange.start, previousRange.end),
+    getDashboardMetrics(clientId, currentRange.start, currentRange.end),
+    getDashboardMetrics(clientId, previousRange.start, previousRange.end),
   ])
+
+  function count(currentValue: number, previousValue: number): MonthComparisonMetric {
+    return { current: currentValue, previous: previousValue, deltaPct: pctChange(currentValue, previousValue) }
+  }
+
+  function rate(currentValue: number, previousValue: number): RateComparisonMetric {
+    return { current: currentValue, previous: previousValue, deltaPoints: currentValue - previousValue }
+  }
 
   return {
     currentRange,
     previousRange,
-    chats: {
-      current: current.chats_abiertos,
-      previous: previous.chats_abiertos,
-      deltaPct: pctChange(current.chats_abiertos, previous.chats_abiertos),
-    },
-    conversaciones: {
-      current: current.conversaciones,
-      previous: previous.conversaciones,
-      deltaPct: pctChange(current.conversaciones, previous.conversaciones),
-    },
-    cierres: {
-      current: current.cierres,
-      previous: previous.cierres,
-      deltaPct: pctChange(current.cierres, previous.cierres),
-    },
-    facturacion: {
-      current: current.facturacion,
-      previous: previous.facturacion,
-      deltaPct: pctChange(current.facturacion, previous.facturacion),
-    },
+    views: count(current.total_views, previous.total_views),
+    chats: count(current.chats_abiertos, previous.chats_abiertos),
+    conversaciones: count(current.conversaciones_reales, previous.conversaciones_reales),
+    agendas: count(current.agendas, previous.agendas),
+    cierres: count(current.cierres, previous.cierres),
+    facturacion: count(current.facturacion, previous.facturacion),
+    tasaRespuesta: rate(current.tasa_respuesta, previous.tasa_respuesta),
+    tasaAgendamiento: rate(current.tasa_agendamiento, previous.tasa_agendamiento),
+    tasaShowUp: rate(current.tasa_show_up, previous.tasa_show_up),
+    tasaCierre: rate(current.tasa_cierre, previous.tasa_cierre),
   }
 }
 

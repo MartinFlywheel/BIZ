@@ -329,8 +329,11 @@ export interface DashboardMetrics {
   agendas: number
   show_ups: number
   cierres: number
+  facturacion: number
+  cash_collected: number
   total_views: number
   tasa_respuesta: number
+  tasa_agendamiento: number
   tasa_show_up: number
   tasa_cierre: number
 }
