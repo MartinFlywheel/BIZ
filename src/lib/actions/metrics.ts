@@ -17,19 +17,35 @@ export async function getDashboardMetrics(
     .select('classification', { count: 'exact', head: true })
     .eq('client_id', clientId)
 
+  // Real conversation OR qualified — not an exact match on 'conversacion_real'
+  // alone. Classification is promoted in place as a lead progresses, so a
+  // lead that reached 'lead_calificado' no longer carries the
+  // 'conversacion_real' value at all, even though it obviously did have a
+  // real conversation on the way there. An exact match undercounts older
+  // cohorts (which had time to get promoted forward) relative to this
+  // month's (which mostly haven't yet), making a month-over-month
+  // comparison of this number swing wildly for reasons that have nothing to
+  // do with actual conversation volume. Matches calculateFunnel's own
+  // "conversaciones" definition.
   let convRealQuery = supabase
     .from('interactions')
     .select('classification', { count: 'exact', head: true })
     .eq('client_id', clientId)
-    .eq('classification', 'conversacion_real')
+    .in('classification', ['conversacion_real', 'lead_calificado'])
 
+  // bot_triggered_at/published_at are timestamptz columns — a bare date
+  // string like '2026-08-22' casts to midnight UTC on both .gte and .lte,
+  // so an unsuffixed .lte(dateTo) silently excludes the entire last day of
+  // the range (everything after 00:00:00). Same explicit day-boundary
+  // convention getLiveMetricsBuckets already uses. fecha_agenda below is a
+  // plain date column, not timestamptz, so it doesn't need this.
   if (dateFrom) {
-    interactionsQuery = interactionsQuery.gte('bot_triggered_at', dateFrom)
-    convRealQuery = convRealQuery.gte('bot_triggered_at', dateFrom)
+    interactionsQuery = interactionsQuery.gte('bot_triggered_at', `${dateFrom}T00:00:00Z`)
+    convRealQuery = convRealQuery.gte('bot_triggered_at', `${dateFrom}T00:00:00Z`)
   }
   if (dateTo) {
-    interactionsQuery = interactionsQuery.lte('bot_triggered_at', dateTo)
-    convRealQuery = convRealQuery.lte('bot_triggered_at', dateTo)
+    interactionsQuery = interactionsQuery.lte('bot_triggered_at', `${dateTo}T23:59:59Z`)
+    convRealQuery = convRealQuery.lte('bot_triggered_at', `${dateTo}T23:59:59Z`)
   }
 
   // These fetch actual rows (not just a count) to filter/sum client-side,
@@ -54,8 +70,8 @@ export async function getDashboardMetrics(
     }),
     fetchAllRows((from, to) => {
       let q = supabase.from('content_pieces').select('views').eq('client_id', clientId).range(from, to)
-      if (dateFrom) q = q.gte('published_at', dateFrom)
-      if (dateTo) q = q.lte('published_at', dateTo)
+      if (dateFrom) q = q.gte('published_at', `${dateFrom}T00:00:00Z`)
+      if (dateTo) q = q.lte('published_at', `${dateTo}T23:59:59Z`)
       return q
     }),
   ])
