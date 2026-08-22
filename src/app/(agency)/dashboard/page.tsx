@@ -112,12 +112,9 @@ async function ClientDetail({
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
-  // Run all queries in parallel
-  const [funnel, liveMetrics, monthComparison, weeklyTrend] = await Promise.all([
+  const [funnel, liveMetrics] = await Promise.all([
     calculateFunnel(clientId, period, undefined, contentType),
     getDashboardMetrics(clientId),
-    getMonthOverMonthComparison(clientId),
-    getComputedClientMetrics(clientId, 'weekly', 8),
   ])
 
   const alerts = liveMetrics ? await getBenchmarkAlerts(clientId, liveMetrics) : []
@@ -141,8 +138,6 @@ async function ClientDetail({
           </div>
         </Card>
       )}
-
-      <MonthComparisonCards comparison={monthComparison} />
 
       {liveMetrics && (
         <div className="space-y-4">
@@ -176,7 +171,36 @@ async function ClientDetail({
           </div>
         </div>
       )}
+    </div>
+  )
+}
 
+// ── Comparison section — independent of the period/type toggle, so switching
+// those doesn't wait on this section's own (heavier) queries. Keyed only by
+// clientId: this data doesn't change when the funnel's period does. ─────────
+
+function ComparisonSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-4 w-40 rounded bg-white/[0.05]" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.022)', border: '1px solid rgba(255,255,255,0.07)', height: 104 }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+async function ComparisonSection({ clientId }: { clientId: string }) {
+  const [monthComparison, weeklyTrend] = await Promise.all([
+    getMonthOverMonthComparison(clientId),
+    getComputedClientMetrics(clientId, 'weekly', 8),
+  ])
+
+  return (
+    <div className="space-y-8">
+      <MonthComparisonCards comparison={monthComparison} />
       <WeeklyTrend weeks={weeklyTrend} />
     </div>
   )
@@ -218,11 +242,20 @@ export default async function DashboardPage({
       {/* Agency-wide health overview — always visible */}
       <HealthAlerts alerts={healthAlerts} selectedId={clientId} />
 
-      {/* Per-client: streams in behind a skeleton, key resets on client switch */}
+      {/* Per-client: streams in behind a skeleton, key resets on client switch.
+          Two independent Suspense boundaries — switching the period/type
+          toggle only re-triggers the funnel one (fast: a couple of queries)
+          instead of also waiting on the comparison section's heavier,
+          period-irrelevant queries (a 56-day live-metrics scan). */}
       {clientId && (
-        <Suspense key={`${clientId}-${type || 'all'}-${period}`} fallback={<FunnelSkeleton />}>
-          <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} />
-        </Suspense>
+        <>
+          <Suspense key={`${clientId}-${type || 'all'}-${period}`} fallback={<FunnelSkeleton />}>
+            <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} />
+          </Suspense>
+          <Suspense key={clientId} fallback={<ComparisonSkeleton />}>
+            <ComparisonSection clientId={clientId} />
+          </Suspense>
+        </>
       )}
     </div>
   )
