@@ -635,16 +635,30 @@ type TabData = Pick<Props, 'competitors' | 'competitorReels'>
 // load regardless of the active tab.
 export function ClientCompetitorsLazy({ clientId }: { clientId: string }) {
     const [data, setData] = useState<TabData | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const [attempt, setAttempt] = useState(0)
 
     const load = useCallback(() => {
-        getCompetitorsTabData(clientId).then((result) => setData(result))
+        getCompetitorsTabData(clientId).then((result) => setData(result)).catch((err) => console.error('[ClientCompetitors] reload failed', err))
     }, [clientId])
 
     useEffect(() => {
         let cancelled = false
-        getCompetitorsTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        setError(null)
+        getCompetitorsTabData(clientId)
+            .then((result) => { if (!cancelled) setData(result) })
+            .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Error inesperado') })
         return () => { cancelled = true }
-    }, [clientId])
+    }, [clientId, attempt])
+
+    if (error) {
+        return (
+            <div className="py-16 text-center text-sm">
+                <p className="text-red-400 mb-3">No se pudo cargar la competencia ({error}).</p>
+                <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+            </div>
+        )
+    }
 
     if (!data) {
         return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando competencia...</div>

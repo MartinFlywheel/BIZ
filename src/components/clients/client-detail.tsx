@@ -70,6 +70,17 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
     { id: 'producto', label: 'Producto' },
   ]
 
+  // Every tab here lazy-fetches its own data on mount. Tabs used to fully
+  // unmount when you switched away (only the active one was ever rendered),
+  // so revisiting a tab meant refetching everything from scratch every
+  // single click — for CRM specifically (12k+ leads on some clients, a
+  // 3-way-joined paginated query) that's expensive enough to feel like a
+  // regression. Once a tab has been opened, keep it mounted (hidden via
+  // CSS instead of unmounted) so switching back is instant and free.
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(
+    () => new Set([initialTab || tabs[0]?.id].filter((id): id is string => !!id))
+  )
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -97,41 +108,59 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
         )}
       </div>
 
-      <Tabs tabs={tabs} defaultTab={initialTab}>
+      <Tabs
+        tabs={tabs}
+        defaultTab={initialTab}
+        onTabChange={(id) => setVisitedTabs((prev) => (prev.has(id) ? prev : new Set(prev).add(id)))}
+      >
         {(activeTab) => (
           <>
-            {activeTab === 'analytics' && (
-              <ClientAnalyticsDashboard clientId={client.id} />
+            {visitedTabs.has('analytics') && (
+              <div hidden={activeTab !== 'analytics'}>
+                <ClientAnalyticsDashboard clientId={client.id} />
+              </div>
             )}
 
-            {activeTab === 'content_metrics' && (
-              <ContentMetricsGridLazy clientId={client.id} />
+            {visitedTabs.has('content_metrics') && (
+              <div hidden={activeTab !== 'content_metrics'}>
+                <ContentMetricsGridLazy clientId={client.id} />
+              </div>
             )}
 
-            {activeTab === 'pipeline' && (
-              <ContentPipelineBoard clientId={client.id} initialCardId={initialCardId} />
+            {visitedTabs.has('pipeline') && (
+              <div hidden={activeTab !== 'pipeline'}>
+                <ContentPipelineBoard clientId={client.id} initialCardId={initialCardId} />
+              </div>
             )}
 
-            {activeTab === 'crm' && (
-              <CrmTabLazy
-                allClients={allClients}
-                clientId={client.id}
-                customAvatars={client.custom_avatars}
-                isAdmin={isAdmin}
-                currentUserId={currentUserId}
-              />
+            {visitedTabs.has('crm') && (
+              <div hidden={activeTab !== 'crm'}>
+                <CrmTabLazy
+                  allClients={allClients}
+                  clientId={client.id}
+                  customAvatars={client.custom_avatars}
+                  isAdmin={isAdmin}
+                  currentUserId={currentUserId}
+                />
+              </div>
             )}
 
-            {activeTab === 'calls' && (
-              <ClientCallsListLazy clientId={client.id} />
+            {visitedTabs.has('calls') && (
+              <div hidden={activeTab !== 'calls'}>
+                <ClientCallsListLazy clientId={client.id} />
+              </div>
             )}
 
-            {activeTab === 'competencia' && (
-              <ClientCompetitorsLazy clientId={client.id} />
+            {visitedTabs.has('competencia') && (
+              <div hidden={activeTab !== 'competencia'}>
+                <ClientCompetitorsLazy clientId={client.id} />
+              </div>
             )}
 
-            {activeTab === 'producto' && (
-              <ProductTab clientId={client.id} />
+            {visitedTabs.has('producto') && (
+              <div hidden={activeTab !== 'producto'}>
+                <ProductTab clientId={client.id} />
+              </div>
             )}
           </>
         )}

@@ -9,6 +9,11 @@ import { getCallsCount } from '@/lib/actions/calls'
 import { getCompetitorsCount } from '@/lib/actions/competitors'
 import { ClientDetail } from '@/components/clients/client-detail'
 
+// Same reasoning as clients/[id]/page.tsx: Server Actions invoked from
+// this page's client components share its function budget, and the
+// default (10s on Hobby) isn't enough for a client with a large lead volume.
+export const maxDuration = 60
+
 export default async function PortalDashboardPage() {
   unstable_noStore()
 

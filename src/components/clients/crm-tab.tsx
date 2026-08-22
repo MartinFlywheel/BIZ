@@ -1554,9 +1554,12 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
   const [interactions, setInteractions] = useState<Interaction[]>([])
   const [agencyUsers, setAgencyUsers] = useState<AgencyUser[]>([])
   const [contentPieces, setContentPieces] = useState<ContentPiece[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
     let cancelled = false
+    setError(null)
     Promise.all([
       getLeadsForViewer(props.clientId),
       getInteractions(props.clientId),
@@ -1568,9 +1571,21 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
       setInteractions(interactionsData as unknown as Interaction[])
       setAgencyUsers(agencyUsersData as unknown as AgencyUser[])
       setContentPieces(contentPiecesData as unknown as ContentPiece[])
+    }).catch((err) => {
+      if (cancelled) return
+      setError(err instanceof Error ? err.message : 'Error inesperado')
     })
     return () => { cancelled = true }
-  }, [props.clientId])
+  }, [props.clientId, attempt])
+
+  if (error) {
+    return (
+      <div className="py-16 text-center text-sm">
+        <p className="text-red-400 mb-3">No se pudieron cargar los leads ({error}).</p>
+        <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+      </div>
+    )
+  }
 
   if (!leads) {
     return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando leads...</div>

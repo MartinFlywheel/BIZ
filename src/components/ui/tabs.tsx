@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 
 interface Tab {
   id: string
@@ -12,20 +12,20 @@ interface Tab {
 interface TabsProps {
   tabs: Tab[]
   defaultTab?: string
+  // Fired when the user switches to a different tab — lets a consumer that
+  // lazy-fetches per tab (clients/[id]) know which tabs to keep mounted
+  // instead of tearing them down and refetching every time they're revisited.
+  onTabChange?: (id: string) => void
   children: (activeTab: string) => React.ReactNode
 }
 
-export function Tabs({ tabs, defaultTab, children }: TabsProps) {
+export function Tabs({ tabs, defaultTab, onTabChange, children }: TabsProps) {
   const [active, setActive] = useState(defaultTab || tabs[0]?.id)
-  // Key increments on every tab switch to force re-mount of the animation
-  const [contentKey, setContentKey] = useState(0)
-  const prevTab = useRef(active)
 
   function handleTabChange(id: string) {
     if (id === active) return
-    prevTab.current = active
     setActive(id)
-    setContentKey((k) => k + 1)
+    onTabChange?.(id)
   }
 
   return (
@@ -58,8 +58,7 @@ export function Tabs({ tabs, defaultTab, children }: TabsProps) {
         ))}
       </div>
 
-      {/* Animated content panel — re-keyed on every tab switch */}
-      <div key={contentKey} className="tab-enter">
+      <div className="tab-enter">
         {children(active)}
       </div>
     </div>

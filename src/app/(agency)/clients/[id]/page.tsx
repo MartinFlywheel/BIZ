@@ -9,6 +9,13 @@ import { getCompetitorsCount } from '@/lib/actions/competitors'
 import { ClientDetail } from '@/components/clients/client-detail'
 import { notFound } from 'next/navigation'
 
+// Server Actions invoked from this page's client components (CrmTabLazy's
+// getLeadsForViewer/getInteractions, in particular) run under this route's
+// function budget. Vercel's default (10s on Hobby) isn't enough for a
+// client with a large lead volume — a 3-way-joined, paginated query can run
+// past it, killing the request with no error surfaced to the browser.
+export const maxDuration = 60
+
 export default async function ClientDetailPage({
   params,
 }: {

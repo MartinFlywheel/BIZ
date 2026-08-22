@@ -673,16 +673,30 @@ type TabData = Pick<Props, 'contentPieces' | 'contentMetrics' | 'contentAnalytic
 // was real weight on every visit to the client page, not just Contenido.
 export function ContentMetricsGridLazy({ clientId }: { clientId: string }) {
     const [data, setData] = useState<TabData | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const [attempt, setAttempt] = useState(0)
 
     const load = useCallback(() => {
-        getContentTabData(clientId).then((result) => setData(result))
+        getContentTabData(clientId).then((result) => setData(result)).catch((err) => console.error('[ContentMetricsGrid] reload failed', err))
     }, [clientId])
 
     useEffect(() => {
         let cancelled = false
-        getContentTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        setError(null)
+        getContentTabData(clientId)
+            .then((result) => { if (!cancelled) setData(result) })
+            .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Error inesperado') })
         return () => { cancelled = true }
-    }, [clientId])
+    }, [clientId, attempt])
+
+    if (error) {
+        return (
+            <div className="py-16 text-center text-sm">
+                <p className="text-red-400 mb-3">No se pudo cargar el contenido ({error}).</p>
+                <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+            </div>
+        )
+    }
 
     if (!data) {
         return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando contenido...</div>

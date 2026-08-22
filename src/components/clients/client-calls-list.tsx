@@ -561,16 +561,30 @@ type TabData = Pick<Props, 'calls' | 'callFolders' | 'agendaLeadOptions'>
 // every page load regardless of the active tab.
 export function ClientCallsListLazy({ clientId }: { clientId: string }) {
     const [data, setData] = useState<TabData | null>(null)
+    const [error, setError] = useState<string | null>(null)
+    const [attempt, setAttempt] = useState(0)
 
     const load = useCallback(() => {
-        getCallsTabData(clientId).then((result) => setData(result))
+        getCallsTabData(clientId).then((result) => setData(result)).catch((err) => console.error('[ClientCallsList] reload failed', err))
     }, [clientId])
 
     useEffect(() => {
         let cancelled = false
-        getCallsTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        setError(null)
+        getCallsTabData(clientId)
+            .then((result) => { if (!cancelled) setData(result) })
+            .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Error inesperado') })
         return () => { cancelled = true }
-    }, [clientId])
+    }, [clientId, attempt])
+
+    if (error) {
+        return (
+            <div className="py-16 text-center text-sm">
+                <p className="text-red-400 mb-3">No se pudieron cargar las llamadas ({error}).</p>
+                <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+            </div>
+        )
+    }
 
     if (!data) {
         return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando llamadas...</div>
