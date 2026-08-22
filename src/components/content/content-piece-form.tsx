@@ -10,9 +10,10 @@ import { Input } from '@/components/ui/input'
 interface Props {
     clientId: string
     onClose: () => void
+    onCreated?: () => void
 }
 
-export function ContentPieceForm({ clientId, onClose }: Props) {
+export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
@@ -33,6 +34,7 @@ export function ContentPieceForm({ clientId, onClose }: Props) {
             return
         }
         router.refresh()
+        onCreated?.()
         onClose()
     }
 

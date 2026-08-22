@@ -3,15 +3,10 @@ import { unstable_noStore } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { getClient } from '@/lib/actions/clients'
-import { getCampaigns } from '@/lib/actions/campaigns'
-import { getContentPieces, getContentMetricsByClient } from '@/lib/actions/content'
+import { getContentPiecesCount } from '@/lib/actions/content'
 import { getLeadsCount } from '@/lib/actions/leads'
-import { getCalls, getCallFolders } from '@/lib/actions/calls'
-import { getClientLeadFunnel } from '@/lib/actions/lead-funnel'
-import { getCompetitors, getCompetitorReelsByClient } from '@/lib/actions/competitors'
-import { getContentAnalytics } from '@/lib/actions/content-analytics'
-import { getClientFunnelTotals } from '@/lib/actions/metrics'
-import { getAgendaLeadOptions } from '@/lib/actions/agenda-records'
+import { getCallsCount } from '@/lib/actions/calls'
+import { getCompetitorsCount } from '@/lib/actions/competitors'
 import { ClientDetail } from '@/components/clients/client-detail'
 
 export default async function PortalDashboardPage() {
@@ -37,53 +32,26 @@ export default async function PortalDashboardPage() {
 
   const clientId = profile.client_id
 
-  const [
-    client,
-    campaigns,
-    contentPieces,
-    contentMetrics,
-    leadsCount,
-    calls,
-    callFolders,
-    agendaLeadOptions,
-    leadFunnel,
-    competitors,
-    competitorReels,
-    contentAnalytics,
-    funnelTotals,
-  ] = await Promise.all([
+  // Same fix as clients/[id]/page.tsx: this used to eagerly fetch every
+  // tab's full dataset (content pieces, calls, competitors, analytics...)
+  // before rendering anything. Only cheap counts ship now; each tab fetches
+  // its own data lazily once it's actually opened.
+  const [client, contentPiecesCount, leadsCount, callsCount, competitorsCount] = await Promise.all([
     getClient(clientId),
-    getCampaigns(clientId),
-    getContentPieces(clientId),
-    getContentMetricsByClient(clientId),
+    getContentPiecesCount(clientId),
     getLeadsCount(clientId),
-    getCalls(undefined, clientId),
-    getCallFolders(clientId),
-    getAgendaLeadOptions(clientId),
-    getClientLeadFunnel(clientId),
-    getCompetitors(clientId),
-    getCompetitorReelsByClient(clientId),
-    getContentAnalytics(clientId),
-    getClientFunnelTotals(clientId),
+    getCallsCount(clientId),
+    getCompetitorsCount(clientId),
   ])
 
   return (
     <Suspense fallback={null}>
       <ClientDetail
         client={client}
-        campaigns={campaigns}
-        contentPieces={contentPieces}
-        contentMetrics={contentMetrics}
+        contentPiecesCount={contentPiecesCount}
         leadsCount={leadsCount}
-        calls={calls}
-        callFolders={callFolders}
-        agendaLeadOptions={agendaLeadOptions}
-        agencyUsers={[]}
-        leadFunnel={leadFunnel}
-        competitors={competitors}
-        competitorReels={competitorReels}
-        contentAnalytics={contentAnalytics}
-        funnelTotals={funnelTotals}
+        callsCount={callsCount}
+        competitorsCount={competitorsCount}
         readOnly
       />
     </Suspense>

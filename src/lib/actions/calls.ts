@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { CallOutcome, CallSentiment, CallBucket, CallFolder } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import { getAgendaLeadOptions } from './agenda-records'
 
 export async function getCalls(leadId?: string, clientId?: string) {
   const supabase = await createClient()
@@ -25,6 +26,28 @@ export async function getCalls(leadId?: string, clientId?: string) {
     if (clientId) query = query.eq('leads.client_id', clientId)
     return query
   })
+}
+
+export async function getCallsCount(clientId: string): Promise<number> {
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('sales_calls')
+    .select('id, leads!inner(client_id)', { count: 'exact', head: true })
+    .eq('leads.client_id', clientId)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+// Everything the Llamadas tab needs, in one call — fetched only when that
+// tab actually opens.
+export async function getCallsTabData(clientId: string) {
+  const [calls, callFolders, agendaLeadOptions] = await Promise.all([
+    getCalls(undefined, clientId),
+    getCallFolders(clientId),
+    getAgendaLeadOptions(clientId),
+  ])
+  return { calls, callFolders, agendaLeadOptions }
 }
 
 export async function getCallFolders(clientId: string): Promise<CallFolder[]> {

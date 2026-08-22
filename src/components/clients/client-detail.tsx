@@ -6,11 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs } from '@/components/ui/tabs'
 import { ClientForm } from './client-form'
-import { ContentMetricsGrid } from '@/components/content/content-metrics-grid'
-import { type ContentMetric } from '@/components/content/content-funnel-form'
+import { ContentMetricsGridLazy } from '@/components/content/content-metrics-grid'
 
-import { ClientCallsList } from './client-calls-list'
-import { ClientCompetitors } from './client-competitors'
+import { ClientCallsListLazy } from './client-calls-list'
+import { ClientCompetitorsLazy } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
 import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
@@ -18,36 +17,15 @@ import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTabLazy } from './crm-tab'
 import { ProductTab } from './product-tab'
 import { Pencil, Trash2 } from 'lucide-react'
-import type { Client, Campaign, ContentPiece, SalesCall, CallFolder, Competitor, CompetitorReel } from '@/lib/types'
-import type { ClientFunnelAggregate } from '@/lib/actions/lead-funnel'
-import type { ContentAnalytics } from '@/lib/actions/content-analytics'
-import type { ClientFunnelTotals } from '@/lib/actions/metrics'
-import type { AgendaLeadOption } from '@/lib/actions/agenda-records'
-
-interface AgencyUser {
-  id: string
-  full_name: string
-  email: string
-  role: string
-  client_id?: string | null
-}
+import type { Client } from '@/lib/types'
 
 interface Props {
   client: Client
   allClients?: Client[]
-  campaigns: Campaign[]
-  contentPieces: ContentPiece[]
-  contentMetrics: ContentMetric[]
+  contentPiecesCount: number
   leadsCount: number
-  calls: SalesCall[]
-  callFolders: CallFolder[]
-  agendaLeadOptions: AgendaLeadOption[]
-  agencyUsers: AgencyUser[]
-  leadFunnel: ClientFunnelAggregate
-  competitors: Competitor[]
-  competitorReels: Record<string, CompetitorReel[]>
-  contentAnalytics: ContentAnalytics
-  funnelTotals: ClientFunnelTotals
+  callsCount: number
+  competitorsCount: number
   readOnly?: boolean
   isAdmin?: boolean
   // Setters only work leads/agendas — every other tab (analytics, content,
@@ -64,7 +42,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, allClients = [], campaigns: _campaigns, contentPieces, contentMetrics, leadsCount, calls, callFolders, agendaLeadOptions, agencyUsers, leadFunnel: _leadFunnel, competitors, competitorReels, contentAnalytics, funnelTotals, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
+export function ClientDetail({ client, allClients = [], contentPiecesCount, leadsCount, callsCount, competitorsCount, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -84,11 +62,11 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
     { id: 'crm', label: 'CRM', count: leadsCount },
   ] : [
     { id: 'analytics', label: 'Analítica' },
-    { id: 'content_metrics', label: 'Contenido', count: contentPieces.length },
+    { id: 'content_metrics', label: 'Contenido', count: contentPiecesCount },
     { id: 'pipeline', label: 'Script' },
     { id: 'crm', label: 'CRM', count: leadsCount },
-    { id: 'calls', label: 'Llamadas', count: calls.length },
-    { id: 'competencia', label: 'Competencia', count: competitors.length },
+    { id: 'calls', label: 'Llamadas', count: callsCount },
+    { id: 'competencia', label: 'Competencia', count: competitorsCount },
     { id: 'producto', label: 'Producto' },
   ]
 
@@ -127,13 +105,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
             )}
 
             {activeTab === 'content_metrics' && (
-              <ContentMetricsGrid
-                contentPieces={contentPieces}
-                contentMetrics={contentMetrics}
-                clientId={client.id}
-                contentAnalytics={contentAnalytics}
-                funnelTotals={funnelTotals}
-              />
+              <ContentMetricsGridLazy clientId={client.id} />
             )}
 
             {activeTab === 'pipeline' && (
@@ -142,9 +114,7 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
 
             {activeTab === 'crm' && (
               <CrmTabLazy
-                agencyUsers={agencyUsers}
                 allClients={allClients}
-                contentPieces={contentPieces}
                 clientId={client.id}
                 customAvatars={client.custom_avatars}
                 isAdmin={isAdmin}
@@ -153,20 +123,11 @@ export function ClientDetail({ client, allClients = [], campaigns: _campaigns, c
             )}
 
             {activeTab === 'calls' && (
-              <ClientCallsList
-                clientId={client.id}
-                calls={calls}
-                callFolders={callFolders}
-                agendaLeadOptions={agendaLeadOptions}
-              />
+              <ClientCallsListLazy clientId={client.id} />
             )}
 
             {activeTab === 'competencia' && (
-              <ClientCompetitors
-                competitors={competitors}
-                competitorReels={competitorReels}
-                clientId={client.id}
-              />
+              <ClientCompetitorsLazy clientId={client.id} />
             )}
 
             {activeTab === 'producto' && (

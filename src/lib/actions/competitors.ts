@@ -16,6 +16,27 @@ export async function getCompetitors(clientId: string): Promise<Competitor[]> {
   return data ?? []
 }
 
+export async function getCompetitorsCount(clientId: string): Promise<number> {
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('competitors')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+
+  if (error) throw error
+  return count ?? 0
+}
+
+// Both queries the Competencia tab needs, in one call — fetched only when
+// that tab actually opens.
+export async function getCompetitorsTabData(clientId: string) {
+  const [competitors, competitorReels] = await Promise.all([
+    getCompetitors(clientId),
+    getCompetitorReelsByClient(clientId),
+  ])
+  return { competitors, competitorReels }
+}
+
 export async function getCompetitorReelsByClient(clientId: string): Promise<Record<string, CompetitorReel[]>> {
   const { unstable_noStore } = await import('next/cache')
   unstable_noStore()

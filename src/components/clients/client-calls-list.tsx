@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
-import { createCallAction, createCallFolder, renameCallFolder, deleteCallFolder, moveCall } from '@/lib/actions/calls'
+import { createCallAction, createCallFolder, renameCallFolder, deleteCallFolder, moveCall, getCallsTabData } from '@/lib/actions/calls'
 import { getLeadOptions } from '@/lib/actions/leads'
 import { formatDate } from '@/lib/utils'
 import { ExternalLink, Clock, Mic, Plus, X, Phone, Folder, FolderPlus, ChevronRight, CheckCircle2, XCircle, Trash2, Pencil } from 'lucide-react'
@@ -25,6 +25,7 @@ interface Props {
     calls: SalesCall[]
     callFolders: CallFolder[]
     agendaLeadOptions: AgendaLeadOption[]
+    reload: () => void
 }
 
 function formatDuration(seconds: number | null): string {
@@ -80,7 +81,7 @@ function flattenFolders(folders: CallFolder[], bucket: CallBucket, parentId: str
     return children.flatMap((f) => [{ folder: f, depth }, ...flattenFolders(folders, bucket, f.id, depth + 1)])
 }
 
-export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOptions }: Props) {
+export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOptions, reload }: Props) {
     const [location, setLocation] = useState<Location>({ bucket: null, folderId: null })
     const [showForm, setShowForm] = useState(false)
     const [loading, setLoading] = useState(false)
@@ -124,6 +125,7 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
         setNewFolderName('')
         setNewFolderOpen(false)
         router.refresh()
+        reload()
     }
 
     async function handleRenameFolder(id: string) {
@@ -132,6 +134,7 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
         if (!name) return
         await renameCallFolder(id, name)
         router.refresh()
+        reload()
     }
 
     async function handleDeleteFolder(folder: CallFolder) {
@@ -139,12 +142,14 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
         if (location.folderId === folder.id) setLocation({ bucket: folder.bucket, folderId: folder.parent_id })
         await deleteCallFolder(folder.id)
         router.refresh()
+        reload()
     }
 
     async function handleMoveCall(callId: string, value: string) {
         const [bucket, folderId] = value.split('|') as [CallBucket, string]
         await moveCall(callId, bucket, folderId || null)
         router.refresh()
+        reload()
     }
 
     function handleLeadChange(leadId: string) {
@@ -164,6 +169,7 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
             if (location.folderId) formData.set('folder_id', location.folderId)
             await createCallAction(formData)
             router.refresh()
+            reload()
             setShowForm(false)
             setSelectedAgendaLead(null)
             setScheduledAt('')
@@ -546,4 +552,29 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
             )}
         </div>
     )
+}
+
+type TabData = Pick<Props, 'calls' | 'callFolders' | 'agendaLeadOptions'>
+
+// Fetches the Llamadas tab's data only once this tab actually opens —
+// clients/[id]/page.tsx no longer pulls calls/folders/agenda options in on
+// every page load regardless of the active tab.
+export function ClientCallsListLazy({ clientId }: { clientId: string }) {
+    const [data, setData] = useState<TabData | null>(null)
+
+    const load = useCallback(() => {
+        getCallsTabData(clientId).then((result) => setData(result))
+    }, [clientId])
+
+    useEffect(() => {
+        let cancelled = false
+        getCallsTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        return () => { cancelled = true }
+    }, [clientId])
+
+    if (!data) {
+        return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando llamadas...</div>
+    }
+
+    return <ClientCallsList {...data} clientId={clientId} reload={load} />
 }

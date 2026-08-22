@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
-import { getLiveMetricsBuckets, getEffectiveMetricsForRange, type ContentTypeFilter } from './live-metrics'
+import { getLiveMetricsBuckets, getEffectiveMetricsForRange, dailyBucketsFor, type ContentTypeFilter, type PeriodMetrics, type DateBucket } from './live-metrics'
 import { OVERRIDABLE_FIELDS, type OverridableField } from '@/lib/metrics-types'
 
 
@@ -371,18 +371,59 @@ export async function getComputedClientMetrics(
   // any Diario overrides already folded in). Not independently editable: a
   // week-level number can't be split back into days unambiguously, so these
   // rows carry no overrides of their own.
-  const [effectiveRows, manualRes] = await Promise.all([
-    Promise.all(periods.map((p) => getEffectiveMetricsForRange(clientId, p.start, p.end))),
+  //
+  // Fetched as ONE pass across the full span of all `count` periods, instead
+  // of calling getEffectiveMetricsForRange once per period — that used to
+  // re-run the whole live-metrics query set (up to 3 paginated table scans
+  // each) from scratch per period, turning one render of "Registro de
+  // métricas" (12 periods) into dozens of DB round trips.
+  const rangeStart = periods.reduce((min, p) => (p.start < min ? p.start : min), periods[0].start)
+  const rangeEnd = periods.reduce((max, p) => (p.end > max ? p.end : max), periods[0].end)
+  const dayBuckets = await dailyBucketsFor(rangeStart, rangeEnd)
+
+  const [liveByDay, dailyOverridesRes, manualRes] = await Promise.all([
+    getLiveMetricsBuckets(clientId, dayBuckets),
+    supabase
+      .from('client_metrics')
+      .select('period_start, views_reels, views_historias, chats_abiertos, conversaciones, agendas, shows, cierres, facturacion, cash_collected')
+      .eq('client_id', clientId)
+      .eq('period_type', 'daily')
+      .gte('period_start', rangeStart)
+      .lte('period_start', rangeEnd),
     manualResPromise,
   ])
+
+  const dailyOverridesByDay = new Map(
+    (dailyOverridesRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
+  )
+
+  function effectiveForDay(day: DateBucket): PeriodMetrics {
+    const live = liveByDay[day.key]
+    const override = dailyOverridesByDay.get(day.key)
+    const result = { ...live }
+    for (const field of OVERRIDABLE_FIELDS) {
+      const overrideValue = override?.[field]
+      if (overrideValue !== null && overrideValue !== undefined) result[field] = overrideValue as number
+    }
+    return result
+  }
+
+  function sumMetrics(a: PeriodMetrics, b: PeriodMetrics): PeriodMetrics {
+    const sum = { ...a }
+    for (const key of Object.keys(sum) as (keyof PeriodMetrics)[]) {
+      sum[key] += b[key]
+    }
+    return sum
+  }
 
   const manualByStart = new Map(
     (manualRes.data || []).map((r) => [r.period_start as string, r as Record<string, unknown>])
   )
 
-  return periods.map((p, i) => {
+  return periods.map((p) => {
     const manual = manualByStart.get(p.start)
-    const effective = effectiveRows[i]
+    const periodDays = dayBuckets.filter((d) => d.start >= p.start && d.start <= p.end)
+    const effective = periodDays.map(effectiveForDay).reduce(sumMetrics)
 
     const liveFields: Record<OverridableField, number> = {
       views_reels: effective.views_reels,

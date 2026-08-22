@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import type { ContentType } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import { getContentAnalytics } from './content-analytics'
+import { getClientFunnelTotals } from './metrics'
 
 export async function getContentPieces(clientId?: string) {
   const supabase = await createClient()
@@ -19,6 +21,17 @@ export async function getContentPieces(clientId?: string) {
     if (clientId) query = query.eq('client_id', clientId)
     return query
   })
+}
+
+export async function getContentPiecesCount(clientId: string): Promise<number> {
+  const supabase = await createClient()
+  const { count, error } = await supabase
+    .from('content_pieces')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+
+  if (error) throw error
+  return count ?? 0
 }
 
 export async function createContentAction(formData: FormData) {
@@ -174,6 +187,19 @@ export async function getContentMetricsByClient(clientId: string) {
 
   if (error) throw error
   return data
+}
+
+// Everything the Contenido tab needs, in one call — fetched only when that
+// tab actually opens (clients/[id]/page.tsx no longer pulls this in on
+// every page load regardless of which tab is active).
+export async function getContentTabData(clientId: string) {
+  const [contentPieces, contentMetrics, contentAnalytics, funnelTotals] = await Promise.all([
+    getContentPieces(clientId),
+    getContentMetricsByClient(clientId),
+    getContentAnalytics(clientId),
+    getClientFunnelTotals(clientId),
+  ])
+  return { contentPieces, contentMetrics, contentAnalytics, funnelTotals }
 }
 
 export interface QuickAddResult {

@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
 import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { ContentConversationTable } from './content-conversation-table'
-import { deleteContentAction } from '@/lib/actions/content'
+import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
 import { quickAddLatestReels } from '@/lib/actions/instagram'
 import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
@@ -135,6 +135,7 @@ interface Props {
     clientId: string
     contentAnalytics: ContentAnalytics
     funnelTotals: ClientFunnelTotals
+    reload: () => void
 }
 
 function FunnelStep({
@@ -200,7 +201,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'live', label: 'Vivos' },
 ]
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
@@ -247,7 +248,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     ? `Sin nuevos reels (${result.skipped} ya existían)`
                     : `${result.added} reel${result.added !== 1 ? 's' : ''} agregado${result.added !== 1 ? 's' : ''}${result.skipped > 0 ? `, ${result.skipped} ya existían` : ''}`
                 setQuickAddToast({ type: 'success', message: msg })
-                if (result.added > 0) router.refresh()
+                if (result.added > 0) { router.refresh(); reload() }
             }
         } catch (err) {
             setQuickAddToast({ type: 'error', message: err instanceof Error ? err.message : 'Error inesperado' })
@@ -264,6 +265,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         try {
             await deleteContentAction(piece.id, clientId)
             router.refresh()
+            reload()
         } catch {
             alert('Error al eliminar')
         }
@@ -647,14 +649,44 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     existingMetric={selectedMetric}
                     chatStats={interactionCountsByPiece.get(selectedPiece.id) ?? null}
                     onClose={() => setSelectedPiece(null)}
+                    onSaved={reload}
                 />
             )}
             {showNewPieceForm && (
                 <ContentPieceForm
                     clientId={clientId}
                     onClose={() => setShowNewPieceForm(false)}
+                    onCreated={reload}
                 />
             )}
         </div>
     )
+}
+
+type TabData = Pick<Props, 'contentPieces' | 'contentMetrics' | 'contentAnalytics' | 'funnelTotals'>
+
+// Fetches the Contenido tab's data (pieces, metrics, analytics, funnel
+// totals) only once this tab actually opens — clients/[id]/page.tsx no
+// longer pulls this in on every page load regardless of the active tab.
+// getContentAnalytics/getClientFunnelTotals in particular each do their own
+// full paginated content_pieces scan plus several joined lookups, so this
+// was real weight on every visit to the client page, not just Contenido.
+export function ContentMetricsGridLazy({ clientId }: { clientId: string }) {
+    const [data, setData] = useState<TabData | null>(null)
+
+    const load = useCallback(() => {
+        getContentTabData(clientId).then((result) => setData(result))
+    }, [clientId])
+
+    useEffect(() => {
+        let cancelled = false
+        getContentTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        return () => { cancelled = true }
+    }, [clientId])
+
+    if (!data) {
+        return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando contenido...</div>
+    }
+
+    return <ContentMetricsGrid {...data} clientId={clientId} reload={load} />
 }

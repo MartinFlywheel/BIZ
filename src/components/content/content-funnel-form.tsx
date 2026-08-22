@@ -30,6 +30,7 @@ interface Props {
     existingMetric?: ContentMetric | null
     chatStats?: { chats: number; conversaciones: number } | null
     onClose: () => void
+    onSaved?: () => void
 }
 
 function StatTile({ label, value }: { label: string; value: string }) {
@@ -41,7 +42,7 @@ function StatTile({ label, value }: { label: string; value: string }) {
     )
 }
 
-export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, onClose }: Props) {
+export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, onClose, onSaved }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
@@ -54,6 +55,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, onC
             const formData = new FormData(e.currentTarget)
             await upsertContentMetrics(contentPiece.id, contentPiece.client_id, formData)
             router.refresh()
+            onSaved?.()
             onClose()
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Error al guardar métricas')

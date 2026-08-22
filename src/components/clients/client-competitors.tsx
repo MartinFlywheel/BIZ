@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import {
     createCompetitorAction,
     deleteCompetitorAction,
     updateCompetitorAnalysis,
+    getCompetitorsTabData,
 } from '@/lib/actions/competitors'
 import {
     Plus,
@@ -36,6 +37,7 @@ interface Props {
     competitors: Competitor[]
     competitorReels: Record<string, CompetitorReel[]>
     clientId: string
+    reload: () => void
 }
 
 // ── Nuevo Competidor Modal ────────────────────────────────────────────────────
@@ -43,9 +45,11 @@ interface Props {
 function NuevoCompetidorForm({
     clientId,
     onClose,
+    onCreated,
 }: {
     clientId: string
     onClose: () => void
+    onCreated: () => void
 }) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -60,6 +64,7 @@ function NuevoCompetidorForm({
             formData.set('client_id', clientId)
             await createCompetitorAction(formData)
             router.refresh()
+            onCreated()
             onClose()
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Error al crear el competidor')
@@ -352,12 +357,14 @@ function CompetitorCard({
     clientId,
     isExpanded,
     onToggle,
+    onDeleted,
 }: {
     competitor: Competitor
     reels: CompetitorReel[]
     clientId: string
     isExpanded: boolean
     onToggle: () => void
+    onDeleted: () => void
 }) {
     const [deleting, setDeleting] = useState(false)
     const router = useRouter()
@@ -369,6 +376,7 @@ function CompetitorCard({
         try {
             await deleteCompetitorAction(competitor.id, clientId)
             router.refresh()
+            onDeleted()
         } catch {
             alert('Error al eliminar')
         } finally {
@@ -557,7 +565,7 @@ function CompetitorCard({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function ClientCompetitors({ competitors, competitorReels, clientId }: Props) {
+export function ClientCompetitors({ competitors, competitorReels, clientId, reload }: Props) {
     const [showForm, setShowForm] = useState(false)
     const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -602,6 +610,7 @@ export function ClientCompetitors({ competitors, competitorReels, clientId }: Pr
                             clientId={clientId}
                             isExpanded={expandedId === competitor.id}
                             onToggle={() => toggleExpand(competitor.id)}
+                            onDeleted={reload}
                         />
                     ))}
                 </div>
@@ -612,8 +621,34 @@ export function ClientCompetitors({ competitors, competitorReels, clientId }: Pr
                 <NuevoCompetidorForm
                     clientId={clientId}
                     onClose={() => setShowForm(false)}
+                    onCreated={reload}
                 />
             )}
         </div>
     )
+}
+
+type TabData = Pick<Props, 'competitors' | 'competitorReels'>
+
+// Fetches the Competencia tab's data only once this tab actually opens —
+// clients/[id]/page.tsx no longer pulls competitors/reels in on every page
+// load regardless of the active tab.
+export function ClientCompetitorsLazy({ clientId }: { clientId: string }) {
+    const [data, setData] = useState<TabData | null>(null)
+
+    const load = useCallback(() => {
+        getCompetitorsTabData(clientId).then((result) => setData(result))
+    }, [clientId])
+
+    useEffect(() => {
+        let cancelled = false
+        getCompetitorsTabData(clientId).then((result) => { if (!cancelled) setData(result) })
+        return () => { cancelled = true }
+    }, [clientId])
+
+    if (!data) {
+        return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando competencia...</div>
+    }
+
+    return <ClientCompetitors {...data} clientId={clientId} reload={load} />
 }

@@ -225,7 +225,9 @@ export async function getLiveMetricsForRange(
   return buckets.range
 }
 
-function dailyBucketsFor(start: string, end: string): DateBucket[] {
+// Wrapped in async only because this file is 'use server' — Next.js requires
+// every export from such a file to be an async function, even a pure helper.
+export async function dailyBucketsFor(start: string, end: string): Promise<DateBucket[]> {
   const buckets: DateBucket[] = []
   const cursor = new Date(`${start}T12:00:00Z`)
   const endDate = new Date(`${end}T12:00:00Z`)
@@ -252,7 +254,7 @@ export async function getEffectiveMetricsForRange(
   end: string,
   contentType?: ContentTypeFilter,
 ): Promise<PeriodMetrics> {
-  const dayBuckets = dailyBucketsFor(start, end)
+  const dayBuckets = await dailyBucketsFor(start, end)
 
   if (contentType) {
     const liveByDay = await getLiveMetricsBuckets(clientId, dayBuckets, contentType)
