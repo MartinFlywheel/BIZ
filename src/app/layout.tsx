@@ -12,13 +12,11 @@ export const metadata: Metadata = {
   title: 'BIZ — CRM',
   description: 'CRM para agencia de marketing',
   manifest: '/manifest.webmanifest',
-  icons: {
-    icon: [
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ],
-    apple: '/icons/apple-touch-icon.png',
-  },
+  // No explicit `icons` field here on purpose — Next.js auto-detects
+  // app/icon.svg (browser-tab favicon) and app/apple-icon.png (iOS
+  // home-screen icon) via file convention. Declaring `icons` at all here,
+  // even just for `apple`, was suppressing that auto-detection and
+  // silently dropped the site's real favicon from every page's <head>.
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
