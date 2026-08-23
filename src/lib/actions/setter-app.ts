@@ -16,6 +16,9 @@ export interface SetterLeadCard {
   lead_avatar: string | null
   updated_at: string
   classification: string | null
+  // Only populated for an admin's "todos" view — a setter looking at their
+  // own leads already knows whose they are.
+  assignedToName: string | null
 }
 
 export interface SetterContext {
@@ -55,14 +58,18 @@ export async function getSetterContext(requestedClientId?: string): Promise<Sett
 
 const PAGE_SIZE = 30
 
-// Assigned to this setter, still in an active stage, most recently touched
-// first — the working list for a phone screen, not the full historical
-// pipeline (a client can have thousands of leads; nobody is scrolling
-// through that on a phone, and nobody needs to — closed/disqualified leads
-// have nothing left to do).
+// Still in an active stage, most recently touched first — the working list
+// for a phone screen, not the full historical pipeline (a client can have
+// thousands of leads; nobody is scrolling through that on a phone, and
+// nobody needs to — closed/disqualified leads have nothing left to do).
+//
+// setterId scopes to one person's assigned leads (what a setter sees —
+// their own caseload only). Pass null for an admin's oversight view: every
+// active lead for the client regardless of who it's assigned to, with the
+// assignee's name attached since it's no longer implicitly "mine".
 export async function getMyActiveLeads(
   clientId: string,
-  setterId: string,
+  setterId: string | null,
   page = 0
 ): Promise<{ leads: SetterLeadCard[]; hasMore: boolean }> {
   const supabase = await createClient()
@@ -70,27 +77,42 @@ export async function getMyActiveLeads(
   const from = page * PAGE_SIZE
   const to = from + PAGE_SIZE - 1
 
-  const { data, error } = await supabase
+  const select = setterId
+    ? 'id, full_name, ig_username, phone, stage, lead_avatar, updated_at, interactions(classification)'
+    : 'id, full_name, ig_username, phone, stage, lead_avatar, updated_at, interactions(classification), users!leads_assigned_to_fkey(full_name)'
+
+  let query = supabase
     .from('leads')
-    .select('id, full_name, ig_username, phone, stage, lead_avatar, updated_at, interactions(classification)')
+    .select(select)
     .eq('client_id', clientId)
-    .eq('assigned_to', setterId)
     .not('stage', 'in', `(${TERMINAL_STAGES.join(',')})`)
     .order('updated_at', { ascending: false })
     .range(from, to)
 
+  if (setterId) query = query.eq('assigned_to', setterId)
+
+  const { data, error } = await query
   if (error) throw error
 
-  const leads: SetterLeadCard[] = (data || []).map((l) => ({
-    id: l.id,
-    full_name: l.full_name,
-    ig_username: l.ig_username,
-    phone: l.phone,
-    stage: l.stage as LeadStage,
-    lead_avatar: l.lead_avatar,
-    updated_at: l.updated_at,
-    classification: (l as unknown as { interactions?: { classification?: string } | null }).interactions?.classification ?? null,
-  }))
+  const leads: SetterLeadCard[] = (data || []).map((l) => {
+    const row = l as unknown as {
+      id: string; full_name: string | null; ig_username: string | null; phone: string | null
+      stage: LeadStage; lead_avatar: string | null; updated_at: string
+      interactions?: { classification?: string } | null
+      users?: { full_name: string | null } | null
+    }
+    return {
+      id: row.id,
+      full_name: row.full_name,
+      ig_username: row.ig_username,
+      phone: row.phone,
+      stage: row.stage,
+      lead_avatar: row.lead_avatar,
+      updated_at: row.updated_at,
+      classification: row.interactions?.classification ?? null,
+      assignedToName: row.users?.full_name ?? null,
+    }
+  })
 
   return { leads, hasMore: leads.length === PAGE_SIZE }
 }

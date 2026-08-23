@@ -10,7 +10,9 @@ const TERMINAL: LeadStage[] = ['no_calificado', 'cierre']
 
 interface Props {
   clientId: string
-  setterId: string
+  // null = admin oversight view (every setter's active leads for this
+  // client), not just one person's caseload.
+  setterId: string | null
   initialLeads: SetterLeadCard[]
   initialHasMore: boolean
 }

@@ -59,7 +59,10 @@ export default async function SetterAppPage({
     )
   }
 
-  const { leads, hasMore } = await getMyActiveLeads(context.clientId, context.userId, 0)
+  // Admin: oversight view, every setter's active leads for this client.
+  // Everyone else: just their own caseload.
+  const setterId = context.isAdmin ? null : context.userId
+  const { leads, hasMore } = await getMyActiveLeads(context.clientId, setterId, 0)
 
   return (
     <div className="pt-5">
@@ -67,7 +70,7 @@ export default async function SetterAppPage({
         <div>
           <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName ?? 'Mis leads'}</p>
           <h1 className="text-xl font-semibold text-white">
-            Hola, {context.fullName?.split(' ')[0] ?? 'setter'}
+            {context.isAdmin ? 'Todos los leads' : `Hola, ${context.fullName?.split(' ')[0] ?? 'setter'}`}
           </h1>
           <p className="mt-0.5 text-xs text-zinc-500">
             {leads.length}{hasMore ? '+' : ''} lead{leads.length === 1 ? '' : 's'} activo{leads.length === 1 ? '' : 's'}
@@ -78,7 +81,7 @@ export default async function SetterAppPage({
 
       <LeadList
         clientId={context.clientId}
-        setterId={context.userId}
+        setterId={setterId}
         initialLeads={leads}
         initialHasMore={hasMore}
       />

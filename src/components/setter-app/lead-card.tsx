@@ -61,6 +61,9 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
           {lead.ig_username && lead.full_name && (
             <p className="truncate text-xs text-zinc-500">@{lead.ig_username}</p>
           )}
+          {lead.assignedToName && (
+            <p className="truncate text-[11px] text-zinc-600">→ {lead.assignedToName}</p>
+          )}
         </div>
         <button
           onClick={() => setShowStages(true)}
