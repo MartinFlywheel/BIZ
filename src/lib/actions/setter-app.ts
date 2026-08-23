@@ -67,10 +67,16 @@ const PAGE_SIZE = 30
 // their own caseload only). Pass null for an admin's oversight view: every
 // active lead for the client regardless of who it's assigned to, with the
 // assignee's name attached since it's no longer implicitly "mine".
+export interface LeadFilters {
+  search?: string
+  stage?: LeadStage
+}
+
 export async function getMyActiveLeads(
   clientId: string,
   setterId: string | null,
-  page = 0
+  page = 0,
+  filters?: LeadFilters
 ): Promise<{ leads: SetterLeadCard[]; hasMore: boolean }> {
   const supabase = await createClient()
 
@@ -81,15 +87,26 @@ export async function getMyActiveLeads(
     ? 'id, full_name, ig_username, phone, stage, lead_avatar, updated_at, interactions(classification)'
     : 'id, full_name, ig_username, phone, stage, lead_avatar, updated_at, interactions(classification), users!leads_assigned_to_fkey(full_name)'
 
-  let query = supabase
-    .from('leads')
-    .select(select)
-    .eq('client_id', clientId)
-    .not('stage', 'in', `(${TERMINAL_STAGES.join(',')})`)
-    .order('updated_at', { ascending: false })
-    .range(from, to)
+  let query = supabase.from('leads').select(select).eq('client_id', clientId)
 
   if (setterId) query = query.eq('assigned_to', setterId)
+
+  // Picking a specific stage (including a terminal one, e.g. reviewing
+  // closed deals) overrides the "active only" default — otherwise exclude
+  // closed/disqualified, nothing left to action on those.
+  if (filters?.stage) {
+    query = query.eq('stage', filters.stage)
+  } else {
+    query = query.not('stage', 'in', `(${TERMINAL_STAGES.join(',')})`)
+  }
+
+  const search = filters?.search?.trim()
+  if (search) {
+    const escaped = search.replace(/[%_]/g, (c) => `\\${c}`)
+    query = query.or(`full_name.ilike.%${escaped}%,ig_username.ilike.%${escaped}%`)
+  }
+
+  query = query.order('updated_at', { ascending: false }).range(from, to)
 
   const { data, error } = await query
   if (error) throw error
@@ -121,4 +138,65 @@ export async function getMyClientOptions(): Promise<{ id: string; name: string }
   const supabase = await createClient()
   const { data } = await supabase.from('clients').select('id, name').order('name')
   return data ?? []
+}
+
+// ── Agendas ───────────────────────────────────────────────────────────────
+// AGENDA_ESTADOS lives in the component that uses it, not here — a 'use
+// server' file can only export async functions, not plain constants.
+
+export interface SetterAgendaRow {
+  id: string
+  leadId: string | null
+  nombreLead: string | null
+  avatar: string | null
+  fechaAgenda: string | null
+  estado: string | null
+  deDondeVino: string | null
+}
+
+// Not every agenda_records row has a lead_id — some are added by hand for
+// calls ManyChat never captured as a lead, so this can't be an inner join
+// (that would silently drop exactly those rows). Fetched whole and filtered
+// in JS instead: FK-based (leads.assigned_to) when the linked lead has one,
+// falling back to the free-text `setter` column for the hand-added rows
+// that have no lead to check against.
+export async function getMyAgendas(
+  clientId: string,
+  setterId: string | null,
+  setterFullName: string | null
+): Promise<SetterAgendaRow[]> {
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('agenda_records')
+    .select('id, lead_id, nombre_lead, avatar, fecha_agenda, estado, de_donde_vino, setter, leads(assigned_to)')
+    .eq('client_id', clientId)
+    .order('fecha_agenda', { ascending: true })
+
+  if (error) throw error
+
+  const rows = (data || []) as unknown as Array<{
+    id: string; lead_id: string | null; nombre_lead: string | null; avatar: string | null
+    fecha_agenda: string | null; estado: string | null; de_donde_vino: string | null
+    setter: string | null; leads: { assigned_to: string | null } | null
+  }>
+
+  const nameLower = setterFullName?.toLowerCase().trim()
+  const filtered = setterId
+    ? rows.filter((r) =>
+        r.leads?.assigned_to
+          ? r.leads.assigned_to === setterId
+          : !!nameLower && !!r.setter && r.setter.toLowerCase().includes(nameLower)
+      )
+    : rows
+
+  return filtered.map((r) => ({
+    id: r.id,
+    leadId: r.lead_id,
+    nombreLead: r.nombre_lead,
+    avatar: r.avatar,
+    fechaAgenda: r.fecha_agenda,
+    estado: r.estado,
+    deDondeVino: r.de_donde_vino,
+  }))
 }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Dialog } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { LEAD_STAGES } from '@/lib/types'
 import type { LeadStage } from '@/lib/types'
 import type { SetterLeadCard } from '@/lib/actions/setter-app'
@@ -32,6 +33,10 @@ function timeAgo(iso: string): string {
   return `hace ${days}d`
 }
 
+function todayStr(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
 const CLASSIFICATION_LABEL: Record<string, string> = {
   chat_abierto: 'Chat abierto',
   conversacion_real: 'Conversación real',
@@ -40,14 +45,33 @@ const CLASSIFICATION_LABEL: Record<string, string> = {
 
 interface Props {
   lead: SetterLeadCard
-  onChangeStage: (id: string, stage: LeadStage) => void
+  onChangeStage: (id: string, stage: LeadStage, agendaDate?: string) => void
   pending: boolean
 }
 
 export function LeadCard({ lead, onChangeStage, pending }: Props) {
   const [showStages, setShowStages] = useState(false)
+  const [showAgendaDate, setShowAgendaDate] = useState(false)
+  const [agendaDate, setAgendaDate] = useState(todayStr())
   const next = nextStage(lead.stage)
   const isAgendado = lead.stage === 'agendado'
+
+  // Marking "Agendado" always asks for the actual call date first — it
+  // matters for who's due to call today elsewhere in the CRM, and it's
+  // rarely "today" (a lead usually books a few days out).
+  function requestStage(stage: LeadStage) {
+    if (stage === 'agendado') {
+      setAgendaDate(todayStr())
+      setShowAgendaDate(true)
+      return
+    }
+    onChangeStage(lead.id, stage)
+  }
+
+  function confirmAgendaDate() {
+    onChangeStage(lead.id, 'agendado', agendaDate)
+    setShowAgendaDate(false)
+  }
 
   return (
     <div
@@ -110,7 +134,7 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
             {next && (
               <button
                 disabled={pending}
-                onClick={() => onChangeStage(lead.id, next)}
+                onClick={() => requestStage(next)}
                 className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-white/[0.09] py-3 text-sm font-semibold text-white transition-transform active:scale-95 disabled:opacity-50"
               >
                 Avanzar
@@ -119,7 +143,7 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
             )}
             <button
               disabled={pending}
-              onClick={() => onChangeStage(lead.id, 'agendado')}
+              onClick={() => requestStage('agendado')}
               title="Marcar agendado"
               className="flex items-center justify-center rounded-xl bg-amber-500/15 px-4 py-3 text-amber-400 transition-transform active:scale-95 disabled:opacity-50"
             >
@@ -142,7 +166,7 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
           {LEAD_STAGES.map((s) => (
             <button
               key={s.id}
-              onClick={() => { onChangeStage(lead.id, s.id); setShowStages(false) }}
+              onClick={() => { setShowStages(false); requestStage(s.id) }}
               className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-sm ${
                 s.id === lead.stage ? 'bg-white/[0.08]' : 'hover:bg-white/[0.04]'
               }`}
@@ -151,6 +175,25 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
               {s.id === lead.stage && <span className="text-xs text-zinc-500">Actual</span>}
             </button>
           ))}
+        </div>
+      </Dialog>
+
+      <Dialog open={showAgendaDate} onClose={() => setShowAgendaDate(false)} title="Fecha de la llamada">
+        <div className="space-y-4">
+          <input
+            type="date"
+            value={agendaDate}
+            onChange={(e) => setAgendaDate(e.target.value)}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-100"
+          />
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" onClick={() => setShowAgendaDate(false)} className="flex-1">
+              Cancelar
+            </Button>
+            <Button type="button" onClick={confirmAgendaDate} className="flex-1">
+              Confirmar
+            </Button>
+          </div>
         </div>
       </Dialog>
     </div>

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { BottomNav } from '@/components/setter-app/bottom-nav'
 
 // Deliberately its own top-level route — (agency) and (portal) both render
 // the desktop Sidebar unconditionally in their layout, and a nested route
@@ -29,15 +30,14 @@ export default async function SetterAppLayout({
   return (
     <div
       className="min-h-screen bg-[#0B0B0B] text-white/90"
-      style={{
-        paddingTop: 'env(safe-area-inset-top)',
-        paddingBottom: 'env(safe-area-inset-bottom)',
-      }}
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="ambient-glow inset-x-0 -top-40 h-[50vh] w-full opacity-50 pointer-events-none fixed" />
-      <div className="relative z-10 mx-auto max-w-md min-h-screen">
+      {/* pb-20 clears the fixed BottomNav so the last card is never hidden behind it */}
+      <div className="relative z-10 mx-auto max-w-md min-h-screen pb-20">
         {children}
       </div>
+      <BottomNav />
     </div>
   )
 }
