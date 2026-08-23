@@ -13,7 +13,7 @@ export default async function SetterAppPage({
   if (!context) {
     return (
       <div className="flex min-h-screen items-center justify-center px-6 text-center text-sm text-zinc-500">
-        No se pudo cargar tu sesión. Volvé a iniciar sesión.
+        No se pudo cargar tu sesión. Vuelve a iniciar sesión.
       </div>
     )
   }
@@ -25,7 +25,7 @@ export default async function SetterAppPage({
   if (!context.clientId && !context.isAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center px-6 text-center text-sm text-zinc-500">
-        Tu cuenta no tiene un cliente asignado. Contactá a un admin.
+        Tu cuenta no tiene un cliente asignado. Contacta a un administrador.
       </div>
     )
   }
@@ -36,7 +36,7 @@ export default async function SetterAppPage({
     const clients = await getMyClientOptions()
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-sm text-zinc-400">Elegí un cliente para ver sus leads</p>
+        <p className="text-sm text-zinc-400">Selecciona un cliente para ver sus leads</p>
         <form action="/setter-app" method="GET" className="flex w-full max-w-xs flex-col gap-3">
           <select
             name="client"

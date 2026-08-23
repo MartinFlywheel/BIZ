@@ -55,7 +55,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
           setError(`Se movió a "${stage}", pero no se pudo crear el registro en Agendas: ${agendaError}`)
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'No se pudo actualizar el lead — probá de nuevo')
+        setError(err instanceof Error ? err.message : 'No se pudo actualizar el lead — intenta de nuevo')
       } finally {
         setPendingId(null)
       }
@@ -71,7 +71,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
       setHasMore(result.hasMore)
       setPage(nextPage)
     } catch {
-      setError('No se pudo cargar más leads — probá de nuevo')
+      setError('No se pudo cargar más leads — intenta de nuevo')
     } finally {
       setLoadingMore(false)
     }
@@ -81,7 +81,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
     return (
       <div className="flex flex-col items-center justify-center px-4 py-24 text-center">
         <p className="text-lg font-medium text-zinc-300">Todo al día 🎉</p>
-        <p className="mt-1 text-sm text-zinc-500">No tenés leads activos pendientes ahora mismo.</p>
+        <p className="mt-1 text-sm text-zinc-500">No hay leads activos pendientes en este momento.</p>
       </div>
     )
   }
