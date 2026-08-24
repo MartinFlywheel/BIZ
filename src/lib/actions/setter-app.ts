@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getAgencyUsers } from './team'
 import type { LeadStage } from '@/lib/types'
 
 // Terminal stages excluded from the setter's day-to-day working list — a
@@ -503,4 +504,32 @@ export async function getDailySetterReports(clientId?: string): Promise<DailyRep
       submittedAt: row.submitted_at,
     }
   })
+}
+
+export interface SetterProgressRow {
+  userId: string
+  fullName: string | null
+  cycle: CycleProgress
+  agendas: AgendaGoalProgress
+}
+
+// Admin-facing live view — getCycleProgress/getAgendaGoalProgress already
+// take an arbitrary userId, not just "whoever's logged in", so this is
+// just fanning them out across the client's roster. A completed report
+// only shows up once a setter crosses their quota and submits; this is
+// the "how's everyone doing right now" view for the cycle in progress.
+export async function getSettersProgress(clientId: string): Promise<SetterProgressRow[]> {
+  const setters = await getAgencyUsers(clientId)
+  const nonAdmins = setters.filter((s) => s.role !== 'admin')
+
+  const rows = await Promise.all(
+    nonAdmins.map(async (s) => ({
+      userId: s.id,
+      fullName: s.full_name,
+      cycle: await getCycleProgress(s.id, clientId),
+      agendas: await getAgendaGoalProgress(s.id, clientId, s.full_name),
+    }))
+  )
+
+  return rows
 }
