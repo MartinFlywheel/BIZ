@@ -61,7 +61,17 @@ export default function LoginPage() {
       document.cookie = 'biz_active_session=1; path=/; SameSite=Lax'
     }
 
-    const dest = profile?.user_type === 'client' ? '/portal/dashboard' : '/dashboard'
+    // Non-admin agency users (setters) never actually land on /dashboard —
+    // the middleware confines them to /clients/{id} or /setter-app and
+    // would bounce them straight back off it. Sending them there first was
+    // a wasted redirect that happened to land on the desktop CRM table
+    // (/clients/{id}) instead of the mobile setter-app they actually want.
+    const dest =
+      profile?.user_type === 'client'
+        ? '/portal/dashboard'
+        : profile?.user_type === 'agency' && profile.role !== 'admin'
+          ? '/setter-app'
+          : '/dashboard'
     router.push(dest)
     router.refresh()
   }
