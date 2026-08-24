@@ -1,4 +1,5 @@
-import { getSetterContext, getMyActiveLeads, getMyClientOptions } from '@/lib/actions/setter-app'
+import { redirect } from 'next/navigation'
+import { getSetterContext, getMyActiveLeads, getMyClientOptions, getCycleProgress } from '@/lib/actions/setter-app'
 import { LeadList } from '@/components/setter-app/lead-list'
 import { LogoutButton } from '@/components/setter-app/logout-button'
 
@@ -62,7 +63,17 @@ export default async function SetterAppPage({
   // Admin: oversight view, every setter's active leads for this client.
   // Everyone else: just their own caseload.
   const setterId = context.isAdmin ? null : context.userId
+
+  // Blocking daily report — a setter who's crossed their touch quota gets
+  // bounced here before they can do anything else. Admins have no personal
+  // quota, so they're exempt.
+  if (!context.isAdmin) {
+    const progress = await getCycleProgress(context.userId, context.clientId)
+    if (progress.needsReport) redirect('/setter-app/report')
+  }
+
   const { leads, hasMore } = await getMyActiveLeads(context.clientId, setterId, 0)
+  const progress = context.isAdmin ? null : await getCycleProgress(context.userId, context.clientId)
 
   return (
     <div className="pt-5">
@@ -74,6 +85,7 @@ export default async function SetterAppPage({
           </h1>
           <p className="mt-0.5 text-xs text-zinc-500">
             {leads.length}{hasMore ? '+' : ''} lead{leads.length === 1 ? '' : 's'} activo{leads.length === 1 ? '' : 's'}
+            {progress && ` · ${progress.leadsTouched}/${progress.goals.minLeadsTouched} tocados`}
           </p>
         </div>
         <LogoutButton />

@@ -2,19 +2,26 @@
 
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { Users, CalendarCheck } from 'lucide-react'
+import { Users, CalendarCheck, TrendingUp } from 'lucide-react'
 
 export function BottomNav() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  // Preserve the admin's picked client across tabs — otherwise switching to
-  // Agendas would drop back to the client picker every time.
+
+  // Hidden on the blocking daily-report screen — a clickable way out would
+  // defeat the point (each tab's own page redirects right back here anyway,
+  // but there's no reason to show an exit that doesn't work).
+  if (pathname === '/setter-app/report') return null
+
+  // Preserve the admin's picked client across tabs — otherwise switching
+  // tabs would drop back to the client picker every time.
   const clientParam = searchParams.get('client')
   const suffix = clientParam ? `?client=${clientParam}` : ''
 
   const items = [
     { href: `/setter-app${suffix}`, label: 'Leads', icon: Users, matchPath: '/setter-app' },
     { href: `/setter-app/agendas${suffix}`, label: 'Agendas', icon: CalendarCheck, matchPath: '/setter-app/agendas' },
+    { href: `/setter-app/progress${suffix}`, label: 'Progreso', icon: TrendingUp, matchPath: '/setter-app/progress' },
   ]
 
   return (

@@ -1,4 +1,5 @@
-import { getSetterContext, getMyAgendas } from '@/lib/actions/setter-app'
+import { redirect } from 'next/navigation'
+import { getSetterContext, getMyAgendas, getCycleProgress } from '@/lib/actions/setter-app'
 import { AgendaList } from '@/components/setter-app/agenda-list'
 import { LogoutButton } from '@/components/setter-app/logout-button'
 
@@ -26,6 +27,11 @@ export default async function SetterAgendasPage({
           : 'Tu cuenta no tiene un cliente asignado. Contacta a un administrador.'}
       </div>
     )
+  }
+
+  if (!context.isAdmin) {
+    const progress = await getCycleProgress(context.userId, context.clientId)
+    if (progress.needsReport) redirect('/setter-app/report')
   }
 
   const setterId = context.isAdmin ? null : context.userId

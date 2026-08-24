@@ -200,3 +200,307 @@ export async function getMyAgendas(
     deDondeVino: r.de_donde_vino,
   }))
 }
+
+// ── Setter standards, progress, and daily reports ───────────────────────────
+// See supabase/028-setter-standards.sql for why this reuses the existing
+// leads.stage values instead of a new taxonomy.
+
+const TRACKED_FOLLOWUP_STAGES: { stage: LeadStage; label: string }[] = [
+  { stage: 'nuevo_contacto', label: 'Descubrimiento' },
+  { stage: 'micro_vsl_enviado', label: 'Micro VSL' },
+  { stage: 'vsl_chat', label: 'VSL Chat' },
+  { stage: 'calendly_enviado', label: 'Calendly' },
+]
+
+// A single lead re-marked in the same stage counts at most twice toward
+// that stage's follow-up quota — confirmed with the client: otherwise the
+// number can be inflated by spamming one lead instead of real outreach
+// breadth across the pipeline.
+const MAX_FOLLOWUPS_PER_LEAD_STAGE = 2
+
+export interface SetterGoals {
+  minLeadsTouched: number
+  minFollowupsPerStage: number
+  minAgendasWeek: number
+  minAgendasMonth: number
+  minBookingRate: number
+}
+
+const DEFAULT_GOALS: SetterGoals = {
+  minLeadsTouched: 100,
+  minFollowupsPerStage: 50,
+  minAgendasWeek: 5,
+  minAgendasMonth: 20,
+  minBookingRate: 10,
+}
+
+// Every field has a default so the feature works for a setter nobody has
+// configured yet, instead of showing 0/0 or crashing.
+export async function getSetterGoals(userId: string, clientId: string): Promise<SetterGoals> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('setter_goals')
+    .select('min_leads_touched, min_followups_per_stage, min_agendas_week, min_agendas_month, min_booking_rate')
+    .eq('user_id', userId)
+    .eq('client_id', clientId)
+    .maybeSingle()
+
+  if (!data) return DEFAULT_GOALS
+  return {
+    minLeadsTouched: data.min_leads_touched,
+    minFollowupsPerStage: data.min_followups_per_stage,
+    minAgendasWeek: data.min_agendas_week,
+    minAgendasMonth: data.min_agendas_month,
+    minBookingRate: Number(data.min_booking_rate),
+  }
+}
+
+export async function setSetterGoals(userId: string, clientId: string, goals: Partial<SetterGoals>): Promise<void> {
+  const supabase = await createClient()
+  const current = await getSetterGoals(userId, clientId)
+  const merged = { ...current, ...goals }
+
+  const { error } = await supabase.from('setter_goals').upsert(
+    {
+      user_id: userId,
+      client_id: clientId,
+      min_leads_touched: merged.minLeadsTouched,
+      min_followups_per_stage: merged.minFollowupsPerStage,
+      min_agendas_week: merged.minAgendasWeek,
+      min_agendas_month: merged.minAgendasMonth,
+      min_booking_rate: merged.minBookingRate,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,client_id' }
+  )
+  if (error) throw error
+}
+
+export interface CycleProgress {
+  cycleStartedAt: string
+  leadsTouched: number
+  agendasSet: number
+  followupsByStage: { stage: LeadStage; label: string; count: number }[]
+  goals: SetterGoals
+  needsReport: boolean
+}
+
+async function getCycleStart(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string
+): Promise<string> {
+  // A cycle isn't calendar-bound — it runs from the last submitted report
+  // (or, for a brand-new setter, their first-ever logged touch) until the
+  // next time min_leads_touched is crossed. A slow day and a fast day both
+  // just end whenever the cycle completes; no timezone handling needed.
+  const { data: lastReport } = await supabase
+    .from('daily_setter_reports')
+    .select('submitted_at')
+    .eq('user_id', userId)
+    .order('submitted_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (lastReport) return lastReport.submitted_at
+
+  const { data: firstActivity } = await supabase
+    .from('lead_activity_logs')
+    .select('created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  return firstActivity?.created_at ?? new Date().toISOString()
+}
+
+export async function getCycleProgress(userId: string, clientId: string): Promise<CycleProgress> {
+  const supabase = await createClient()
+  const [goals, cycleStartedAt] = await Promise.all([
+    getSetterGoals(userId, clientId),
+    getCycleStart(supabase, userId),
+  ])
+
+  const { data, error } = await supabase
+    .from('lead_activity_logs')
+    .select('lead_id, action_type, stage_at_time')
+    .eq('user_id', userId)
+    .eq('client_id', clientId)
+    .gte('created_at', cycleStartedAt)
+
+  // 42P01 = undefined_table — supabase/028-setter-standards.sql might not
+  // be migrated onto the live DB yet. Degrade to an empty, non-blocking
+  // cycle instead of taking down the whole setter-app (leads list, agendas)
+  // for every setter until someone runs it.
+  if (error) {
+    if ((error as { code?: string }).code === '42P01') {
+      return {
+        cycleStartedAt,
+        leadsTouched: 0,
+        agendasSet: 0,
+        followupsByStage: TRACKED_FOLLOWUP_STAGES.map(({ stage, label }) => ({ stage, label, count: 0 })),
+        goals,
+        needsReport: false,
+      }
+    }
+    throw error
+  }
+
+  const rows = (data || []) as { lead_id: string; action_type: 'contacto' | 'seguimiento'; stage_at_time: string }[]
+
+  const leadsTouched = new Set(rows.map((r) => r.lead_id)).size
+  const agendasSet = new Set(
+    rows.filter((r) => r.action_type === 'contacto' && r.stage_at_time === 'agendado').map((r) => r.lead_id)
+  ).size
+
+  const followupsByStage = TRACKED_FOLLOWUP_STAGES.map(({ stage, label }) => {
+    const perLead = new Map<string, number>()
+    for (const r of rows) {
+      if (r.action_type !== 'seguimiento' || r.stage_at_time !== stage) continue
+      perLead.set(r.lead_id, (perLead.get(r.lead_id) || 0) + 1)
+    }
+    const count = [...perLead.values()].reduce((sum, n) => sum + Math.min(n, MAX_FOLLOWUPS_PER_LEAD_STAGE), 0)
+    return { stage, label, count }
+  })
+
+  return {
+    cycleStartedAt,
+    leadsTouched,
+    agendasSet,
+    followupsByStage,
+    goals,
+    needsReport: leadsTouched >= goals.minLeadsTouched,
+  }
+}
+
+export interface AgendaGoalProgress {
+  agendasThisWeek: number
+  agendasThisMonth: number
+}
+
+// Calendar-bound (unlike the cycle above) — "agendas this week/month" is a
+// standard cadence a manager checks regardless of where the setter is in
+// their touch cycle. Same dual attribution as getMyAgendas: FK when the
+// linked lead has one, free-text `setter` name fallback for hand-added
+// agenda_records rows that have no lead_id to check.
+export async function getAgendaGoalProgress(
+  userId: string,
+  clientId: string,
+  setterFullName: string | null
+): Promise<AgendaGoalProgress> {
+  const supabase = await createClient()
+
+  const now = new Date()
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const day = now.getDay()
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  const weekStartDate = new Date(now)
+  weekStartDate.setDate(weekStartDate.getDate() + diffToMonday)
+  const weekStart = weekStartDate.toISOString().split('T')[0]
+
+  const { data, error } = await supabase
+    .from('agenda_records')
+    .select('fecha_agenda, setter, leads(assigned_to)')
+    .eq('client_id', clientId)
+    .gte('fecha_agenda', monthStart)
+
+  if (error) throw error
+
+  const nameLower = setterFullName?.toLowerCase().trim()
+  const rows = (data || []) as unknown as Array<{
+    fecha_agenda: string | null; setter: string | null; leads: { assigned_to: string | null } | null
+  }>
+
+  const mine = rows.filter((r) =>
+    r.leads?.assigned_to
+      ? r.leads.assigned_to === userId
+      : !!nameLower && !!r.setter && r.setter.toLowerCase().includes(nameLower)
+  )
+
+  return {
+    agendasThisMonth: mine.length,
+    agendasThisWeek: mine.filter((r) => r.fecha_agenda && r.fecha_agenda >= weekStart).length,
+  }
+}
+
+export interface SubmitReportInput {
+  commonObjections: string
+  marketingFeedback: string
+}
+
+export async function submitDailyReport(userId: string, clientId: string, input: SubmitReportInput): Promise<void> {
+  const supabase = await createClient()
+  const progress = await getCycleProgress(userId, clientId)
+  const followupsTotal = progress.followupsByStage.reduce((sum, f) => sum + f.count, 0)
+
+  const { error } = await supabase.from('daily_setter_reports').insert({
+    user_id: userId,
+    client_id: clientId,
+    cycle_started_at: progress.cycleStartedAt,
+    cycle_ended_at: new Date().toISOString(),
+    leads_touched: progress.leadsTouched,
+    agendas_set: progress.agendasSet,
+    followups_total: followupsTotal,
+    common_objections: input.commonObjections || null,
+    marketing_feedback: input.marketingFeedback || null,
+  })
+  if (error) throw error
+}
+
+export interface DailyReportRow {
+  id: string
+  userId: string
+  setterName: string | null
+  clientId: string
+  clientName: string | null
+  leadsTouched: number
+  agendasSet: number
+  followupsTotal: number
+  commonObjections: string | null
+  marketingFeedback: string | null
+  submittedAt: string
+}
+
+// Marketing/admin-facing feed of submitted reports, newest first.
+export async function getDailySetterReports(clientId?: string): Promise<DailyReportRow[]> {
+  const supabase = await createClient()
+
+  let query = supabase
+    .from('daily_setter_reports')
+    .select(
+      'id, user_id, client_id, leads_touched, agendas_set, followups_total, common_objections, marketing_feedback, submitted_at, users(full_name), clients(name)'
+    )
+    .order('submitted_at', { ascending: false })
+    .limit(100)
+
+  if (clientId) query = query.eq('client_id', clientId)
+
+  const { data, error } = await query
+  // 42P01 = undefined_table — migration not run yet; empty list beats a
+  // broken /reports page.
+  if (error) {
+    if ((error as { code?: string }).code === '42P01') return []
+    throw error
+  }
+
+  return (data || []).map((r) => {
+    const row = r as unknown as {
+      id: string; user_id: string; client_id: string; leads_touched: number; agendas_set: number
+      followups_total: number; common_objections: string | null; marketing_feedback: string | null
+      submitted_at: string; users: { full_name: string | null } | null; clients: { name: string | null } | null
+    }
+    return {
+      id: row.id,
+      userId: row.user_id,
+      setterName: row.users?.full_name ?? null,
+      clientId: row.client_id,
+      clientName: row.clients?.name ?? null,
+      leadsTouched: row.leads_touched,
+      agendasSet: row.agendas_set,
+      followupsTotal: row.followups_total,
+      commonObjections: row.common_objections,
+      marketingFeedback: row.marketing_feedback,
+      submittedAt: row.submitted_at,
+    }
+  })
+}

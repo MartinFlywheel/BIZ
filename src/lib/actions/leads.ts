@@ -79,6 +79,13 @@ export async function getLeadsForViewer(clientId: string) {
 export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string): Promise<{ agendaError: string | null }> {
   const supabase = await createClient()
 
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  // Needed to tell a real advance from a re-marked "still here" touch —
+  // fetched before the update overwrites it.
+  const { data: existing } = await supabase.from('leads').select('stage').eq('id', id).maybeSingle()
+  const previousStage = existing?.stage as LeadStage | undefined
+
   const updates: Record<string, unknown> = {
     stage,
     updated_at: new Date().toISOString(),
@@ -95,6 +102,26 @@ export async function updateLeadStageAction(id: string, stage: LeadStage, agenda
     .select('id, client_id, full_name, content_id, first_touch_at, first_touch_type, lead_avatar')
     .single()
   if (error) throw error
+
+  // Setter activity log for the standards/goals system — 'contacto' when
+  // the stage genuinely moved forward (or sideways), 'seguimiento' when
+  // the same stage was re-marked (re-engaging a lead that hasn't
+  // progressed). Decided here, from the actual before/after stage, so it
+  // can't be misreported by whichever UI called this. Best-effort: a
+  // logging failure never blocks the real stage change.
+  if (authUser && lead) {
+    try {
+      await supabase.from('lead_activity_logs').insert({
+        lead_id: id,
+        user_id: authUser.id,
+        client_id: lead.client_id,
+        action_type: previousStage === stage ? 'seguimiento' : 'contacto',
+        stage_at_time: stage,
+      })
+    } catch (err) {
+      console.error('[updateLeadStageAction] activity log failed:', err)
+    }
+  }
 
   // No Calendly (or not yet configured) still needs the booking to show up
   // in Agendas and roll into the funnel — create the linked record once,

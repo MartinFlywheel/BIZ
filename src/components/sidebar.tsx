@@ -12,6 +12,7 @@ import {
   LogOut,
   GalleryHorizontal,
   Bot,
+  ClipboardList,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -25,6 +26,7 @@ interface NavItem {
 const agencyNav: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Clientes', href: '/clients', icon: Users },
+  { label: 'Reportes', href: '/reports', icon: ClipboardList },
   { label: 'SOPs', href: '/sops', icon: FileText },
   { label: 'Configuración', href: '/settings', icon: Settings },
 ]
