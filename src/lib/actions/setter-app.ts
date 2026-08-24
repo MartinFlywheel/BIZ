@@ -222,6 +222,7 @@ const MAX_FOLLOWUPS_PER_LEAD_STAGE = 2
 export interface SetterGoals {
   minLeadsTouched: number
   minFollowupsPerStage: number
+  minAgendasDay: number
   minAgendasWeek: number
   minAgendasMonth: number
   minBookingRate: number
@@ -230,29 +231,48 @@ export interface SetterGoals {
 const DEFAULT_GOALS: SetterGoals = {
   minLeadsTouched: 100,
   minFollowupsPerStage: 50,
+  minAgendasDay: 7,
   minAgendasWeek: 5,
   minAgendasMonth: 20,
   minBookingRate: 10,
 }
 
 // Every field has a default so the feature works for a setter nobody has
-// configured yet, instead of showing 0/0 or crashing.
+// configured yet, instead of showing 0/0 or crashing. Falls back to a
+// column-less query if min_agendas_day isn't migrated onto the live DB yet
+// (supabase/029-setter-daily-agenda-goal.sql) — same 42703 pattern as
+// users.lead_weight earlier in this project.
 export async function getSetterGoals(userId: string, clientId: string): Promise<SetterGoals> {
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('setter_goals')
-    .select('min_leads_touched, min_followups_per_stage, min_agendas_week, min_agendas_month, min_booking_rate')
-    .eq('user_id', userId)
-    .eq('client_id', clientId)
-    .maybeSingle()
+
+  async function query(withDailyGoal: boolean) {
+    const cols = `min_leads_touched, min_followups_per_stage, min_agendas_week, min_agendas_month, min_booking_rate${withDailyGoal ? ', min_agendas_day' : ''}`
+    return supabase
+      .from('setter_goals')
+      .select(cols)
+      .eq('user_id', userId)
+      .eq('client_id', clientId)
+      .maybeSingle()
+  }
+
+  let { data, error } = await query(true)
+  if (error && (error as { code?: string }).code === '42703') {
+    ({ data, error } = await query(false))
+  }
+  if (error) throw error
 
   if (!data) return DEFAULT_GOALS
+  const row = data as unknown as {
+    min_leads_touched: number; min_followups_per_stage: number; min_agendas_week: number
+    min_agendas_month: number; min_booking_rate: number; min_agendas_day?: number
+  }
   return {
-    minLeadsTouched: data.min_leads_touched,
-    minFollowupsPerStage: data.min_followups_per_stage,
-    minAgendasWeek: data.min_agendas_week,
-    minAgendasMonth: data.min_agendas_month,
-    minBookingRate: Number(data.min_booking_rate),
+    minLeadsTouched: row.min_leads_touched,
+    minFollowupsPerStage: row.min_followups_per_stage,
+    minAgendasDay: row.min_agendas_day ?? DEFAULT_GOALS.minAgendasDay,
+    minAgendasWeek: row.min_agendas_week,
+    minAgendasMonth: row.min_agendas_month,
+    minBookingRate: Number(row.min_booking_rate),
   }
 }
 
@@ -267,6 +287,7 @@ export async function setSetterGoals(userId: string, clientId: string, goals: Pa
       client_id: clientId,
       min_leads_touched: merged.minLeadsTouched,
       min_followups_per_stage: merged.minFollowupsPerStage,
+      min_agendas_day: merged.minAgendasDay,
       min_agendas_week: merged.minAgendasWeek,
       min_agendas_month: merged.minAgendasMonth,
       min_booking_rate: merged.minBookingRate,
@@ -375,13 +396,17 @@ export async function getCycleProgress(userId: string, clientId: string): Promis
 }
 
 export interface AgendaGoalProgress {
+  agendasToday: number
   agendasThisWeek: number
   agendasThisMonth: number
+  // The daily minimum is Mon-Fri only — the UI shouldn't show a "0/7" that
+  // reads as failing on a weekend when there's no quota at all that day.
+  isWeekday: boolean
 }
 
-// Calendar-bound (unlike the cycle above) — "agendas this week/month" is a
-// standard cadence a manager checks regardless of where the setter is in
-// their touch cycle. Same dual attribution as getMyAgendas: FK when the
+// Calendar-bound (unlike the cycle above) — "agendas today/this week/month"
+// is a standard cadence a manager checks regardless of where the setter is
+// in their touch cycle. Same dual attribution as getMyAgendas: FK when the
 // linked lead has one, free-text `setter` name fallback for hand-added
 // agenda_records rows that have no lead_id to check.
 export async function getAgendaGoalProgress(
@@ -392,8 +417,10 @@ export async function getAgendaGoalProgress(
   const supabase = await createClient()
 
   const now = new Date()
+  const today = now.toISOString().split('T')[0]
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
   const day = now.getDay()
+  const isWeekday = day >= 1 && day <= 5
   const diffToMonday = day === 0 ? -6 : 1 - day
   const weekStartDate = new Date(now)
   weekStartDate.setDate(weekStartDate.getDate() + diffToMonday)
@@ -419,8 +446,10 @@ export async function getAgendaGoalProgress(
   )
 
   return {
-    agendasThisMonth: mine.length,
+    agendasToday: mine.filter((r) => r.fecha_agenda === today).length,
     agendasThisWeek: mine.filter((r) => r.fecha_agenda && r.fecha_agenda >= weekStart).length,
+    agendasThisMonth: mine.length,
+    isWeekday,
   }
 }
 

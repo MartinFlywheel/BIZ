@@ -71,6 +71,21 @@ export default async function SetterProgressPage({
           <div className="space-y-3">
             <div>
               <div className="mb-1 flex items-baseline justify-between text-xs text-zinc-500">
+                <span>Hoy</span>
+                {agendaGoals.isWeekday ? (
+                  <span className="font-mono">{agendaGoals.agendasToday}/{progress.goals.minAgendasDay}</span>
+                ) : (
+                  <span className="text-zinc-600">Sin mínimo (fin de semana)</span>
+                )}
+              </div>
+              {agendaGoals.isWeekday ? (
+                <ProgressBar current={agendaGoals.agendasToday} goal={progress.goals.minAgendasDay} />
+              ) : (
+                <div className="h-2 w-full rounded-full bg-white/[0.03]" />
+              )}
+            </div>
+            <div>
+              <div className="mb-1 flex items-baseline justify-between text-xs text-zinc-500">
                 <span>Esta semana</span>
                 <span className="font-mono">{agendaGoals.agendasThisWeek}/{progress.goals.minAgendasWeek}</span>
               </div>

@@ -70,17 +70,32 @@ export default async function ReportsPage({
                     </div>
                     <ProgressBar current={s.cycle.leadsTouched} goal={s.cycle.goals.minLeadsTouched} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <div className="mb-1 flex items-baseline justify-between text-[11px] text-zinc-500">
-                        <span>Agendas semana</span>
+                        <span>Hoy</span>
+                        {s.agendas.isWeekday ? (
+                          <span className="font-mono">{s.agendas.agendasToday}/{s.cycle.goals.minAgendasDay}</span>
+                        ) : (
+                          <span className="text-zinc-600">—</span>
+                        )}
+                      </div>
+                      {s.agendas.isWeekday ? (
+                        <ProgressBar current={s.agendas.agendasToday} goal={s.cycle.goals.minAgendasDay} />
+                      ) : (
+                        <div className="h-1.5 w-full rounded-full bg-white/[0.02]" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="mb-1 flex items-baseline justify-between text-[11px] text-zinc-500">
+                        <span>Semana</span>
                         <span className="font-mono">{s.agendas.agendasThisWeek}/{s.cycle.goals.minAgendasWeek}</span>
                       </div>
                       <ProgressBar current={s.agendas.agendasThisWeek} goal={s.cycle.goals.minAgendasWeek} />
                     </div>
                     <div>
                       <div className="mb-1 flex items-baseline justify-between text-[11px] text-zinc-500">
-                        <span>Agendas mes</span>
+                        <span>Mes</span>
                         <span className="font-mono">{s.agendas.agendasThisMonth}/{s.cycle.goals.minAgendasMonth}</span>
                       </div>
                       <ProgressBar current={s.agendas.agendasThisMonth} goal={s.cycle.goals.minAgendasMonth} />
