@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSetterContext, getMyActiveLeads, getMyClientOptions, getCycleProgress } from '@/lib/actions/setter-app'
 import { LeadList } from '@/components/setter-app/lead-list'
-import { LogoutButton } from '@/components/setter-app/logout-button'
 
 export default async function SetterAppPage({
   searchParams,
@@ -77,18 +76,15 @@ export default async function SetterAppPage({
 
   return (
     <div className="pt-5">
-      <div className="flex items-start justify-between px-4 pb-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName ?? 'Mis leads'}</p>
-          <h1 className="text-xl font-semibold text-white">
-            {context.isAdmin ? 'Todos los leads' : `Hola, ${context.fullName?.split(' ')[0] ?? 'setter'}`}
-          </h1>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {leads.length}{hasMore ? '+' : ''} lead{leads.length === 1 ? '' : 's'} activo{leads.length === 1 ? '' : 's'}
-            {progress && ` · ${progress.leadsTouched}/${progress.goals.minLeadsTouched} tocados`}
-          </p>
-        </div>
-        <LogoutButton />
+      <div className="px-4 pb-4">
+        <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName ?? 'Mis leads'}</p>
+        <h1 className="pr-12 text-xl font-semibold text-white">
+          {context.isAdmin ? 'Todos los leads' : `Hola, ${context.fullName?.split(' ')[0] ?? 'setter'}`}
+        </h1>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          {leads.length}{hasMore ? '+' : ''} lead{leads.length === 1 ? '' : 's'} activo{leads.length === 1 ? '' : 's'}
+          {progress && ` · ${progress.leadsTouched}/${progress.goals.minLeadsTouched} tocados`}
+        </p>
       </div>
 
       <LeadList

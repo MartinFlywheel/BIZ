@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getSetterContext, getMyAgendas, getCycleProgress } from '@/lib/actions/setter-app'
 import { AgendaList } from '@/components/setter-app/agenda-list'
-import { LogoutButton } from '@/components/setter-app/logout-button'
 
 export default async function SetterAgendasPage({
   searchParams,
@@ -39,15 +38,12 @@ export default async function SetterAgendasPage({
 
   return (
     <div className="pt-5">
-      <div className="flex items-start justify-between px-4 pb-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName}</p>
-          <h1 className="text-xl font-semibold text-white">Agendas</h1>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {agendas.length} llamada{agendas.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <LogoutButton />
+      <div className="px-4 pb-4">
+        <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName}</p>
+        <h1 className="pr-12 text-xl font-semibold text-white">Agendas</h1>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          {agendas.length} llamada{agendas.length === 1 ? '' : 's'}
+        </p>
       </div>
 
       <AgendaList agendas={agendas} />

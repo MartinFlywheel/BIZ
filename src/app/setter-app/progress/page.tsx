@@ -1,5 +1,4 @@
 import { getSetterContext, getCycleProgress, getAgendaGoalProgress } from '@/lib/actions/setter-app'
-import { LogoutButton } from '@/components/setter-app/logout-button'
 
 function ProgressBar({ current, goal }: { current: number; goal: number }) {
   const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 100)) : 0
@@ -53,12 +52,9 @@ export default async function SetterProgressPage({
 
   return (
     <div className="pt-5">
-      <div className="flex items-start justify-between px-4 pb-4">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName}</p>
-          <h1 className="text-xl font-semibold text-white">Tu progreso</h1>
-        </div>
-        <LogoutButton />
+      <div className="px-4 pb-4">
+        <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName}</p>
+        <h1 className="pr-12 text-xl font-semibold text-white">Tu progreso</h1>
       </div>
 
       <div className="space-y-4 px-4 pb-10">
