@@ -233,6 +233,8 @@ export interface Lead {
   closed_at: string | null
   close_value: number | null
   days_to_close: number | null
+  next_follow_up_date: string | null
+  follow_up_count: number
   created_at: string
   updated_at: string
 }

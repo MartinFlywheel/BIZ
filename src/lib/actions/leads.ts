@@ -1,11 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type { LeadStage } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase/paginate'
-import { pickBalancedSetter } from '@/lib/manychat'
 
 export async function getLeads(clientId?: string) {
   const supabase = await createClient()
@@ -13,7 +11,7 @@ export async function getLeads(clientId?: string) {
   return fetchAllRows((from, to) => {
     let query = supabase
       .from('leads')
-      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification)')
+      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification, prequalification_data)')
       .order('updated_at', { ascending: false })
       .range(from, to)
 
@@ -91,6 +89,8 @@ export async function updateLeadStageAction(id: string, stage: LeadStage, agenda
   const updates: Record<string, unknown> = {
     stage,
     updated_at: new Date().toISOString(),
+    next_follow_up_date: null,
+    follow_up_count: 0,
   }
 
   const isAgendaStage = stage === 'agendado' || stage === 'agenda_set'
@@ -292,12 +292,6 @@ export async function createLeadAction(formData: FormData) {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
 
-  // Every lead needs an owner — same balanced pick the ManyChat webhooks
-  // use, so a lead added by hand doesn't sit unassigned just because
-  // nobody checked a box. Falls back to null only if the client genuinely
-  // has no active setter on the team.
-  const assignedTo = (formData.get('assigned_to') as string) || await pickBalancedSetter(createAdminClient(), clientId)
-
   const { error } = await supabase.from('leads').insert({
     client_id: clientId,
     ig_username: (formData.get('ig_username') as string) || null,
@@ -307,7 +301,6 @@ export async function createLeadAction(formData: FormData) {
     stage: (formData.get('stage') as LeadStage) || 'nuevo_contacto',
     content_id: (formData.get('content_id') as string) || null,
     lead_avatar: (formData.get('lead_avatar') as string) || null,
-    assigned_to: assignedTo,
     close_value: formData.get('close_value')
       ? parseFloat(formData.get('close_value') as string)
       : null,
@@ -355,4 +348,122 @@ export async function assignLeadContentAction(leadId: string, contentId: string 
 
   if (error) throw error
   revalidatePath('/leads')
+}
+
+// "Hice seguimiento" en la pestaña Seguimientos, cuando el setter confirma
+// que el lead sigue en la misma etapa (la conversación no avanzó todavía).
+// A diferencia de updateLeadStageAction, la etapa no se toca — solo se saca
+// al lead de la cola de "para hacer ahora" hasta mañana. follow_up_count no
+// se resetea: es el historial de cuántas veces se lo reintentó vía
+// "Perdido", y un touch exitoso no debería borrar ese historial. Igual que
+// un re-marcado de la misma etapa desde el Kanban, esto loguea
+// action_type 'seguimiento' para que cuente en "Seguimientos por etapa" del
+// progreso del setter.
+export async function markFollowUpDoneAction(id: string) {
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  const { data: lead, error: lookupError } = await supabase
+    .from('leads')
+    .select('client_id, stage')
+    .eq('id', id)
+    .single()
+  if (lookupError) throw lookupError
+
+  const { error } = await supabase
+    .from('leads')
+    .update({
+      next_follow_up_date: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+
+  if (authUser && lead) {
+    try {
+      await supabase.from('lead_activity_logs').insert({
+        lead_id: id,
+        user_id: authUser.id,
+        client_id: lead.client_id,
+        action_type: 'seguimiento',
+        stage_at_time: lead.stage,
+      })
+    } catch (err) {
+      console.error('[markFollowUpDoneAction] activity log failed:', err)
+    }
+  }
+
+  revalidatePath('/leads')
+  revalidatePath('/dashboard')
+}
+
+export async function snoozeLeadAction(id: string) {
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+
+  // Buscamos el lead para ver su contador actual
+  const { data: lead, error: lookupError } = await supabase
+    .from('leads')
+    .select('client_id, stage, follow_up_count')
+    .eq('id', id)
+    .single()
+
+  if (lookupError) throw lookupError
+
+  const currentCount = lead?.follow_up_count || 0
+  const nextCount = currentCount + 1
+  let stageAtTime = lead?.stage
+
+  if (nextCount > 2) {
+    // Ya intentó 2 veces, a la tercera muere (3er click en perdido)
+    // O si el máximo es 2, después de 2 intentos ya pasa a lost
+    stageAtTime = 'closed_lost'
+    const { error } = await supabase
+      .from('leads')
+      .update({
+        stage: 'closed_lost',
+        updated_at: new Date().toISOString(),
+        next_follow_up_date: null,
+      })
+      .eq('id', id)
+    if (error) throw error
+  } else {
+    // Reprogramar para 24h si es el 1er intento, o 48h si es el 2do
+    const waitHours = nextCount === 1 ? 24 : 48
+    const nextDate = new Date()
+    nextDate.setHours(nextDate.getHours() + waitHours)
+
+    const { error } = await supabase
+      .from('leads')
+      .update({
+        follow_up_count: nextCount,
+        next_follow_up_date: nextDate.toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+    if (error) throw error
+  }
+
+  // "Perdido" sí cuenta como actividad del setter (leadsTouched: intentó
+  // contactar antes de dar de baja al lead) pero NO debe sumar a
+  // "Seguimientos por etapa" — esa métrica solo mira filas 'seguimiento'
+  // (setter-app.ts). action_type solo admite 'contacto'/'seguimiento'
+  // (CHECK constraint en 028-setter-standards.sql), así que 'contacto' es
+  // el único valor que logra ese efecto sin abrir un tercer tipo en la BD.
+  if (authUser && lead) {
+    try {
+      await supabase.from('lead_activity_logs').insert({
+        lead_id: id,
+        user_id: authUser.id,
+        client_id: lead.client_id,
+        action_type: 'contacto',
+        stage_at_time: stageAtTime,
+      })
+    } catch (err) {
+      console.error('[snoozeLeadAction] activity log failed:', err)
+    }
+  }
+
+  revalidatePath('/leads')
+  revalidatePath('/dashboard')
 }

@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
+import { SeguimientosTab } from './seguimientos-tab'
 import type { LeadStage, Lead, ContentPiece, Interaction, Client } from '@/lib/types'
 import {
   updateLeadStageAction,
@@ -24,9 +25,9 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { saveAvatarsAction } from '@/lib/actions/clients'
 
-type SubTab = 'leads' | 'agendas' | 'equipo'
+type SubTab = 'leads' | 'seguimientos' | 'agendas' | 'equipo'
 
-interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null; lead_weight?: number }
+export interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null; lead_weight?: number }
 
 interface Props {
   leads: Lead[]
@@ -213,17 +214,24 @@ interface DrawerProps {
   contentPieces: ContentPiece[]
   avatarList: readonly string[]
   qualificationData?: Record<string, unknown>
+  contentHistory?: Interaction[]
   onClose: () => void
   onUpdated: (updated: Lead) => void
   onDeleted: (id: string) => void
 }
 
-function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificationData, onClose, onUpdated, onDeleted }: DrawerProps) {
+function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificationData, contentHistory, onClose, onUpdated, onDeleted }: DrawerProps) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [local, setLocal] = useState<Lead>(lead)
   const pendingRef = useRef<Parameters<typeof updateLeadFieldsAction>[1]>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const contentPieceById = useMemo(() => {
+    const m = new Map<string, ContentPiece>()
+    for (const c of contentPieces) m.set(c.id, c)
+    return m
+  }, [contentPieces])
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -413,6 +421,31 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificatio
                     <span className="text-zinc-300">{prettifyFieldValue(value)}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Historial de piezas de contenido — qué CTAs (piezas) tocó este
+              lead a lo largo del tiempo, no solo la última. Cada interacción
+              con más de 7 días de diferencia de la anterior queda como fila
+              propia (ver upsertInteraction en manychat.ts), así que esto ya
+              está disponible sin tocar el webhook ni la base. */}
+          {contentHistory && contentHistory.length > 0 && (
+            <div>
+              <SectionHead>Historial de Contenido</SectionHead>
+              <div className="space-y-1.5 text-xs">
+                {contentHistory.map(i => {
+                  const piece = i.content_id ? contentPieceById.get(i.content_id) : undefined
+                  const label = piece?.keyword_trigger || i.keyword_used || piece?.caption?.slice(0, 40) || 'Sin pieza'
+                  return (
+                    <div key={i.id} className="flex items-center justify-between rounded-lg border border-white/[0.04] bg-zinc-900/40 px-3 py-1.5">
+                      <span className="text-zinc-300 font-medium truncate">{label}</span>
+                      <span className="text-zinc-500 text-[10px] shrink-0 ml-2">
+                        {new Date(i.bot_triggered_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}
@@ -622,6 +655,27 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
       (l.ig_username && interactionByUsername.get(l.ig_username.toLowerCase())) ||
       null
     return match?.prequalification_data
+  }
+
+  // Todas las interacciones del lead (no solo la más reciente) para mostrar
+  // qué piezas de contenido tocó a lo largo del tiempo — más nueva primero.
+  const interactionsHistoryByUsername = useMemo(() => {
+    const m = new Map<string, Interaction[]>()
+    for (const i of interactions ?? []) {
+      if (!i.ig_username) continue
+      const key = i.ig_username.toLowerCase()
+      const arr = m.get(key)
+      if (arr) arr.push(i)
+      else m.set(key, [i])
+    }
+    for (const arr of m.values()) arr.sort((a, b) => b.bot_triggered_at.localeCompare(a.bot_triggered_at))
+    return m
+  }, [interactions])
+
+  function contentHistoryFor(l: Lead): Interaction[] {
+    if (l.ig_username) return interactionsHistoryByUsername.get(l.ig_username.toLowerCase()) ?? []
+    const single = l.interaction_id && interactionById.get(l.interaction_id)
+    return single ? [single] : []
   }
 
   const activeFilterCount = stageFilter.size + ctaFilter.size + interactionFilter.size + (dateFrom ? 1 : 0) + (dateTo ? 1 : 0)
@@ -983,6 +1037,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           contentPieces={contentPieces}
           avatarList={avatarList}
           qualificationData={qualificationDataFor(localLeads.find(l => l.id === openLead.id) ?? openLead)}
+          contentHistory={contentHistoryFor(localLeads.find(l => l.id === openLead.id) ?? openLead)}
           onClose={() => setOpenLead(null)}
           onUpdated={handleUpdated}
           onDeleted={handleDeleted}
@@ -1603,9 +1658,12 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
 
   const subTabs: { id: SubTab; label: string; count?: number }[] = [
     { id: 'leads', label: 'Leads', count: leads.length },
+    { id: 'seguimientos', label: 'Seguimientos' },
     { id: 'agendas', label: 'Agendas' },
-    { id: 'equipo', label: 'Equipo', count: agencyUsers.length },
   ]
+  if (isAdmin) {
+    subTabs.push({ id: 'equipo', label: 'Equipo', count: agencyUsers.length })
+  }
 
   return (
     <div className="space-y-0">
@@ -1652,6 +1710,17 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
           interactions={interactions}
           clientId={clientId}
           customAvatars={localAvatars.length > 0 ? localAvatars : undefined}
+        />
+      )}
+      {activeSubTab === 'seguimientos' && (
+        <SeguimientosTab
+          leads={leads}
+          contentPieces={contentPieces}
+          interactions={interactions}
+          clientId={clientId}
+          agencyUsers={agencyUsers}
+          isAdmin={isAdmin}
+          currentUserId={currentUserId}
         />
       )}
       {activeSubTab === 'agendas' && (

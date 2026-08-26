@@ -55,6 +55,13 @@ const RESERVED_PAYLOAD_KEYS = new Set([
   'email', 'phone', 'phone_number',
   'subscriber_id', 'id',
   'classification', 'event', 'stage', 'tags', 'custom_fields', 'qualified', 'pieceId',
+  // Metadata que ManyChat manda en todo webhook de "Full Contact Data" del
+  // suscriptor — no son respuestas del quiz/botonera, así que no deben
+  // colarse en prequalification_data junto con nivel/zona/ocupación/etc.
+  'key', 'page_id', 'user_refs', 'status', 'gender', 'locale', 'language', 'timezone',
+  'profile_pic', 'live_chat_url', 'last_input_text', 'last_interaction',
+  'ig_id', 'ig_last_interaction', 'ig_last_seen',
+  'subscribed', 'optin_phone', 'optin_email', 'optin_whatsapp', 'whatsapp_phone', 'is_followup_enabled',
 ])
 
 // ManyChat manda los custom fields de dos formas distintas según cómo se
@@ -376,16 +383,10 @@ export async function handlePieceWebhook(
     // setter someone already assigned by hand. Chat abierto stays
     // unassigned — nobody's earned ownership of a lead that hasn't
     // responded yet.
-    // The `.is('assigned_to', null)` on the write (not just the read above)
-    // matters: ManyChat can fire two of this contact's webhook calls close
-    // enough together that both pass the !existingLead?.assigned_to check
-    // before either write lands — without it, the second call's UPDATE
-    // silently steals the lead from whichever setter the first call gave it
-    // to.
     if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
       const setterId = await pickBalancedSetter(supabase, clientId)
       if (setterId) {
-        await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId).is('assigned_to', null)
+        await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
       }
     }
 
