@@ -383,10 +383,16 @@ export async function handlePieceWebhook(
     // setter someone already assigned by hand. Chat abierto stays
     // unassigned — nobody's earned ownership of a lead that hasn't
     // responded yet.
+    // The `.is('assigned_to', null)` on the write (not just the read above)
+    // matters: ManyChat can fire two of this contact's webhook calls close
+    // enough together that both pass the !existingLead?.assigned_to check
+    // before either write lands — without it, the second call's UPDATE
+    // silently steals the lead from whichever setter the first call gave it
+    // to.
     if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
       const setterId = await pickBalancedSetter(supabase, clientId)
       if (setterId) {
-        await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
+        await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId).is('assigned_to', null)
       }
     }
 
