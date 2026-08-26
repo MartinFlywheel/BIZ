@@ -57,6 +57,15 @@ interface MediaItem {
   timestamp: string
 }
 
+function isRealInstagramPermalink(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return host === 'www.instagram.com' || host === 'instagram.com'
+  } catch {
+    return false
+  }
+}
+
 function pickThumbnail(media: { media_type: string; thumbnail_url?: string; media_url?: string }): string | null {
   if (media.media_type === 'VIDEO' && media.thumbnail_url) return media.thumbnail_url
   if (media.media_url) return media.media_url
@@ -195,7 +204,13 @@ export async function syncClientContent(clientId: string): Promise<{
     }
 
     const mediaData = await mediaRes.json()
-    const items: MediaItem[] = mediaData.data || []
+    // Meta's /media edge sometimes returns a reel twice: once as the real
+    // post (permalink like instagram.com/reel/...) and once as its
+    // underlying video asset — same timestamp, a different (longer) id, and
+    // a permalink that's actually a raw signed CDN .mp4 URL, not a real
+    // Instagram post. Drop those before matching/inserting, or they become
+    // permanent garbage rows with no real content behind them.
+    const items: MediaItem[] = (mediaData.data || []).filter((m: MediaItem) => !m.permalink || isRealInstagramPermalink(m.permalink))
 
     // Pieces created manually (tagged with a keyword_trigger, sometimes
     // carrying their own revenue via content_metrics) never got an

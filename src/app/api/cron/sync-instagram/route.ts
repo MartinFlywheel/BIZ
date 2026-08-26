@@ -10,6 +10,15 @@ export const runtime = 'nodejs'
 // which is why pieces kept syncing at 0.
 const GENERAL_METRICS = 'views,reach,likes,comments,shares,saved,total_interactions'
 
+function isRealInstagramPermalink(url: string): boolean {
+  try {
+    const host = new URL(url).hostname
+    return host === 'www.instagram.com' || host === 'instagram.com'
+  } catch {
+    return false
+  }
+}
+
 interface Insights {
   views: number
   reach: number
@@ -90,10 +99,17 @@ export async function GET(request: Request) {
       }
 
       const mediaData = await mediaRes.json()
-      const items: {
+      type Item = {
         id: string; caption?: string; media_type: string; permalink?: string
         thumbnail_url?: string; timestamp: string
-      }[] = mediaData.data || []
+      }
+      // Meta's /media edge sometimes returns a reel twice: once as the real
+      // post (permalink like instagram.com/reel/...) and once as its
+      // underlying video asset — same timestamp, a different (longer) id,
+      // and a permalink that's actually a raw signed CDN .mp4 URL, not a
+      // real Instagram post. Drop those before matching/inserting, or they
+      // become permanent garbage rows with no real content behind them.
+      const items: Item[] = (mediaData.data || []).filter((m: Item) => !m.permalink || isRealInstagramPermalink(m.permalink))
 
       // Pieces created manually (tagged with a keyword_trigger, sometimes
       // carrying their own revenue via content_metrics) never got an
