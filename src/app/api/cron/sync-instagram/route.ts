@@ -90,7 +90,10 @@ export async function GET(request: Request) {
       }
 
       const mediaData = await mediaRes.json()
-      let processed = 0
+      const items: {
+        id: string; caption?: string; media_type: string; permalink?: string
+        thumbnail_url?: string; timestamp: string
+      }[] = mediaData.data || []
 
       // Pieces created manually (tagged with a keyword_trigger, sometimes
       // carrying their own revenue via content_metrics) never got an
@@ -99,12 +102,20 @@ export async function GET(request: Request) {
       // tagged row instead of creating an untagged duplicate that orphans
       // the revenue already logged against it.
       type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null }
-      const { data: unmatchedRows } = await supabase
-        .from('content_pieces')
-        .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url')
-        .eq('client_id', client.id)
-        .is('ig_media_id', null)
+      const [{ data: existingRows }, { data: unmatchedRows }] = await Promise.all([
+        supabase
+          .from('content_pieces')
+          .select('id, ig_media_id')
+          .eq('client_id', client.id)
+          .not('ig_media_id', 'is', null),
+        supabase
+          .from('content_pieces')
+          .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url')
+          .eq('client_id', client.id)
+          .is('ig_media_id', null),
+      ])
 
+      const existingByMediaId = new Map((existingRows || []).map((r) => [r.ig_media_id as string, r.id]))
       const byPermalink = new Map<string, ManualRow>()
       const byDayType = new Map<string, ManualRow[]>()
       for (const row of unmatchedRows || []) {
@@ -117,80 +128,97 @@ export async function GET(request: Request) {
         }
       }
 
-      for (const media of mediaData.data || []) {
+      // Decide each item's match up front, synchronously, before any of the
+      // slow API/DB work runs concurrently below — avoids two items racing
+      // onto the same manual candidate.
+      type Plan = { media: typeof items[number]; contentType: string } & (
+        | { kind: 'existing'; targetId: string }
+        | { kind: 'manual'; manualMatch: ManualRow }
+        | { kind: 'new' }
+      )
+      const plans: Plan[] = items.map((media) => {
         const contentType = media.media_type === 'VIDEO' ? 'reel'
           : media.media_type === 'CAROUSEL_ALBUM' ? 'post'
           : 'post'
 
-        const insights = await fetchInsights(media.id, token)
-        const avgWatchTime = contentType === 'reel' ? await fetchReelWatchTime(media.id, token) : null
+        const targetId = existingByMediaId.get(media.id)
+        if (targetId) return { media, contentType, kind: 'existing', targetId }
 
-        const { data: existing } = await supabase
-          .from('content_pieces')
-          .select('id')
-          .eq('ig_media_id', media.id)
-          .eq('client_id', client.id)
-          .maybeSingle()
-
-        let manualMatch: ManualRow | null = null
-        const day = media.timestamp.slice(0, 10)
-        const dayTypeKey = `${contentType}|${day}`
-        if (!existing) {
-          manualMatch = (media.permalink && byPermalink.get(media.permalink)) || null
-          if (!manualMatch) {
-            const candidates = byDayType.get(dayTypeKey) ?? []
-            if (candidates.length === 1) manualMatch = candidates[0]
-          }
+        let manualMatch = (media.permalink && byPermalink.get(media.permalink)) || null
+        const dayTypeKey = `${contentType}|${media.timestamp.slice(0, 10)}`
+        if (!manualMatch) {
+          const candidates = byDayType.get(dayTypeKey) ?? []
+          if (candidates.length === 1) manualMatch = candidates[0]
         }
-
-        const metricFields = {
-          views: insights.views,
-          reach: insights.reach,
-          likes: insights.likes,
-          comments: insights.comments,
-          shares: insights.shares,
-          saves: insights.saved,
-          total_interactions: insights.total_interactions,
-          ...(avgWatchTime !== null && { avg_watch_time_seconds: avgWatchTime }),
-          metrics_source: 'meta_api' as const,
-          metrics_updated_at: new Date().toISOString(),
-        }
-
-        if (existing) {
-          await supabase
-            .from('content_pieces')
-            .update({ ...metricFields, updated_at: new Date().toISOString() })
-            .eq('id', existing.id)
-        } else if (manualMatch) {
-          // Backfill ig_media_id so future syncs match directly — but never
-          // touch caption/keyword_trigger, that's the label the team gave it.
-          await supabase
-            .from('content_pieces')
-            .update({
-              ig_media_id: media.id,
-              ig_thumbnail_url: manualMatch.ig_thumbnail_url ?? media.thumbnail_url,
-              ig_permalink: manualMatch.ig_permalink ?? media.permalink,
-              ...metricFields,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', manualMatch.id)
-
+        if (manualMatch) {
           if (media.permalink) byPermalink.delete(media.permalink)
           byDayType.set(dayTypeKey, (byDayType.get(dayTypeKey) ?? []).filter((c) => c.id !== manualMatch!.id))
-        } else {
-          await supabase.from('content_pieces').insert({
-            client_id: client.id,
-            content_type: contentType,
-            ig_media_id: media.id,
-            ig_permalink: media.permalink,
-            ig_thumbnail_url: media.thumbnail_url,
-            caption: media.caption,
-            published_at: media.timestamp,
-            ...metricFields,
-          })
+          return { media, contentType, kind: 'manual', manualMatch }
         }
+        return { media, contentType, kind: 'new' }
+      })
 
-        processed++
+      // A Meta API round trip (or two, for reels) per item, run in small
+      // concurrent batches instead of one at a time — sequential across
+      // every client's full media list is what blew past Vercel's 60s
+      // function cap on the Hobby plan.
+      const CONCURRENCY = 8
+      let processed = 0
+      for (let i = 0; i < plans.length; i += CONCURRENCY) {
+        const batch = plans.slice(i, i + CONCURRENCY)
+        await Promise.all(batch.map(async (plan) => {
+          const { media, contentType } = plan
+          const [insights, avgWatchTime] = await Promise.all([
+            fetchInsights(media.id, token),
+            contentType === 'reel' ? fetchReelWatchTime(media.id, token) : Promise.resolve(null),
+          ])
+
+          const metricFields = {
+            views: insights.views,
+            reach: insights.reach,
+            likes: insights.likes,
+            comments: insights.comments,
+            shares: insights.shares,
+            saves: insights.saved,
+            total_interactions: insights.total_interactions,
+            ...(avgWatchTime !== null && { avg_watch_time_seconds: avgWatchTime }),
+            metrics_source: 'meta_api' as const,
+            metrics_updated_at: new Date().toISOString(),
+          }
+
+          if (plan.kind === 'existing') {
+            await supabase
+              .from('content_pieces')
+              .update({ ...metricFields, updated_at: new Date().toISOString() })
+              .eq('id', plan.targetId)
+          } else if (plan.kind === 'manual') {
+            // Backfill ig_media_id so future syncs match directly — but
+            // never touch caption/keyword_trigger, that's the label the
+            // team gave it.
+            await supabase
+              .from('content_pieces')
+              .update({
+                ig_media_id: media.id,
+                ig_thumbnail_url: plan.manualMatch.ig_thumbnail_url ?? media.thumbnail_url,
+                ig_permalink: plan.manualMatch.ig_permalink ?? media.permalink,
+                ...metricFields,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', plan.manualMatch.id)
+          } else {
+            await supabase.from('content_pieces').insert({
+              client_id: client.id,
+              content_type: contentType,
+              ig_media_id: media.id,
+              ig_permalink: media.permalink,
+              ig_thumbnail_url: media.thumbnail_url,
+              caption: media.caption,
+              published_at: media.timestamp,
+              ...metricFields,
+            })
+          }
+        }))
+        processed += batch.length
       }
 
       results.push({ client: client.ig_handle, status: 'success', processed })
