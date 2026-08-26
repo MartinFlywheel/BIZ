@@ -26,7 +26,7 @@ async function fetchStoryInsights(mediaId: string, token: string): Promise<Story
   const insights: StoryInsights = { views: 0, reach: 0, replies: 0, taps_forward: 0, taps_back: 0, exits: 0, total_interactions: 0 }
   try {
     const res = await fetch(
-      `https://graph.instagram.com/${mediaId}/insights?metric=${STORY_METRICS}&access_token=${token}`
+      `https://graph.facebook.com/${mediaId}/insights?metric=${STORY_METRICS}&access_token=${token}`
     )
     if (res.ok) {
       const data = await res.json()
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   for (const client of clients) {
     try {
       const storiesRes = await fetch(
-        `https://graph.instagram.com/${client.ig_account_id}/stories?fields=id,media_type,permalink,timestamp&access_token=${token}`
+        `https://graph.facebook.com/${client.ig_account_id}/stories?fields=id,media_type,permalink,timestamp&access_token=${token}`
       )
 
       if (!storiesRes.ok) {

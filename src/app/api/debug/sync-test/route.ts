@@ -17,13 +17,13 @@ export async function GET(request: NextRequest) {
   }
 
   if (!igAccountId) {
-    const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${token}`)
+    const meRes = await fetch(`https://graph.facebook.com/me?fields=id,username&access_token=${token}`)
     const meData = await meRes.json()
     checks.token_check = meRes.ok ? meData : { error: meData.error?.message || `HTTP ${meRes.status}` }
 
     if (meRes.ok && meData.id) {
       const mediaRes = await fetch(
-        `https://graph.instagram.com/${meData.id}/media?fields=id,caption,media_type,permalink,timestamp&limit=3&access_token=${token}`
+        `https://graph.facebook.com/${meData.id}/media?fields=id,caption,media_type,permalink,timestamp&limit=3&access_token=${token}`
       )
       const mediaData = await mediaRes.json()
       checks.media_test = mediaRes.ok
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 
   const mediaRes = await fetch(
-    `https://graph.instagram.com/${igAccountId}/media?fields=id,caption,media_type,permalink,timestamp&limit=5&access_token=${token}`
+    `https://graph.facebook.com/${igAccountId}/media?fields=id,caption,media_type,permalink,timestamp&limit=5&access_token=${token}`
   )
   const mediaData = await mediaRes.json()
 

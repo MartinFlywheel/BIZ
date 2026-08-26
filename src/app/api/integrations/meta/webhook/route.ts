@@ -174,7 +174,7 @@ async function resolveLeadId(supabase: AdminClient, clientId: string, igsid: str
   if (!token) return null
 
   try {
-    const res = await fetch(`https://graph.instagram.com/${igsid}?fields=username&access_token=${token}`)
+    const res = await fetch(`https://graph.facebook.com/${igsid}?fields=username&access_token=${token}`)
     if (!res.ok) return null
     const { username } = await res.json()
     if (!username) return null

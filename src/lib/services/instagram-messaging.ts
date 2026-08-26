@@ -8,7 +8,7 @@ export async function sendInstagramDM(igAccountId: string, recipientIgsid: strin
     throw new Error('META_SYSTEM_USER_TOKEN not configured')
   }
 
-  const response = await fetch(`https://graph.instagram.com/v21.0/${igAccountId}/messages`, {
+  const response = await fetch(`https://graph.facebook.com/v21.0/${igAccountId}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

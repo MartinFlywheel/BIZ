@@ -92,12 +92,14 @@ async function extractIgThumbnail(permalink: string): Promise<string | null> {
     } catch { }
   }
 
-  // Method 2: Instagram Graph API via system token
+  // Method 2: Instagram Graph API via system token — same host/path as
+  // Method 1's oEmbed call, not graph.instagram.com (that host doesn't
+  // parse Business Manager System User tokens at all, see syncClientContent).
   const systemToken = process.env.META_SYSTEM_USER_TOKEN
   if (systemToken) {
     try {
       const res = await fetch(
-        `https://graph.instagram.com/oembed?url=${encodeURIComponent(permalink)}&access_token=${systemToken}`
+        `https://graph.facebook.com/v19.0/instagram_oembed?url=${encodeURIComponent(permalink)}&access_token=${systemToken}`
       )
       if (res.ok) {
         const data = await res.json()

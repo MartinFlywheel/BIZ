@@ -24,7 +24,7 @@ async function fetchInsights(mediaId: string, token: string): Promise<Insights> 
   const insights: Insights = { views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0, total_interactions: 0 }
   try {
     const res = await fetch(
-      `https://graph.instagram.com/${mediaId}/insights?metric=${GENERAL_METRICS}&access_token=${token}`
+      `https://graph.facebook.com/${mediaId}/insights?metric=${GENERAL_METRICS}&access_token=${token}`
     )
     if (res.ok) {
       const data = await res.json()
@@ -42,7 +42,7 @@ async function fetchInsights(mediaId: string, token: string): Promise<Insights> 
 async function fetchReelWatchTime(mediaId: string, token: string): Promise<number | null> {
   try {
     const res = await fetch(
-      `https://graph.instagram.com/${mediaId}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
+      `https://graph.facebook.com/${mediaId}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
     )
     if (!res.ok) return null
     const data = await res.json()
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
   for (const client of clients) {
     try {
       const mediaRes = await fetch(
-        `https://graph.instagram.com/${client.ig_account_id}/media?fields=id,caption,media_type,permalink,thumbnail_url,timestamp&access_token=${token}&limit=50`
+        `https://graph.facebook.com/${client.ig_account_id}/media?fields=id,caption,media_type,permalink,thumbnail_url,timestamp&access_token=${token}&limit=50`
       )
 
       if (!mediaRes.ok) {

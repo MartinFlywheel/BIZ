@@ -77,7 +77,7 @@ export async function syncClientContent(clientId: string): Promise<{
 
   try {
     const mediaRes = await fetch(
-      `https://graph.instagram.com/${client.ig_account_id}/media?fields=${IG_MEDIA_FIELDS}&access_token=${token}&limit=50`
+      `https://graph.facebook.com/${client.ig_account_id}/media?fields=${IG_MEDIA_FIELDS}&access_token=${token}&limit=50`
     )
 
     if (!mediaRes.ok) {
@@ -129,7 +129,7 @@ export async function syncClientContent(clientId: string): Promise<{
       let insights = { views: 0, reach: 0, likes: 0, comments: 0, shares: 0, saved: 0, total_interactions: 0 }
       try {
         const insightsRes = await fetch(
-          `https://graph.instagram.com/${media.id}/insights?metric=views,reach,likes,comments,shares,saved,total_interactions&access_token=${token}`
+          `https://graph.facebook.com/${media.id}/insights?metric=views,reach,likes,comments,shares,saved,total_interactions&access_token=${token}`
         )
         if (insightsRes.ok) {
           const insightsData = await insightsRes.json()
@@ -143,7 +143,7 @@ export async function syncClientContent(clientId: string): Promise<{
       if (contentType === 'reel') {
         try {
           const watchRes = await fetch(
-            `https://graph.instagram.com/${media.id}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
+            `https://graph.facebook.com/${media.id}/insights?metric=ig_reels_avg_watch_time&access_token=${token}`
           )
           if (watchRes.ok) {
             const watchData = await watchRes.json()
