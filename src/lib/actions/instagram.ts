@@ -57,6 +57,11 @@ interface MediaItem {
   timestamp: string
 }
 
+function dayTypeKeys(contentType: string, isoTimestamp: string): string[] {
+  const dayMs = new Date(`${isoTimestamp.slice(0, 10)}T00:00:00Z`).getTime()
+  return [-1, 0, 1].map((offset) => `${contentType}|${new Date(dayMs + offset * 86400000).toISOString().slice(0, 10)}`)
+}
+
 function isRealInstagramPermalink(url: string): boolean {
   try {
     const host = new URL(url).hostname
@@ -263,14 +268,20 @@ export async function syncClientContent(clientId: string): Promise<{
       if (targetId) return { media, contentType, thumbnail, kind: 'existing', targetId }
 
       let manualMatch = (media.permalink && byPermalink.get(media.permalink)) || null
-      const dayTypeKey = `${contentType}|${media.timestamp.slice(0, 10)}`
       if (!manualMatch) {
-        const candidates = byDayType.get(dayTypeKey) ?? []
+        // Manual entries only carry a plain calendar date, but the real
+        // post's UTC timestamp can land on the adjacent day depending on
+        // what local hour it was actually published at — check a ±1 day
+        // window, not just the exact date, before giving up.
+        const keys = dayTypeKeys(contentType, media.timestamp)
+        const candidates = keys.flatMap((k) => byDayType.get(k) ?? [])
         if (candidates.length === 1) manualMatch = candidates[0]
       }
       if (manualMatch) {
         if (media.permalink) byPermalink.delete(media.permalink)
-        byDayType.set(dayTypeKey, (byDayType.get(dayTypeKey) ?? []).filter((c) => c.id !== manualMatch!.id))
+        for (const k of dayTypeKeys(contentType, media.timestamp)) {
+          byDayType.set(k, (byDayType.get(k) ?? []).filter((c) => c.id !== manualMatch!.id))
+        }
         return { media, contentType, thumbnail, kind: 'manual', manualMatch }
       }
       return { media, contentType, thumbnail, kind: 'new' }
