@@ -50,3 +50,34 @@ export async function fetchAllRows<T>(
 
   return allRows
 }
+
+// OFFSET pagination (fetchAllRows above) gets more expensive with every
+// page — Postgres has to scan and discard everything before the offset,
+// so a deep page on a table with 10k+ rows for one client can turn into a
+// multi-second scan, and several of those firing in the same batch can
+// trip Supabase's statement timeout outright (seen in production on a
+// client with 10k+ leads, right after a bulk delete added extra load).
+// Keyset pagination via the primary key avoids that: each page seeks
+// straight to `id > cursor` using the primary key index, so page 20 costs
+// the same as page 1 regardless of table size. It's sequential (each
+// page's cursor depends on the previous page), not batched/parallel like
+// fetchAllRows, but each page stays cheap, which is what actually matters
+// here. Order-agnostic — callers sort the fully materialized result
+// themselves once everything's in memory.
+export async function fetchAllRowsByCursor<T extends { id: string }>(
+  queryFn: (cursor: string | null, limit: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const allRows: T[] = []
+  let cursor: string | null = null
+
+  while (true) {
+    const { data, error } = await queryFn(cursor, PAGE_SIZE)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    allRows.push(...data)
+    if (data.length < PAGE_SIZE) break
+    cursor = data[data.length - 1].id
+  }
+
+  return allRows
+}

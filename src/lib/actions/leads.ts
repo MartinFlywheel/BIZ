@@ -1,25 +1,30 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
-import type { LeadStage } from '@/lib/types'
-import { fetchAllRows } from '@/lib/supabase/paginate'
-import { pickBalancedSetter } from '@/lib/manychat'
+import type { LeadStage, Lead } from '@/lib/types'
+import { fetchAllRows, fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 
 export async function getLeads(clientId?: string) {
   const supabase = await createClient()
 
-  return fetchAllRows((from, to) => {
+  // Keyset (not OFFSET) pagination — this query alone was timing out in
+  // production for clients with 10k+ leads. See fetchAllRowsByCursor.
+  const rows = await fetchAllRowsByCursor<Lead>((cursor, limit) => {
     let query = supabase
       .from('leads')
       .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification, prequalification_data)')
-      .order('updated_at', { ascending: false })
-      .range(from, to)
+      .order('id', { ascending: true })
+      .limit(limit)
 
     if (clientId) query = query.eq('client_id', clientId)
+    if (cursor) query = query.gt('id', cursor)
     return query
   })
+
+  // Restore the "most recently updated first" order the CRM tab expects —
+  // cheap in JS now that everything's already in memory.
+  return rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 }
 
 // Cheap count for tab badges — a client with thousands of leads shouldn't
@@ -294,12 +299,6 @@ export async function createLeadAction(formData: FormData) {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
 
-  // Every lead needs an owner — same balanced pick the ManyChat webhooks
-  // use, so a lead added by hand doesn't sit unassigned just because
-  // nobody checked a box. Falls back to null only if the client genuinely
-  // has no active setter on the team.
-  const assignedTo = (formData.get('assigned_to') as string) || await pickBalancedSetter(createAdminClient(), clientId)
-
   const { error } = await supabase.from('leads').insert({
     client_id: clientId,
     ig_username: (formData.get('ig_username') as string) || null,
@@ -309,7 +308,6 @@ export async function createLeadAction(formData: FormData) {
     stage: (formData.get('stage') as LeadStage) || 'nuevo_contacto',
     content_id: (formData.get('content_id') as string) || null,
     lead_avatar: (formData.get('lead_avatar') as string) || null,
-    assigned_to: assignedTo,
     close_value: formData.get('close_value')
       ? parseFloat(formData.get('close_value') as string)
       : null,

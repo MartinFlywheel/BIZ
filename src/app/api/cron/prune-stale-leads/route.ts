@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { fetchAllRows } from '@/lib/supabase/paginate'
+import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -31,23 +31,29 @@ export async function GET(request: Request) {
   const perClient: Record<string, number> = {}
 
   for (const client of clients) {
-    const leads = await fetchAllRows((from, to) =>
-      supabase
+    const leads = await fetchAllRowsByCursor<{ id: string; ig_username: string | null }>((cursor, limit) => {
+      let query = supabase
         .from('leads')
         .select('id, ig_username')
         .eq('client_id', client.id)
         .eq('stage', 'nuevo_contacto')
-        .range(from, to)
-    )
+        .order('id', { ascending: true })
+        .limit(limit)
+      if (cursor) query = query.gt('id', cursor)
+      return query
+    })
     if (leads.length === 0) continue
 
-    const interactions = await fetchAllRows((from, to) =>
-      supabase
+    const interactions = await fetchAllRowsByCursor<{ id: string; ig_username: string | null; bot_triggered_at: string }>((cursor, limit) => {
+      let query = supabase
         .from('interactions')
-        .select('ig_username, bot_triggered_at')
+        .select('id, ig_username, bot_triggered_at')
         .eq('client_id', client.id)
-        .range(from, to)
-    )
+        .order('id', { ascending: true })
+        .limit(limit)
+      if (cursor) query = query.gt('id', cursor)
+      return query
+    })
 
     // Por username: cuántas piezas distintas tocó y cuándo fue la última.
     const touchesByUsername = new Map<string, { count: number; lastTouch: string }>()
