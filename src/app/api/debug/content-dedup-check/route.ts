@@ -31,5 +31,18 @@ export async function GET(request: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ count: pieces?.length ?? 0, pieces })
+  const ids = (pieces || []).map((p) => p.id)
+  const [{ data: metrics }, { data: interactions }, { data: leads }] = await Promise.all([
+    supabase.from('content_metrics').select('content_id, cierres, cash_collected').in('content_id', ids),
+    supabase.from('interactions').select('id, content_id').in('content_id', ids),
+    supabase.from('leads').select('id, content_id').in('content_id', ids),
+  ])
+
+  return NextResponse.json({
+    count: pieces?.length ?? 0,
+    pieces,
+    content_metrics: metrics,
+    interactions_by_content: interactions,
+    leads_by_content: leads,
+  })
 }
