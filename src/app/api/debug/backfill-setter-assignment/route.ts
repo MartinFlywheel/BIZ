@@ -124,7 +124,11 @@ export async function GET(request: Request) {
         if (match) updates.interaction_id = match.interactionId
       }
 
-      pending.push(supabase.from('leads').update(updates).eq('id', lead.id))
+      // .is('assigned_to', null) guards against a race with live webhook
+      // traffic assigning this same lead between this script's initial read
+      // and this write — same reasoning as the live auto-assign in
+      // src/lib/manychat.ts.
+      pending.push(supabase.from('leads').update(updates).eq('id', lead.id).is('assigned_to', null))
       counts.set(setterId, (counts.get(setterId) || 0) + 1)
     }
 

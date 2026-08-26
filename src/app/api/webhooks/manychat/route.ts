@@ -204,7 +204,7 @@ export async function POST(request: Request) {
       if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
         const setterId = await pickBalancedSetter(supabase, clientId)
         if (setterId) {
-          await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId)
+          await supabase.from('leads').update({ assigned_to: setterId }).eq('id', leadId).is('assigned_to', null)
         }
       }
     } catch (err) {

@@ -88,6 +88,31 @@ export async function syncClientContent(clientId: string): Promise<{
     const mediaData = await mediaRes.json()
     let processed = 0
 
+    // Pieces created manually (tagged with a keyword_trigger, sometimes
+    // carrying their own revenue via content_metrics) never got an
+    // ig_media_id — the API has no way to know they're the same post. Match
+    // them by permalink first, then by same day + content_type, so the sync
+    // fills in real metrics on the existing tagged row instead of creating
+    // an untagged duplicate that orphans the revenue already logged against it.
+    type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null }
+    const { data: unmatchedRows } = await supabase
+      .from('content_pieces')
+      .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url')
+      .eq('client_id', clientId)
+      .is('ig_media_id', null)
+
+    const byPermalink = new Map<string, ManualRow>()
+    const byDayType = new Map<string, ManualRow[]>()
+    for (const row of unmatchedRows || []) {
+      if (row.ig_permalink) byPermalink.set(row.ig_permalink, row)
+      if (row.published_at) {
+        const key = `${row.content_type}|${row.published_at.slice(0, 10)}`
+        const arr = byDayType.get(key) ?? []
+        arr.push(row)
+        byDayType.set(key, arr)
+      }
+    }
+
     for (const media of mediaData.data || []) {
       const contentType = media.media_type === 'VIDEO' ? 'reel'
         : media.media_type === 'CAROUSEL_ALBUM' ? 'post'
@@ -135,6 +160,17 @@ export async function syncClientContent(clientId: string): Promise<{
         .eq('client_id', clientId)
         .maybeSingle()
 
+      let manualMatch: ManualRow | null = null
+      const day = media.timestamp.slice(0, 10)
+      const dayTypeKey = `${contentType}|${day}`
+      if (!existing) {
+        manualMatch = (media.permalink && byPermalink.get(media.permalink)) || null
+        if (!manualMatch) {
+          const candidates = byDayType.get(dayTypeKey) ?? []
+          if (candidates.length === 1) manualMatch = candidates[0]
+        }
+      }
+
       const metricFields = {
         views: insights.views,
         reach: insights.reach,
@@ -159,6 +195,22 @@ export async function syncClientContent(clientId: string): Promise<{
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.id)
+      } else if (manualMatch) {
+        // Backfill ig_media_id so future syncs match directly — but never
+        // touch caption/keyword_trigger, that's the label the team gave it.
+        await supabase
+          .from('content_pieces')
+          .update({
+            ig_media_id: media.id,
+            ig_thumbnail_url: manualMatch.ig_thumbnail_url ?? thumbnail,
+            ig_permalink: manualMatch.ig_permalink ?? media.permalink,
+            ...metricFields,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', manualMatch.id)
+
+        if (media.permalink) byPermalink.delete(media.permalink)
+        byDayType.set(dayTypeKey, (byDayType.get(dayTypeKey) ?? []).filter((c) => c.id !== manualMatch!.id))
       } else {
         await supabase.from('content_pieces').insert({
           client_id: clientId,

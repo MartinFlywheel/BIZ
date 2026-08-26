@@ -548,11 +548,11 @@ export interface SetterProgressRow {
 // only shows up once a setter crosses their quota and submits; this is
 // the "how's everyone doing right now" view for the cycle in progress.
 export async function getSettersProgress(clientId: string): Promise<SetterProgressRow[]> {
-  const setters = await getAgencyUsers(clientId)
-  const nonAdmins = setters.filter((s) => s.role !== 'admin')
+  const users = await getAgencyUsers(clientId)
+  const setters = users.filter((s) => s.role === 'setter')
 
   const rows = await Promise.all(
-    nonAdmins.map(async (s) => ({
+    setters.map(async (s) => ({
       userId: s.id,
       fullName: s.full_name,
       cycle: await getCycleProgress(s.id, clientId),

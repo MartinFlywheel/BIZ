@@ -8,7 +8,7 @@ import { ContentPieceForm } from './content-piece-form'
 import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { ContentConversationTable } from './content-conversation-table'
 import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
-import { quickAddLatestReels } from '@/lib/actions/instagram'
+import { syncClientContent } from '@/lib/actions/instagram'
 import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
 import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
@@ -205,8 +205,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [deleting, setDeleting] = useState<string | null>(null)
-    const [quickAdding, setQuickAdding] = useState(false)
-    const [quickAddToast, setQuickAddToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+    const [syncing, setSyncing] = useState(false)
+    const [syncToast, setSyncToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [sortBy, setSortBy] = useState<SortKey>('recent')
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
     const [interactions, setInteractions] = useState<Interaction[]>([])
@@ -218,7 +218,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     // tab's per-piece chat counts.
     useEffect(() => {
         let cancelled = false
-        getInteractions(clientId).then((data) => { if (!cancelled) setInteractions(data as unknown as Interaction[]) })
+        getInteractions(clientId)
+            .then((data) => { if (!cancelled) setInteractions(data as unknown as Interaction[]) })
+            .catch((err) => { if (!cancelled) console.error('[ContentMetricsGrid] getInteractions failed', err) })
         return () => { cancelled = true }
     }, [clientId])
 
@@ -236,25 +238,18 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         return counts
     }, [interactions])
 
-    async function handleQuickAdd() {
-        setQuickAdding(true)
-        setQuickAddToast(null)
+    async function handleSync() {
+        setSyncing(true)
+        setSyncToast(null)
         try {
-            const result = await quickAddLatestReels(clientId, 10)
-            if (result.status === 'error') {
-                setQuickAddToast({ type: 'error', message: result.message })
-            } else {
-                const msg = result.added === 0
-                    ? `Sin nuevos reels (${result.skipped} ya existían)`
-                    : `${result.added} reel${result.added !== 1 ? 's' : ''} agregado${result.added !== 1 ? 's' : ''}${result.skipped > 0 ? `, ${result.skipped} ya existían` : ''}`
-                setQuickAddToast({ type: 'success', message: msg })
-                if (result.added > 0) { router.refresh(); reload() }
-            }
+            const result = await syncClientContent(clientId)
+            setSyncToast({ type: result.status === 'success' ? 'success' : 'error', message: result.message })
+            if (result.status === 'success') { router.refresh(); reload() }
         } catch (err) {
-            setQuickAddToast({ type: 'error', message: err instanceof Error ? err.message : 'Error inesperado' })
+            setSyncToast({ type: 'error', message: err instanceof Error ? err.message : 'Error inesperado' })
         } finally {
-            setQuickAdding(false)
-            setTimeout(() => setQuickAddToast(null), 5000)
+            setSyncing(false)
+            setTimeout(() => setSyncToast(null), 5000)
         }
     }
 
@@ -319,12 +314,12 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                         <Button
                             size="sm"
                             variant="secondary"
-                            onClick={handleQuickAdd}
-                            disabled={quickAdding}
-                            title="Importar los últimos 10 reels desde Instagram"
+                            onClick={handleSync}
+                            disabled={syncing}
+                            title="Sincronizar vistas/likes/comentarios reales desde la Graph API de Instagram (usa el Instagram Account ID del cliente)"
                         >
-                            <RefreshCw className={`h-3.5 w-3.5 ${quickAdding ? 'animate-spin' : ''}`} />
-                            {quickAdding ? 'Importando...' : 'Quick Add Reels'}
+                            <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
+                            {syncing ? 'Sincronizando...' : 'Sincronizar'}
                         </Button>
                         <Button size="sm" onClick={() => setShowNewPieceForm(true)}>
                             <Plus className="h-3.5 w-3.5" />
@@ -333,17 +328,17 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     </div>
                 </div>
 
-                {/* Quick Add toast */}
-                {quickAddToast && (
-                    <div className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${quickAddToast.type === 'success'
+                {/* Sync toast */}
+                {syncToast && (
+                    <div className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${syncToast.type === 'success'
                         ? 'border-emerald-900/50 bg-emerald-950/20 text-emerald-400'
                         : 'border-red-900/50 bg-red-950/20 text-red-400'
                         }`}>
-                        {quickAddToast.type === 'success'
+                        {syncToast.type === 'success'
                             ? <Check className="h-3.5 w-3.5 flex-shrink-0" />
                             : <span className="flex-shrink-0">⚠</span>
                         }
-                        {quickAddToast.message}
+                        {syncToast.message}
                     </div>
                 )}
 
