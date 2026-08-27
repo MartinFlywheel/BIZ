@@ -82,13 +82,13 @@ const STAGE_DOT: Record<string, string> = {
 function StageDropdown({ lead }: { lead: Lead }) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
-    const [optimisticStage, setOptimisticStage] = useState<LeadStage>(lead.stage)
+    const [optimisticStage, setOptimisticStage] = useState<string>(lead.stage)
 
     const stageCfg = STAGE_BADGE[optimisticStage] ?? STAGE_BADGE.nuevo_contacto
     const dot = STAGE_DOT[optimisticStage] ?? 'bg-zinc-400'
 
     function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-        const newStage = e.target.value as LeadStage
+        const newStage = e.target.value
         setOptimisticStage(newStage)
         startTransition(async () => {
             await updateLeadStageAction(lead.id, newStage)
@@ -574,7 +574,7 @@ function NuevoLeadForm({
 
 export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, leadFunnel, customAvatars }: Props) {
     const [search, setSearch] = useState('')
-    const [stageFilter, setStageFilter] = useState<LeadStage | 'all'>('all')
+    const [stageFilter, setStageFilter] = useState<string>('all')
     const [view, setView] = useState<'kanban' | 'table'>('table')
     const [showNewLeadForm, setShowNewLeadForm] = useState(false)
     const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -607,7 +607,7 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
 
     // Group by stage for Kanban
     const byStage = useMemo(() => {
-        const map = new Map<LeadStage, Lead[]>()
+        const map = new Map<string, Lead[]>()
         for (const s of STAGES) map.set(s.id, [])
         for (const l of filtered) {
             const arr = map.get(l.stage)
@@ -672,7 +672,7 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
                     <Filter className="h-3.5 w-3.5 text-zinc-500" />
                     <select
                         value={stageFilter}
-                        onChange={(e) => setStageFilter(e.target.value as LeadStage | 'all')}
+                        onChange={(e) => setStageFilter(e.target.value)}
                         className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
                     >
                         <option value="all">Todos los estados</option>

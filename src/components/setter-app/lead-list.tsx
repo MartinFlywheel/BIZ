@@ -5,10 +5,9 @@ import { LeadCard } from './lead-card'
 import { updateLeadStageAction } from '@/lib/actions/leads'
 import { getMyActiveLeads, type SetterLeadCard, type LeadFilters } from '@/lib/actions/setter-app'
 import { LEAD_STAGES } from '@/lib/types'
-import type { LeadStage } from '@/lib/types'
 import { Search } from 'lucide-react'
 
-const TERMINAL: LeadStage[] = ['no_calificado', 'cierre']
+const TERMINAL: string[] = ['no_calificado', 'cierre']
 
 interface Props {
   clientId: string
@@ -21,7 +20,7 @@ interface Props {
 
 interface StageChange {
   id: string
-  stage: LeadStage
+  stage: string
 }
 
 function applyStageChange(state: SetterLeadCard[], change: StageChange): SetterLeadCard[] {
@@ -37,7 +36,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [stageFilter, setStageFilter] = useState<LeadStage | ''>('')
+  const [stageFilter, setStageFilter] = useState<string>('')
   const [filtering, setFiltering] = useState(false)
   const [, startTransition] = useTransition()
   const filterEpoch = useRef(0)
@@ -49,7 +48,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
   // own — the card visibly snaps back instead of lying about what happened.
   const [optimisticLeads, applyOptimistic] = useOptimistic(leads, applyStageChange)
 
-  function handleChangeStage(id: string, stage: LeadStage, agendaDate?: string) {
+  function handleChangeStage(id: string, stage: string, agendaDate?: string) {
     setError(null)
     setPendingId(id)
     startTransition(async () => {
@@ -129,7 +128,7 @@ export function LeadList({ clientId, setterId, initialLeads, initialHasMore }: P
         </div>
         <select
           value={stageFilter}
-          onChange={(e) => setStageFilter(e.target.value as LeadStage | '')}
+          onChange={(e) => setStageFilter(e.target.value)}
           className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2.5 text-sm text-zinc-300"
         >
           <option value="">Todas las etapas activas</option>

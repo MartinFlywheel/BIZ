@@ -4,18 +4,20 @@ import { useState } from 'react'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { LEAD_STAGES } from '@/lib/types'
-import type { LeadStage } from '@/lib/types'
 import type { SetterLeadCard } from '@/lib/actions/setter-app'
 import { Calendar, XCircle, CheckCircle2, ArrowRight, ChevronDown, MessageCircle } from 'lucide-react'
 
-const STAGE_LABEL = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.label])) as Record<LeadStage, string>
-const STAGE_COLOR = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.color])) as Record<LeadStage, string>
+const STAGE_LABEL = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.label])) as Record<string, string>
+const STAGE_COLOR = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.color])) as Record<string, string>
 const STAGE_ORDER = LEAD_STAGES.map((s) => s.id)
 
 // Next step in the normal pipeline flow — except at 'agendado', the fork
 // point where the setter records the actual call outcome (won or lost)
-// instead of marching further down a fixed sequence.
-function nextStage(current: LeadStage): LeadStage | null {
+// instead of marching further down a fixed sequence. Assumes the agency's
+// default stage set; a client with a customized pipeline_stages config
+// just won't advance past whatever id isn't in STAGE_ORDER (falls through
+// to null below), same as reaching the end of the list today.
+function nextStage(current: string): string | null {
   if (current === 'agendado') return null
   const idx = STAGE_ORDER.indexOf(current)
   if (idx === -1 || idx >= STAGE_ORDER.length - 1) return null
@@ -45,7 +47,7 @@ const CLASSIFICATION_LABEL: Record<string, string> = {
 
 interface Props {
   lead: SetterLeadCard
-  onChangeStage: (id: string, stage: LeadStage, agendaDate?: string) => void
+  onChangeStage: (id: string, stage: string, agendaDate?: string) => void
   pending: boolean
 }
 
@@ -59,7 +61,7 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
   // Marking "Agendado" always asks for the actual call date first — it
   // matters for who's due to call today elsewhere in the CRM, and it's
   // rarely "today" (a lead usually books a few days out).
-  function requestStage(stage: LeadStage) {
+  function requestStage(stage: string) {
     if (stage === 'agendado') {
       setAgendaDate(todayStr())
       setShowAgendaDate(true)

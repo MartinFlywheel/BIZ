@@ -13,7 +13,7 @@ export interface SetterLeadCard {
   full_name: string | null
   ig_username: string | null
   phone: string | null
-  stage: LeadStage
+  stage: string
   lead_avatar: string | null
   updated_at: string
   classification: string | null
@@ -70,7 +70,7 @@ const PAGE_SIZE = 30
 // assignee's name attached since it's no longer implicitly "mine".
 export interface LeadFilters {
   search?: string
-  stage?: LeadStage
+  stage?: string
 }
 
 export async function getMyActiveLeads(
@@ -115,7 +115,7 @@ export async function getMyActiveLeads(
   const leads: SetterLeadCard[] = (data || []).map((l) => {
     const row = l as unknown as {
       id: string; full_name: string | null; ig_username: string | null; phone: string | null
-      stage: LeadStage; lead_avatar: string | null; updated_at: string
+      stage: string; lead_avatar: string | null; updated_at: string
       interactions?: { classification?: string } | null
       users?: { full_name: string | null } | null
     }
@@ -206,7 +206,7 @@ export async function getMyAgendas(
 // See supabase/028-setter-standards.sql for why this reuses the existing
 // leads.stage values instead of a new taxonomy.
 
-const TRACKED_FOLLOWUP_STAGES: { stage: LeadStage; label: string }[] = [
+const TRACKED_FOLLOWUP_STAGES: { stage: string; label: string }[] = [
   { stage: 'nuevo_contacto', label: 'Descubrimiento' },
   { stage: 'micro_vsl_enviado', label: 'Micro VSL' },
   { stage: 'vsl_chat', label: 'VSL Chat' },
@@ -302,7 +302,7 @@ export interface CycleProgress {
   cycleStartedAt: string
   leadsTouched: number
   agendasSet: number
-  followupsByStage: { stage: LeadStage; label: string; count: number }[]
+  followupsByStage: { stage: string; label: string; count: number }[]
   goals: SetterGoals
   needsReport: boolean
 }

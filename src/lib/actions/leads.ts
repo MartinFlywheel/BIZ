@@ -85,7 +85,7 @@ export async function getLeadsForViewer(clientId: string) {
   })
 }
 
-export async function updateLeadStageAction(id: string, stage: LeadStage, agendaDate?: string): Promise<{ agendaError: string | null }> {
+export async function updateLeadStageAction(id: string, stage: string, agendaDate?: string): Promise<{ agendaError: string | null }> {
   const supabase = await createClient()
 
   const { data: { user: authUser } } = await supabase.auth.getUser()

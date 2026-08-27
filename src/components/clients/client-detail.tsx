@@ -139,6 +139,7 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
                   allClients={allClients}
                   clientId={client.id}
                   customAvatars={client.custom_avatars}
+                  pipelineStages={client.pipeline_stages}
                   isAdmin={isAdmin}
                   currentUserId={currentUserId}
                 />

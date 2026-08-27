@@ -41,7 +41,13 @@ export type LeadStage =
   | 'new' | 'contacted' | 'agenda_set' | 'showed_up' | 'no_show'
   | 'closed_won' | 'closed_lost' | 'vsl_enviado' | 'cliente'
 
-export const LEAD_STAGES: { id: LeadStage; label: string; color: string }[] = [
+export interface PipelineStageConfig {
+  id: string
+  label: string
+  color: string
+}
+
+export const LEAD_STAGES: PipelineStageConfig[] = [
   { id: 'nuevo_contacto', label: 'Nuevo Contacto', color: 'text-zinc-400' },
   { id: 'seguimiento', label: 'Seguimiento', color: 'text-blue-400' },
   { id: 'conversando', label: 'Conversando', color: 'text-violet-400' },
@@ -123,6 +129,7 @@ export interface Client {
   calendly_org_uri: string | null
   calendly_webhook_id: string | null
   custom_avatars: string[]
+  pipeline_stages: PipelineStageConfig[] | null
   onboarded_at: string | null
   created_at: string
   updated_at: string
@@ -215,7 +222,7 @@ export interface Lead {
   full_name: string | null
   phone: string | null
   email: string | null
-  stage: LeadStage
+  stage: string
   assigned_to: string | null
   lead_avatar: string | null
   events: string[]

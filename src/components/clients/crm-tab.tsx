@@ -8,7 +8,7 @@ import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import { SeguimientosTab } from './seguimientos-tab'
-import type { LeadStage, Lead, ContentPiece, Interaction, Client } from '@/lib/types'
+import type { Lead, ContentPiece, Interaction, Client, PipelineStageConfig } from '@/lib/types'
 import {
   updateLeadStageAction,
   updateLeadFieldsAction,
@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { saveAvatarsAction } from '@/lib/actions/clients'
+import { PipelineStagesModal } from './pipeline-stages-modal'
 
 type SubTab = 'leads' | 'seguimientos' | 'agendas' | 'equipo'
 
@@ -37,6 +38,7 @@ interface Props {
   interactions?: Interaction[]
   clientId: string
   customAvatars?: string[]
+  pipelineStages?: PipelineStageConfig[] | null
   isAdmin?: boolean
   currentUserId?: string
 }
@@ -90,30 +92,43 @@ function dtFromDate(d: string) {
 
 // ── Inline Stage Select ───────────────────────────────────────────────────────
 
-const AGENDA_STAGES = new Set<LeadStage>(['agendado', 'agenda_set'])
+const AGENDA_STAGES = new Set<string>(['agendado', 'agenda_set'])
 
-function StageSelect({ lead }: { lead: Lead }) {
+// Custom stages don't have an entry in the hardcoded STAGE_DOT/STAGE_TEXT
+// maps above (those only cover the default set) — fall back to the
+// stage's own `color` (a text-* class) for text, and derive the dot's
+// bg-* class from it, same color word either way.
+function stageDotColor(stageId: string, stages: PipelineStageConfig[]): string {
+  if (STAGE_DOT[stageId]) return STAGE_DOT[stageId]
+  const custom = stages.find(s => s.id === stageId)?.color
+  return custom ? custom.replace('text-', 'bg-') : 'bg-zinc-400'
+}
+function stageTextColor(stageId: string, stages: PipelineStageConfig[]): string {
+  return STAGE_TEXT[stageId] ?? stages.find(s => s.id === stageId)?.color ?? 'text-zinc-400'
+}
+
+function StageSelect({ lead, stages }: { lead: Lead; stages: PipelineStageConfig[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [stage, setStage] = useState<LeadStage>(lead.stage)
-  const [pendingAgendaStage, setPendingAgendaStage] = useState<LeadStage | null>(null)
+  const [stage, setStage] = useState<string>(lead.stage)
+  const [pendingAgendaStage, setPendingAgendaStage] = useState<string | null>(null)
   const [agendaDate, setAgendaDate] = useState('')
-  const dot = STAGE_DOT[stage] ?? 'bg-zinc-400'
-  const text = STAGE_TEXT[stage] ?? 'text-zinc-400'
+  const dot = stageDotColor(stage, stages)
+  const text = stageTextColor(stage, stages)
 
-  function commitStage(next: LeadStage, date?: string) {
+  function commitStage(next: string, date?: string) {
     setStage(next)
     startTransition(async () => {
       const { agendaError } = await updateLeadStageAction(lead.id, next, date)
       if (agendaError) {
-        alert(`El lead se movió a "${LEAD_STAGES.find(s => s.id === next)?.label ?? next}", pero no se pudo crear el registro en Agendas: ${agendaError}\n\nAgregalo a mano desde la pestaña Agendas.`)
+        alert(`El lead se movió a "${stages.find(s => s.id === next)?.label ?? next}", pero no se pudo crear el registro en Agendas: ${agendaError}\n\nAgregalo a mano desde la pestaña Agendas.`)
       }
       router.refresh()
     })
   }
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const next = e.target.value as LeadStage
+    const next = e.target.value
     if (AGENDA_STAGES.has(next) && next !== stage) {
       // Ask for the actual call date instead of silently stamping today —
       // that's what makes "día X tuvimos X llamadas" in Agendas accurate.
@@ -136,7 +151,7 @@ function StageSelect({ lead }: { lead: Lead }) {
         className={`appearance-none bg-transparent text-xs font-medium pr-4 focus:outline-none cursor-pointer max-w-[130px] truncate ${text} ${isPending ? 'opacity-50' : ''}`}
         style={{ WebkitAppearance: 'none' }}
       >
-        {LEAD_STAGES.map(s => (
+        {stages.map(s => (
           <option key={s.id} value={s.id} className="bg-zinc-900 text-zinc-100">{s.label}</option>
         ))}
       </select>
@@ -213,6 +228,7 @@ interface DrawerProps {
   agencyUsers: AgencyUser[]
   contentPieces: ContentPiece[]
   avatarList: readonly string[]
+  stages: PipelineStageConfig[]
   qualificationData?: Record<string, unknown>
   contentHistory?: Interaction[]
   onClose: () => void
@@ -220,7 +236,7 @@ interface DrawerProps {
   onDeleted: (id: string) => void
 }
 
-function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificationData, contentHistory, onClose, onUpdated, onDeleted }: DrawerProps) {
+function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qualificationData, contentHistory, onClose, onUpdated, onDeleted }: DrawerProps) {
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
   const [local, setLocal] = useState<Lead>(lead)
@@ -262,7 +278,7 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificatio
     onUpdated({ ...local, [field]: value })
   }
 
-  async function handleStageChange(newStage: LeadStage) {
+  async function handleStageChange(newStage: string) {
     await flush()
     setLocal(prev => ({ ...prev, stage: newStage }))
     await updateLeadStageAction(lead.id, newStage)
@@ -337,8 +353,8 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, qualificatio
               <div>
                 <FieldLabel>Estado del Pipeline</FieldLabel>
                 <select className={selectFieldCls} value={local.stage}
-                  onChange={e => handleStageChange(e.target.value as LeadStage)}>
-                  {LEAD_STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                  onChange={e => handleStageChange(e.target.value)}>
+                  {stages.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </div>
               <div>
@@ -478,12 +494,14 @@ function NuevoLeadModal({
   agencyUsers,
   contentPieces,
   avatarList,
+  stages,
   onClose,
 }: {
   clientId: string
   agencyUsers: AgencyUser[]
   contentPieces: ContentPiece[]
   avatarList: readonly string[]
+  stages: PipelineStageConfig[]
   onClose: () => void
 }) {
   const router = useRouter()
@@ -507,7 +525,7 @@ function NuevoLeadModal({
     }
   }
 
-  const stageOpts = LEAD_STAGES.map(s => ({ value: s.id, label: s.label }))
+  const stageOpts = stages.map(s => ({ value: s.id, label: s.label }))
   const avatarOpts = Array.from(avatarList).map(a => ({ value: a, label: a }))
   const userOpts = agencyUsers.map(u => ({ value: u.id, label: u.full_name }))
   const contentOpts = contentPieces.map(cp => ({
@@ -550,7 +568,7 @@ function NuevoLeadModal({
 
 // ── Leads Sheet ───────────────────────────────────────────────────────────────
 
-function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interactions, clientId, customAvatars }: Props) {
+function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interactions, clientId, customAvatars, stages }: Props & { stages: PipelineStageConfig[] }) {
   const [search, setSearch] = useState('')
   const [openLead, setOpenLead] = useState<Lead | null>(null)
   const [localLeads, setLocalLeads] = useState<Lead[]>(initialLeads)
@@ -782,7 +800,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                 <div className="space-y-1.5">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Estado del pipeline</p>
                   <div className="space-y-1">
-                    {LEAD_STAGES.map(stage => (
+                    {stages.map(stage => (
                       <label key={stage.id} className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer hover:text-zinc-100 py-0.5">
                         <input
                           type="checkbox"
@@ -795,7 +813,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                           }); setPage(1) }}
                           className="rounded border-zinc-700 bg-zinc-800 accent-violet-500"
                         />
-                        <span className={`h-1.5 w-1.5 rounded-full ${STAGE_DOT[stage.id] ?? 'bg-zinc-400'}`} />
+                        <span className={`h-1.5 w-1.5 rounded-full ${stageDotColor(stage.id, stages)}`} />
                         {stage.label}
                       </label>
                     ))}
@@ -985,7 +1003,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                         {dtFromDate(lead.created_at)}
                       </td>
                       <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
-                        <StageSelect lead={lead} />
+                        <StageSelect lead={lead} stages={stages} />
                       </td>
                       <td className="px-2 py-2.5 text-xs text-zinc-400 whitespace-nowrap">{source}</td>
                       <td className="px-2 py-2.5 text-xs text-zinc-400 whitespace-nowrap">
@@ -1036,6 +1054,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
           avatarList={avatarList}
+          stages={stages}
           qualificationData={qualificationDataFor(localLeads.find(l => l.id === openLead.id) ?? openLead)}
           contentHistory={contentHistoryFor(localLeads.find(l => l.id === openLead.id) ?? openLead)}
           onClose={() => setOpenLead(null)}
@@ -1050,6 +1069,7 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
           avatarList={avatarList}
+          stages={stages}
           onClose={() => setShowNewForm(false)}
         />
       )}
@@ -1649,12 +1669,22 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
   return <CrmTab {...props} leads={leads} interactions={interactions} agencyUsers={agencyUsers} contentPieces={contentPieces} />
 }
 
-export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, isAdmin = false, currentUserId }: Props) {
+export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, pipelineStages, isAdmin = false, currentUserId }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
+  const [localStages, setLocalStages] = useState<PipelineStageConfig[]>(
+    pipelineStages && pipelineStages.length > 0 ? pipelineStages : LEAD_STAGES
+  )
+  const [showPipelineConfig, setShowPipelineConfig] = useState(false)
 
   const avatarList: readonly string[] = localAvatars.length > 0 ? localAvatars : LEAD_AVATARS
+
+  const leadCountByStage = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const l of leads) counts[l.stage] = (counts[l.stage] ?? 0) + 1
+    return counts
+  }, [leads])
 
   const subTabs: { id: SubTab; label: string; count?: number }[] = [
     { id: 'leads', label: 'Leads', count: leads.length },
@@ -1694,6 +1724,13 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
           ))}
         </div>
         <button
+          onClick={() => setShowPipelineConfig(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors mb-1 mr-2"
+        >
+          <Filter className="h-3.5 w-3.5" />
+          Pipeline
+        </button>
+        <button
           onClick={() => setShowAvatarConfig(true)}
           className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors mb-1"
         >
@@ -1707,6 +1744,7 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
           leads={leads}
           agencyUsers={agencyUsers}
           contentPieces={contentPieces}
+          stages={localStages}
           interactions={interactions}
           clientId={clientId}
           customAvatars={localAvatars.length > 0 ? localAvatars : undefined}
@@ -1736,6 +1774,16 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
           initialAvatars={localAvatars}
           onClose={() => setShowAvatarConfig(false)}
           onSaved={setLocalAvatars}
+        />
+      )}
+
+      {showPipelineConfig && (
+        <PipelineStagesModal
+          clientId={clientId}
+          initialStages={localStages}
+          leadCountByStage={leadCountByStage}
+          onClose={() => setShowPipelineConfig(false)}
+          onSaved={setLocalStages}
         />
       )}
     </div>

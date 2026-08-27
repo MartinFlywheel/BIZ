@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { getAppUrl } from '@/lib/env'
-import type { ClientStatus } from '@/lib/types'
+import type { ClientStatus, PipelineStageConfig } from '@/lib/types'
 
 export async function getClients() {
   const supabase = await createClient()
@@ -239,4 +239,19 @@ async function unregisterCalendlyWebhook(token: string, webhookUri: string) {
       headers: { Authorization: `Bearer ${token}` },
     })
   } catch {}
+}
+
+export async function updateClientPipelineStagesAction(clientId: string, stages: PipelineStageConfig[]) {
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('clients')
+    .update({ pipeline_stages: stages, updated_at: new Date().toISOString() })
+    .eq('id', clientId)
+
+  if (error) throw error
+
+  revalidatePath(`/clients/${clientId}`)
+  revalidatePath('/dashboard')
+  revalidatePath('/leads')
 }

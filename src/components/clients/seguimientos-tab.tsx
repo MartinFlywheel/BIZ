@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Lead, ContentPiece, Interaction, LeadStage } from '@/lib/types'
+import type { Lead, ContentPiece, Interaction } from '@/lib/types'
 import { LEAD_STAGES } from '@/lib/types'
 import { updateLeadStageAction, snoozeLeadAction, markFollowUpDoneAction } from '@/lib/actions/leads'
 import { MessageCircle, Search } from 'lucide-react'
@@ -11,8 +11,8 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import type { AgencyUser } from './crm-tab'
 
-const stageInfo = (stage: LeadStage) => LEAD_STAGES.find(s => s.id === stage)
-const stageLabel = (stage: LeadStage) => stageInfo(stage)?.label || stage
+const stageInfo = (stage: string) => LEAD_STAGES.find(s => s.id === stage)
+const stageLabel = (stage: string) => stageInfo(stage)?.label || stage
 
 const prettifyKey = (key: string) => {
   const withSpaces = key.replace(/_/g, ' ')
@@ -22,7 +22,7 @@ const prettifyKey = (key: string) => {
 // Solo entran a la cola los leads con una conversación real ya en curso —
 // no "nuevo_contacto" (recién llegados, todavía sin trabajar) ni ninguna
 // etapa de cierre/agenda, que tienen sus propias vistas.
-const FOLLOWUP_ELIGIBLE_STAGES = new Set<LeadStage>(['conversando', 'micro_vsl_enviado', 'vsl_chat', 'calendly_enviado'])
+const FOLLOWUP_ELIGIBLE_STAGES = new Set<string>(['conversando', 'micro_vsl_enviado', 'vsl_chat', 'calendly_enviado'])
 
 interface Props {
   leads: Lead[]
@@ -40,7 +40,7 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
   const [stageModalLead, setStageModalLead] = useState<Lead | null>(null)
-  const [selectedNewStage, setSelectedNewStage] = useState<LeadStage | ''>('')
+  const [selectedNewStage, setSelectedNewStage] = useState<string>('')
   const [setterFilter, setSetterFilter] = useState('all')
 
   // Admin puede elegir a quién mirar (o "todos"); un setter viendo su propia
@@ -161,7 +161,7 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
   // por defecto el lead se queda en su etapa actual (solo cuenta el touch).
   // Si el setter indica que sí avanzó, ahí sí se cambia de etapa como
   // cualquier otro avance del Kanban.
-  const handleConfirmFollowUp = (leadId: string, newStage: LeadStage | null) => {
+  const handleConfirmFollowUp = (leadId: string, newStage: string | null) => {
     setStageModalLead(null)
     setPendingId(leadId)
     startTransition(async () => {
@@ -350,7 +350,7 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
             <div className="flex gap-2">
               <Select
                 value={selectedNewStage}
-                onChange={e => setSelectedNewStage(e.target.value as LeadStage)}
+                onChange={e => setSelectedNewStage(e.target.value)}
                 placeholder="Elegir etapa..."
                 options={LEAD_STAGES.filter(s => s.id !== stageModalLead.stage).map(s => ({ value: s.id, label: s.label }))}
                 className="flex-1"
