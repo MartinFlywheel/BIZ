@@ -1,9 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type { InteractionClassification, InteractionSource, Interaction } from '@/lib/types'
 import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
+import { pickBalancedSetter } from '@/lib/manychat'
 
 export async function getInteractions(clientId?: string) {
   const supabase = await createClient()
@@ -65,6 +67,10 @@ export async function promoteToLeadAction(interactionId: string, formData: FormD
 
   if (fetchError || !interaction) throw fetchError || new Error('Interaction not found')
 
+  // Same rule as the ManyChat webhooks and createLeadAction — a promoted
+  // lead never sits unassigned just because the form didn't pick a setter.
+  const assignedTo = (formData.get('assigned_to') as string) || await pickBalancedSetter(createAdminClient(), interaction.client_id)
+
   const { error: leadError } = await supabase.from('leads').insert({
     client_id: interaction.client_id,
     interaction_id: interactionId,
@@ -73,7 +79,7 @@ export async function promoteToLeadAction(interactionId: string, formData: FormD
     phone: (formData.get('phone') as string) || null,
     email: (formData.get('email') as string) || null,
     stage: 'new',
-    assigned_to: (formData.get('assigned_to') as string) || null,
+    assigned_to: assignedTo,
     first_touch_content_id: interaction.content_id,
     first_touch_at: interaction.bot_triggered_at,
     first_touch_type: 'keyword_dm',
