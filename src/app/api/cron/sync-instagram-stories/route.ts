@@ -6,10 +6,12 @@ export const runtime = 'nodejs'
 
 // Stories vanish 24h after posting, and Meta's API only exposes a story
 // while it's still live — there's no historical lookup once it expires,
-// unlike Reels/posts. So this can't be a once-a-day job like
-// sync-instagram: it has to catch each story WHILE it's up (see
-// vercel.json — runs every few hours) and snapshot whatever numbers it
-// has at that moment, refreshing on every pass until the story expires.
+// unlike Reels/posts. vercel.json runs this once daily, every crons entry
+// in this project is once-daily (likely a Vercel plan cap on cron
+// frequency — worth confirming if this ever needs to run more often).
+// Since that period matches the story lifespan, each story still lands
+// inside exactly one run, just once, near the end of its life — no
+// mid-life refresh, and no second chance if that one snapshot fails.
 const STORY_METRICS = 'views,reach,replies,taps_forward,taps_back,exits,total_interactions'
 
 interface StoryInsights {
@@ -22,7 +24,7 @@ interface StoryInsights {
   total_interactions: number
 }
 
-async function fetchStoryInsights(mediaId: string, token: string): Promise<StoryInsights> {
+async function fetchStoryInsights(mediaId: string, token: string): Promise<{ insights: StoryInsights; error: string | null }> {
   const insights: StoryInsights = { views: 0, reach: 0, replies: 0, taps_forward: 0, taps_back: 0, exits: 0, total_interactions: 0 }
   try {
     const res = await fetch(
@@ -33,9 +35,24 @@ async function fetchStoryInsights(mediaId: string, token: string): Promise<Story
       for (const metric of data.data || []) {
         if (metric.name in insights) insights[metric.name as keyof StoryInsights] = metric.values?.[0]?.value || 0
       }
+      return { insights, error: null }
     }
-  } catch {}
-  return insights
+    // Graph API rejects the whole insights call if any one metric name in
+    // STORY_METRICS is invalid/deprecated for this media type or API
+    // version — same failure shape the reels sync hit with "impressions"
+    // (see GENERAL_METRICS comment in sync-instagram/route.ts). Previously
+    // this fell through silently and wrote zeros stamped as a successful
+    // meta_api sync; log the real body so a bad metric name is diagnosable
+    // instead of indistinguishable from "Instagram just has no data yet".
+    const body = await res.text()
+    const error = `HTTP ${res.status}: ${body.slice(0, 500)}`
+    console.error(`[sync-instagram-stories] insights fetch failed for media ${mediaId}: ${error}`)
+    return { insights, error }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : 'Unknown error'
+    console.error(`[sync-instagram-stories] insights fetch threw for media ${mediaId}: ${error}`)
+    return { insights, error }
+  }
 }
 
 export async function GET(request: Request) {
@@ -76,9 +93,11 @@ export async function GET(request: Request) {
 
       const storiesData = await storiesRes.json()
       let processed = 0
+      let insightErrors = 0
 
       for (const story of storiesData.data || []) {
-        const insights = await fetchStoryInsights(story.id, token)
+        const { insights, error } = await fetchStoryInsights(story.id, token)
+        if (error) insightErrors++
         const publishedAt = story.timestamp ? new Date(story.timestamp) : new Date()
         const expiresAt = new Date(publishedAt.getTime() + 24 * 60 * 60 * 1000)
 
@@ -118,7 +137,7 @@ export async function GET(request: Request) {
         processed++
       }
 
-      results.push({ client: client.ig_handle, status: 'success', processed })
+      results.push({ client: client.ig_handle, status: 'success', processed, insightErrors })
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown'
       results.push({ client: client.ig_handle, status: 'error', error: msg })
