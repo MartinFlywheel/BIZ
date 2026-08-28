@@ -191,7 +191,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
     { key: 'comments', label: 'Comentarios' },
 ]
 
-type TypeFilter = 'all' | 'reel' | 'story' | 'post' | 'live'
+type TypeFilter = 'all' | 'reel' | 'story' | 'post' | 'live' | 'trial'
 
 const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'all', label: 'Todo' },
@@ -199,6 +199,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'story', label: 'Historias' },
     { key: 'post', label: 'Carruseles' },
     { key: 'live', label: 'Bio' },
+    { key: 'trial', label: 'Trials' },
 ]
 
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
@@ -274,9 +275,13 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         metricsMap.set(m.content_id, m)
     }
 
-    // Filter by content type, then sort client-side
+    // Filter by content type, then sort client-side. Trials are their own
+    // category — never shown under "Todo" (they'd otherwise also be
+    // indistinguishable from Reels there, since they use the same vertical
+    // format) and, since they're a distinct content_type, already excluded
+    // from the "Reels" filter automatically.
     const filteredPieces = typeFilter === 'all'
-        ? contentPieces
+        ? contentPieces.filter((cp) => cp.content_type !== 'trial')
         : contentPieces.filter((cp) => cp.content_type === typeFilter)
 
     const sortedPieces = [...filteredPieces].sort((a, b) => {
@@ -468,10 +473,11 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 }
                                             }
                                         >
-                                            {/* Thumbnail */}
+                                            {/* Thumbnail — carousels (post) are square/4:5 in real life, not
+                                                vertical like Reels/Historias/Trials, so they get their own ratio */}
                                             <button
                                                 onClick={() => setSelectedPiece(cp)}
-                                                className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
+                                                className={`relative w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none ${cp.content_type === 'post' ? 'aspect-square' : 'aspect-[9/16]'}`}
                                             >
                                                 {cp.ig_thumbnail_url ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
