@@ -198,7 +198,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'reel', label: 'Reels' },
     { key: 'story', label: 'Historias' },
     { key: 'post', label: 'Carruseles' },
-    { key: 'live', label: 'Vivos' },
+    { key: 'live', label: 'Bio' },
 ]
 
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
