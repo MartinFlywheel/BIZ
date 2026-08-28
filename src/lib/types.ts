@@ -27,7 +27,7 @@ export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'edito
 
 export type ClientStatus = 'prospect' | 'onboarding' | 'active' | 'paused' | 'churned'
 
-export type ContentType = 'reel' | 'story' | 'post' | 'live'
+export type ContentType = 'reel' | 'story' | 'post' | 'live' | 'trial'
 
 export type InteractionClassification = 'chat_abierto' | 'conversacion_real' | 'lead_calificado' | 'disqualified'
 

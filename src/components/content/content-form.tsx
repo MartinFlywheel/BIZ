@@ -39,6 +39,7 @@ export function ContentForm({ clientId, campaigns, onClose }: Props) {
 
         <Select id="content_type" name="content_type" label="Tipo" options={[
           { value: 'reel', label: 'Reel' },
+          { value: 'trial', label: 'Trial' },
           { value: 'story', label: 'Story' },
           { value: 'post', label: 'Post' },
           { value: 'live', label: 'Live' },
