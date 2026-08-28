@@ -314,7 +314,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                     </div>
                     {contentPiece.metrics_source === 'meta_api' && contentPiece.metrics_updated_at && (
                         <p className="mt-2 text-[10px] text-zinc-600">
-                            Actualizado automáticamente {new Date(contentPiece.metrics_updated_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                            Actualizado automáticamente {new Date(contentPiece.metrics_updated_at).toLocaleString('es-419', { dateStyle: 'short', timeStyle: 'short' })}
                         </p>
                     )}
                     {contentPiece.content_type === 'story' && contentPiece.story_expires_at && new Date(contentPiece.story_expires_at) < new Date() && (
@@ -363,9 +363,9 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                         views={contentPiece.views}
                         chats={chatStats?.chats ?? 0}
                         conversaciones={chatStats?.conversaciones ?? 0}
-                        agendas={existingMetric?.agendas ?? 0}
-                        shows={existingMetric?.shows ?? 0}
-                        cierres={existingMetric?.cierres ?? 0}
+                        agendas={crmStats?.agendas ?? existingMetric?.agendas ?? 0}
+                        shows={crmStats?.shows ?? existingMetric?.shows ?? 0}
+                        cierres={crmStats?.cierres ?? existingMetric?.cierres ?? 0}
                     />
                 </div>
 
