@@ -474,7 +474,7 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
                     <div key={i.id} className="flex items-center justify-between rounded-lg border border-white/[0.04] bg-zinc-900/40 px-3 py-1.5">
                       <span className="text-zinc-300 font-medium truncate">{label}</span>
                       <span className="text-zinc-500 text-[10px] shrink-0 ml-2">
-                        {new Date(i.bot_triggered_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {new Date(i.bot_triggered_at).toLocaleDateString('es-419', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </span>
                     </div>
                   )
