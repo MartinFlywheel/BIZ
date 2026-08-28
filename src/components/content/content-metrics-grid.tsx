@@ -11,7 +11,7 @@ import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
 import { syncClientContent } from '@/lib/actions/instagram'
 import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
 import type { ContentPiece, Interaction } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
@@ -204,6 +204,7 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
+    const [editingPiece, setEditingPiece] = useState<ContentPiece | null>(null)
     const [deleting, setDeleting] = useState<string | null>(null)
     const [syncing, setSyncing] = useState(false)
     const [syncToast, setSyncToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
@@ -598,6 +599,15 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                                                 {/* Action row */}
                                                 <div className="mt-auto flex items-center gap-1.5 pt-0.5">
+                                                    {/* Edit button */}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setEditingPiece(cp) }}
+                                                        className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1.5 text-zinc-500 hover:text-zinc-200 hover:border-zinc-600 transition-colors"
+                                                        title="Editar pieza"
+                                                    >
+                                                        <Pencil className="h-3 w-3" />
+                                                    </button>
+
                                                     {/* Delete button */}
                                                     <button
                                                         onClick={(e) => handleDelete(e, cp)}
@@ -643,6 +653,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     contentPiece={selectedPiece}
                     existingMetric={selectedMetric}
                     chatStats={interactionCountsByPiece.get(selectedPiece.id) ?? null}
+                    siblingPieces={contentPieces}
                     onClose={() => setSelectedPiece(null)}
                     onSaved={reload}
                 />
@@ -651,6 +662,14 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                 <ContentPieceForm
                     clientId={clientId}
                     onClose={() => setShowNewPieceForm(false)}
+                    onCreated={reload}
+                />
+            )}
+            {editingPiece && (
+                <ContentPieceForm
+                    clientId={clientId}
+                    editingPiece={editingPiece}
+                    onClose={() => setEditingPiece(null)}
                     onCreated={reload}
                 />
             )}

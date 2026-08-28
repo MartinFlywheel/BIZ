@@ -111,9 +111,12 @@ async function extractIgThumbnail(permalink: string): Promise<string | null> {
   return null
 }
 
-export async function updateContentAction(id: string, formData: FormData) {
+export async function updateContentAction(id: string, clientId: string, formData: FormData) {
   const supabase = await createClient()
 
+  // Deliberately excludes views/likes/comments/shares/saves/reach/metrics_source:
+  // pieces synced from Instagram (metrics_source 'meta_api') own those via the
+  // sync cron — editing metadata here must not zero them out.
   const { error } = await supabase
     .from('content_pieces')
     .update({
@@ -122,21 +125,16 @@ export async function updateContentAction(id: string, formData: FormData) {
       caption: (formData.get('caption') as string) || null,
       hook: (formData.get('hook') as string) || null,
       keyword_trigger: (formData.get('keyword_trigger') as string) || null,
+      ig_permalink: (formData.get('ig_permalink') as string) || null,
+      ig_thumbnail_url: (formData.get('ig_thumbnail_url') as string) || null,
       published_at: (formData.get('published_at') as string) || null,
-      views: parseInt(formData.get('views') as string) || 0,
-      likes: parseInt(formData.get('likes') as string) || 0,
-      comments: parseInt(formData.get('comments') as string) || 0,
-      shares: parseInt(formData.get('shares') as string) || 0,
-      saves: parseInt(formData.get('saves') as string) || 0,
-      reach: parseInt(formData.get('reach') as string) || 0,
-      metrics_source: 'manual',
-      metrics_updated_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
 
-  if (error) throw error
-  revalidatePath('/content')
+  if (error) return { success: false as const, error: error.message }
+  try { revalidatePath('/content'); revalidatePath(`/clients/${clientId}`) } catch {}
+  return { success: true as const }
 }
 
 export async function deleteContentAction(id: string, clientId: string) {

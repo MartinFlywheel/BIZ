@@ -2,21 +2,24 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createContentAction } from '@/lib/actions/content'
+import { createContentAction, updateContentAction } from '@/lib/actions/content'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import type { ContentPiece } from '@/lib/types'
 
 interface Props {
     clientId: string
+    editingPiece?: ContentPiece | null
     onClose: () => void
     onCreated?: () => void
 }
 
-export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
+export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
+    const isEditing = !!editingPiece
 
     async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
         e.preventDefault()
@@ -24,10 +27,15 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
         setError(null)
         const formData = new FormData(e.currentTarget)
         formData.set('client_id', clientId)
-        const result = await createContentAction(formData).catch(e => ({
-            success: false as const,
-            error: e instanceof Error ? e.message : 'Error inesperado',
-        }))
+        const result = isEditing
+            ? await updateContentAction(editingPiece.id, clientId, formData).catch(e => ({
+                success: false as const,
+                error: e instanceof Error ? e.message : 'Error inesperado',
+            }))
+            : await createContentAction(formData).catch(e => ({
+                success: false as const,
+                error: e instanceof Error ? e.message : 'Error inesperado',
+            }))
         setLoading(false)
         if (!result.success) {
             setError(result.error)
@@ -42,8 +50,8 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
         <Dialog
             open
             onClose={onClose}
-            title="Nueva Pieza de Contenido"
-            description="Registra una pieza para luego cargarle sus métricas de funnel"
+            title={isEditing ? 'Editar Pieza de Contenido' : 'Nueva Pieza de Contenido'}
+            description={isEditing ? 'Corregí los datos de la pieza (código, link, portada, tipo, fecha)' : 'Registra una pieza para luego cargarle sus métricas de funnel'}
         >
             <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Caption */}
@@ -51,6 +59,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                     id="caption"
                     name="caption"
                     label="Nombre base o referencia"
+                    defaultValue={editingPiece?.caption ?? undefined}
                     placeholder="Ej: Reel de oferta junio — cierre de mes"
                 />
 
@@ -60,6 +69,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         id="keyword_trigger"
                         name="keyword_trigger"
                         label="ID de pieza / origen payload"
+                        defaultValue={editingPiece?.keyword_trigger ?? undefined}
                         placeholder="Ej: C_21_04 o NEW_FOLLOW"
                     />
                     <p className="text-[11px] text-zinc-600 leading-snug">
@@ -77,7 +87,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         id="content_type"
                         name="content_type"
                         required
-                        defaultValue="reel"
+                        defaultValue={editingPiece?.content_type ?? 'reel'}
                         className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
                     >
                         <option value="reel">Reel</option>
@@ -96,6 +106,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         id="hook"
                         name="hook"
                         rows={2}
+                        defaultValue={editingPiece?.hook ?? undefined}
                         placeholder="La línea de apertura que engancha en los primeros segundos..."
                         className="flex w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 resize-none"
                     />
@@ -107,6 +118,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                     name="ig_permalink"
                     label="Link de IG"
                     type="url"
+                    defaultValue={editingPiece?.ig_permalink ?? undefined}
                     placeholder="https://www.instagram.com/reel/..."
                 />
 
@@ -117,6 +129,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         name="ig_thumbnail_url"
                         label="Portada / Thumbnail (URL)"
                         type="url"
+                        defaultValue={editingPiece?.ig_thumbnail_url ?? undefined}
                         placeholder="https://... o pegar link de imagen"
                     />
                     <p className="text-[11px] text-zinc-600 leading-snug">
@@ -133,6 +146,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         id="published_at"
                         name="published_at"
                         type="date"
+                        defaultValue={editingPiece?.published_at ? editingPiece.published_at.slice(0, 10) : undefined}
                         className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 [color-scheme:dark]"
                     />
                 </div>
@@ -148,7 +162,7 @@ export function ContentPieceForm({ clientId, onClose, onCreated }: Props) {
                         Cancelar
                     </Button>
                     <Button type="submit" disabled={loading} className="flex-1">
-                        {loading ? 'Creando...' : 'Crear Pieza'}
+                        {loading ? 'Guardando...' : isEditing ? 'Guardar Cambios' : 'Crear Pieza'}
                     </Button>
                 </div>
             </form>
