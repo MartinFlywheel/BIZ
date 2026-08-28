@@ -83,7 +83,6 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
   const cierresByContent: Record<string, number> = {}
   const agendasByContent: Record<string, number> = {}
   const showsByContent: Record<string, number> = {}
-  let total_revenue = 0
   const leadIdsAlreadyCounted = new Set<string>()
 
   for (const lead of closedLeads || []) {
@@ -91,7 +90,6 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     const val = lead.close_value || 0
     revenueByContent[cid] = (revenueByContent[cid] || 0) + val
     cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
-    total_revenue += val
     leadIdsAlreadyCounted.add(lead.id)
   }
 
@@ -148,14 +146,15 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
         if (val > 0) {
           revenueByContent[cid] = (revenueByContent[cid] || 0) + val
           cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
-          total_revenue += val
           if (leadId) leadIdsAlreadyCounted.add(leadId)
         }
       }
     }
   }
 
-  // Also check content_metrics for manual revenue
+  // Manual overrides from content_metrics replace the automatically-computed
+  // totals for that content piece (per the form's "sobrescribir" promise),
+  // rather than adding on top of them.
   const { data: metrics } = await supabase
     .from('content_metrics')
     .select('content_id, cash_collected, cierres, agendas, shows')
@@ -163,19 +162,18 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
 
   for (const m of metrics || []) {
     if (m.agendas && m.agendas > 0) {
-      agendasByContent[m.content_id] = (agendasByContent[m.content_id] || 0) + m.agendas
+      agendasByContent[m.content_id] = m.agendas
     }
     if (m.shows && m.shows > 0) {
-      showsByContent[m.content_id] = (showsByContent[m.content_id] || 0) + m.shows
+      showsByContent[m.content_id] = m.shows
     }
     if (m.cash_collected && m.cash_collected > 0) {
-      revenueByContent[m.content_id] = (revenueByContent[m.content_id] || 0) + m.cash_collected
-      cierresByContent[m.content_id] = (cierresByContent[m.content_id] || 0) + (m.cierres || 0)
-      if (!closedLeads?.some((l) => l.first_touch_content_id === m.content_id)) {
-        total_revenue += m.cash_collected
-      }
+      revenueByContent[m.content_id] = m.cash_collected
+      cierresByContent[m.content_id] = m.cierres || 0
     }
   }
+
+  const total_revenue = Object.values(revenueByContent).reduce((sum, v) => sum + v, 0)
 
   const pieceMap = new Map(allPieces.map((p) => [p.id, p]))
 
