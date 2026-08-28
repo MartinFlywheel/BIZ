@@ -189,6 +189,23 @@ function formatDayLabel(dateKey: string): string {
     return d.toLocaleDateString('es-419', { day: 'numeric', month: 'short' })
 }
 
+// 'YYYY-MM' -> 'agosto 2026'. Pieces without published_at fall outside any
+// month filter (never silently swallowed, always visible under "Todos").
+function formatMonthLabel(monthKey: string): string {
+    const d = new Date(`${monthKey}-01T00:00:00`)
+    if (Number.isNaN(d.getTime())) return monthKey
+    const label = d.toLocaleDateString('es-419', { month: 'long', year: 'numeric' })
+    return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function monthsWithData(pieces: ContentPiece[]): string[] {
+    const months = new Set<string>()
+    for (const cp of pieces) {
+        if (cp.published_at) months.add(cp.published_at.slice(0, 7))
+    }
+    return Array.from(months).sort().reverse()
+}
+
 type SortKey = 'recent' | 'views' | 'revenue' | 'comments'
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
@@ -380,6 +397,11 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
     const [interactions, setInteractions] = useState<Interaction[]>([])
     const [expandedStoryDays, setExpandedStoryDays] = useState<Set<string>>(new Set())
+    // Defaults to the most recent month that actually has pieces — old
+    // months (e.g. a July piece like H_23_07 sitting there in August)
+    // otherwise stay mixed in with the current month's and get confused
+    // for it. "Todos los meses" is always one click away.
+    const [monthFilter, setMonthFilter] = useState<string>(() => monthsWithData(contentPieces)[0] ?? 'all')
     const router = useRouter()
 
     function toggleStoryDay(dateKey: string) {
@@ -452,14 +474,21 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         metricsMap.set(m.content_id, m)
     }
 
-    // Filter by content type, then sort client-side. Trials are their own
-    // category — never shown under "Todo" (they'd otherwise also be
-    // indistinguishable from Reels there, since they use the same vertical
-    // format) and, since they're a distinct content_type, already excluded
-    // from the "Reels" filter automatically.
-    const filteredPieces = typeFilter === 'all'
-        ? contentPieces.filter((cp) => cp.content_type !== 'trial')
-        : contentPieces.filter((cp) => cp.content_type === typeFilter)
+    const availableMonths = monthsWithData(contentPieces)
+
+    // Filter by content type and month, then sort client-side. Trials are
+    // their own category — never shown under "Todo" (they'd otherwise also
+    // be indistinguishable from Reels there, since they use the same
+    // vertical format) and, since they're a distinct content_type, already
+    // excluded from the "Reels" filter automatically. A piece with no
+    // published_at never gets hidden by the month filter — only shows up
+    // under "Todos los meses", where nothing is filtered.
+    const filteredPieces = contentPieces.filter((cp) => {
+        const typeOk = typeFilter === 'all' ? cp.content_type !== 'trial' : cp.content_type === typeFilter
+        if (!typeOk) return false
+        if (monthFilter === 'all') return true
+        return cp.published_at?.slice(0, 7) === monthFilter
+    })
 
     const sortedPieces = [...filteredPieces].sort((a, b) => {
         if (sortBy === 'views') return (b.views || 0) - (a.views || 0)
@@ -618,6 +647,21 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                 </button>
                             ))}
                         </div>
+                        {availableMonths.length > 0 && (
+                            <>
+                                <div className="h-4 w-px bg-zinc-800" />
+                                <select
+                                    value={monthFilter}
+                                    onChange={(e) => setMonthFilter(e.target.value)}
+                                    className="rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs font-medium text-zinc-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 [&>option]:bg-zinc-900"
+                                >
+                                    <option value="all">Todos los meses</option>
+                                    {availableMonths.map((m) => (
+                                        <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                                    ))}
+                                </select>
+                            </>
+                        )}
                         <div className="h-4 w-px bg-zinc-800" />
                         <div className="flex items-center gap-1.5">
                             <ArrowUpDown className="h-3.5 w-3.5 text-zinc-600 flex-shrink-0" />
@@ -638,7 +682,11 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                     {gridItems.length === 0 ? (
                         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-12 text-center text-zinc-500 text-sm">
-                            Sin piezas de contenido registradas
+                            {monthFilter !== 'all' && contentPieces.length > 0
+                                ? <>Sin piezas en {formatMonthLabel(monthFilter).toLowerCase()} —{' '}
+                                    <button onClick={() => setMonthFilter('all')} className="text-zinc-300 underline hover:text-zinc-100">ver todos los meses</button>
+                                  </>
+                                : 'Sin piezas de contenido registradas'}
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
