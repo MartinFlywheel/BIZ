@@ -179,7 +179,7 @@ const contentTypeLabel: Record<string, string> = {
     reel: 'Reel',
     story: 'Story',
     post: 'Carrusel',
-    live: 'Vivo',
+    live: 'Bio',
 }
 
 type SortKey = 'recent' | 'views' | 'revenue' | 'comments'
