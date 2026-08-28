@@ -419,6 +419,23 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
                 <span>{dtFromDate(lead.created_at)}</span>
               </div>
             </div>
+            {contentPieces.length > 0 && (
+              <div className="mt-3">
+                <FieldLabel>Primer touch (atribución de ingresos)</FieldLabel>
+                <select className={selectFieldCls} value={local.first_touch_content_id ?? ''}
+                  onChange={e => set('first_touch_content_id', e.target.value || null)}>
+                  <option value="">Sin pieza</option>
+                  {contentPieces.map(cp => (
+                    <option key={cp.id} value={cp.id}>
+                      {cp.keyword_trigger || cp.caption?.slice(0, 50) || cp.content_type}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-zinc-600 leading-snug">
+                  Define a qué pieza se le atribuye el revenue de este lead en la pestaña Contenido. Se graba una sola vez cuando el lead entra por ManyChat — cámbialo aquí solo para corregir una atribución equivocada (ej: la pieza correcta tenía el código de ManyChat mal cargado en ese momento).
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Ficha de calificación — lo que recolectó el flujo de ManyChat

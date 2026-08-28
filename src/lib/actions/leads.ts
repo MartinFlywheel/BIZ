@@ -335,6 +335,12 @@ export async function updateLeadFieldsAction(id: string, fields: {
   lead_avatar?: string | null
   assigned_to?: string | null
   content_id?: string | null
+  // Revenue-attribution FK (content-analytics.ts, live-metrics.ts) — set once
+  // by the ManyChat webhook at lead creation and frozen from then on by
+  // design (first-touch attribution). Exposed here so a wrong first touch
+  // (e.g. a content piece that had the wrong ManyChat code tagged at the
+  // time this lead came in) can be corrected without touching that history.
+  first_touch_content_id?: string | null
   notes?: string | null
 }) {
   const supabase = await createClient()
