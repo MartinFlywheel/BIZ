@@ -89,5 +89,14 @@ export async function GET(request: Request) {
     perClient[client.id] = staleIds.length
   }
 
+  // Vercel's runtime logs on this project only retain a few hours, and the
+  // route's own response is otherwise unrecoverable once that window
+  // passes — persist a summary so "did it delete anything?" is answerable
+  // anytime, not just right after a run.
+  await supabase.from('cron_runs').insert({
+    job_name: 'prune-stale-leads',
+    summary: { deleted: totalDeleted, clientsScanned: clients.length, perClient },
+  })
+
   return NextResponse.json({ status: 'completed', deleted: totalDeleted, perClient })
 }
