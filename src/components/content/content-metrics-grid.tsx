@@ -180,6 +180,13 @@ const contentTypeLabel: Record<string, string> = {
     story: 'Story',
     post: 'Carrusel',
     live: 'Bio',
+    trial: 'Trial',
+}
+
+function formatDayLabel(dateKey: string): string {
+    const d = new Date(`${dateKey}T00:00:00`)
+    if (Number.isNaN(d.getTime())) return dateKey
+    return d.toLocaleDateString('es-419', { day: 'numeric', month: 'short' })
 }
 
 type SortKey = 'recent' | 'views' | 'revenue' | 'comments'
@@ -202,6 +209,166 @@ const TYPE_FILTER_OPTIONS: { key: TypeFilter; label: string }[] = [
     { key: 'trial', label: 'Trials' },
 ]
 
+// A grid slot is either a single piece, or (Historias only) every story
+// published on the same day collapsed into one card.
+type GridItem =
+    | { kind: 'piece'; piece: ContentPiece }
+    | { kind: 'story-day'; dateKey: string; pieces: ContentPiece[] }
+
+// ── Grouped stories card — one day, multiple stories ──────────────────────
+function StoryDayCard({
+    pieces,
+    dateKey,
+    expanded,
+    onToggle,
+    metricsMap,
+    revenueByContentId,
+    chatCountsByPiece,
+    onSelectPiece,
+    onEditPiece,
+    onDeletePiece,
+    deletingId,
+}: {
+    pieces: ContentPiece[]
+    dateKey: string
+    expanded: boolean
+    onToggle: () => void
+    metricsMap: Map<string, ContentMetric>
+    revenueByContentId: ContentAnalytics['revenue_by_content_id']
+    chatCountsByPiece: Map<string, { chats: number; conversaciones: number }>
+    onSelectPiece: (p: ContentPiece) => void
+    onEditPiece: (p: ContentPiece) => void
+    onDeletePiece: (e: React.MouseEvent, p: ContentPiece) => void
+    deletingId: string | null
+}) {
+    const totals = pieces.reduce(
+        (acc, p) => {
+            const rev = revenueByContentId[p.id]
+            return {
+                views: acc.views + (p.views || 0),
+                likes: acc.likes + (p.likes || 0),
+                comments: acc.comments + (p.comments || 0),
+                shares: acc.shares + (p.shares || 0),
+                saves: acc.saves + (p.saves || 0),
+                agendas: acc.agendas + (rev?.agendas || 0),
+                shows: acc.shows + (rev?.shows || 0),
+                cierres: acc.cierres + (rev?.cierres || 0),
+                revenue: acc.revenue + (rev?.revenue || 0),
+            }
+        },
+        { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, agendas: 0, shows: 0, cierres: 0, revenue: 0 }
+    )
+    const cover = pieces.find((p) => p.ig_thumbnail_url)?.ig_thumbnail_url
+
+    return (
+        <div
+            className="group relative rounded-xl border overflow-hidden flex flex-col transition-all duration-300"
+            style={{
+                border: '1px solid rgba(255,255,255,0.06)',
+                background: 'linear-gradient(160deg, rgba(255,69,58,0.05) 0%, rgba(0,0,0,0.5) 60%)',
+                boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.04), 0 4px 24px rgba(0,0,0,0.5)',
+            }}
+        >
+            <button
+                onClick={onToggle}
+                className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
+            >
+                {cover ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cover} alt={`Historias del ${formatDayLabel(dateKey)}`} className="h-full w-full object-cover" />
+                ) : (
+                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
+                        <Play className="h-8 w-8 text-zinc-600" />
+                        <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">Historias</span>
+                    </div>
+                )}
+                <span className="absolute top-2 left-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
+                    {pieces.length} historias
+                </span>
+                <span className="absolute bottom-2 left-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
+                    {formatDayLabel(dateKey)}
+                </span>
+            </button>
+
+            <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
+                {totals.views > 0 && (
+                    <p className="font-mono text-lg font-bold text-zinc-100 leading-none">{formatNumber(totals.views)}</p>
+                )}
+                <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                    {totals.likes > 0 && <span className="flex items-center gap-0.5"><Heart className="h-3 w-3" />{formatNumber(totals.likes)}</span>}
+                    {totals.comments > 0 && <span className="flex items-center gap-0.5"><MessageCircle className="h-3 w-3" />{formatNumber(totals.comments)}</span>}
+                    {totals.shares > 0 && <span className="flex items-center gap-0.5"><Share2 className="h-3 w-3" />{formatNumber(totals.shares)}</span>}
+                    {totals.saves > 0 && <span className="flex items-center gap-0.5"><Bookmark className="h-3 w-3" />{formatNumber(totals.saves)}</span>}
+                </div>
+
+                {(totals.agendas > 0 || totals.shows > 0 || totals.cierres > 0 || totals.revenue > 0) && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        {totals.agendas > 0 && <span className="text-[10px] text-blue-400 font-mono">{totals.agendas} agenda{totals.agendas !== 1 ? 's' : ''}</span>}
+                        {totals.shows > 0 && <span className="text-[10px] text-amber-400 font-mono">{totals.shows} show{totals.shows !== 1 ? 's' : ''}</span>}
+                        {totals.cierres > 0 && <span className="text-[10px] text-emerald-500 font-mono">{totals.cierres} cierre{totals.cierres !== 1 ? 's' : ''}</span>}
+                        {totals.revenue > 0 && <span className="text-[10px] text-emerald-600 font-mono">{formatCurrency(totals.revenue)}</span>}
+                    </div>
+                )}
+
+                <button
+                    onClick={onToggle}
+                    className="mt-auto flex items-center justify-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
+                >
+                    {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    {expanded ? 'Ocultar historias' : `Ver las ${pieces.length} historias`}
+                </button>
+
+                {expanded && (
+                    <div className="space-y-1.5 pt-1 border-t border-white/[0.06]">
+                        {pieces.map((p) => {
+                            const hasMetrics = metricsMap.has(p.id)
+                            const chats = chatCountsByPiece.get(p.id)
+                            return (
+                                <div
+                                    key={p.id}
+                                    onClick={() => onSelectPiece(p)}
+                                    className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-white/[0.04] cursor-pointer transition-colors"
+                                >
+                                    <div className="relative h-10 w-7 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
+                                        {p.ig_thumbnail_url ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={p.ig_thumbnail_url} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <Play className="h-3 w-3 text-zinc-600 absolute inset-0 m-auto" />
+                                        )}
+                                        {hasMetrics && <CheckCircle2 className="absolute -top-0.5 -right-0.5 h-3 w-3 text-emerald-400 drop-shadow" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-mono text-zinc-200 truncate">{formatNumber(p.views)} vistas</p>
+                                        {chats && chats.chats > 0 && (
+                                            <p className="text-[10px] font-mono text-violet-400/80">{formatNumber(chats.chats)} chats</p>
+                                        )}
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); onEditPiece(p) }}
+                                        className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1 text-zinc-500 hover:text-zinc-200 hover:border-zinc-600 transition-colors flex-shrink-0"
+                                        title="Editar pieza"
+                                    >
+                                        <Pencil className="h-2.5 w-2.5" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => onDeletePiece(e, p)}
+                                        disabled={deletingId === p.id}
+                                        className="rounded-md bg-zinc-800/60 border border-zinc-700 p-1 text-zinc-500 hover:text-red-400 hover:border-red-900/50 transition-colors flex-shrink-0"
+                                        title="Eliminar pieza"
+                                    >
+                                        <Trash2 className="h-2.5 w-2.5" />
+                                    </button>
+                                </div>
+                            )
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
 export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
@@ -212,7 +379,17 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     const [sortBy, setSortBy] = useState<SortKey>('recent')
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
     const [interactions, setInteractions] = useState<Interaction[]>([])
+    const [expandedStoryDays, setExpandedStoryDays] = useState<Set<string>>(new Set())
     const router = useRouter()
+
+    function toggleStoryDay(dateKey: string) {
+        setExpandedStoryDays((prev) => {
+            const next = new Set(prev)
+            if (next.has(dateKey)) next.delete(dateKey)
+            else next.add(dateKey)
+            return next
+        })
+    }
 
     // Fetched here instead of received as a prop — clients/[id]/page.tsx no
     // longer pulls the whole interactions table (a dozen-plus paginated
@@ -295,6 +472,36 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         // 'recent' — server already sorted by published_at desc, preserve order
         return 0
     })
+
+    // Stories post several times a day, which used to flood the grid with
+    // near-duplicate cards — group same-day stories into one card (a single
+    // story on a given day still renders as a normal card, no group needed).
+    const gridItems: GridItem[] = useMemo(() => {
+        const items: GridItem[] = []
+        const dayBuckets = new Map<string, ContentPiece[]>()
+
+        for (const cp of sortedPieces) {
+            if (cp.content_type !== 'story') {
+                items.push({ kind: 'piece', piece: cp })
+                continue
+            }
+            const dateKey = cp.published_at ? cp.published_at.slice(0, 10) : cp.id
+            let bucket = dayBuckets.get(dateKey)
+            if (!bucket) {
+                bucket = []
+                dayBuckets.set(dateKey, bucket)
+                items.push({ kind: 'story-day', dateKey, pieces: bucket })
+            }
+            bucket.push(cp)
+        }
+
+        // Collapse single-story days back into a plain card — no group UI needed for just one
+        return items.map((item) =>
+            item.kind === 'story-day' && item.pieces.length === 1
+                ? { kind: 'piece', piece: item.pieces[0] }
+                : item
+        )
+    }, [sortedPieces])
 
     // Funnel data from the real sources: views from content_pieces,
     // chats/convs/agendas from interactions, shows/cierres from agenda_records
@@ -429,17 +636,40 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                         </div>
                     </div>
 
-                    {sortedPieces.length === 0 ? (
+                    {gridItems.length === 0 ? (
                         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 py-12 text-center text-zinc-500 text-sm">
                             Sin piezas de contenido registradas
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                             {(() => {
-                                const totalV = sortedPieces.reduce((sum, cp) => sum + (cp.views || 0), 0)
-                                const avgViews = sortedPieces.length > 0 ? totalV / sortedPieces.length : 1
+                                const itemViews = (item: GridItem) => item.kind === 'piece'
+                                    ? (item.piece.views || 0)
+                                    : item.pieces.reduce((sum, p) => sum + (p.views || 0), 0)
+                                const totalV = gridItems.reduce((sum, item) => sum + itemViews(item), 0)
+                                const avgViews = gridItems.length > 0 ? totalV / gridItems.length : 1
 
-                                return sortedPieces.map((cp) => {
+                                return gridItems.map((item) => {
+                                    if (item.kind === 'story-day') {
+                                        return (
+                                            <StoryDayCard
+                                                key={item.dateKey}
+                                                pieces={item.pieces}
+                                                dateKey={item.dateKey}
+                                                expanded={expandedStoryDays.has(item.dateKey)}
+                                                onToggle={() => toggleStoryDay(item.dateKey)}
+                                                metricsMap={metricsMap}
+                                                revenueByContentId={contentAnalytics.revenue_by_content_id}
+                                                chatCountsByPiece={interactionCountsByPiece}
+                                                onSelectPiece={setSelectedPiece}
+                                                onEditPiece={setEditingPiece}
+                                                onDeletePiece={handleDelete}
+                                                deletingId={deleting}
+                                            />
+                                        )
+                                    }
+
+                                    const cp = item.piece
                                     const metric = metricsMap.get(cp.id)
                                     const hasMetrics = !!metric
                                     const revenueStats = contentAnalytics.revenue_by_content_id[cp.id]
