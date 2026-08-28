@@ -35,10 +35,12 @@ export interface ContentAnalytics {
   }>
   total_revenue: number
   total_pieces: number
-  // Full per-piece revenue/cierres map (leads.close_value + agenda_records
-  // "Cerrado" rows + content_metrics.cash_collected, merged) — top_by_revenue
-  // above is only the top 5, but every piece's card needs its own number.
-  revenue_by_content_id: Record<string, { revenue: number; cierres: number }>
+  // Full per-piece revenue/cierres/agendas/shows map (leads.close_value +
+  // agenda_records "Cerrado" rows for revenue/cierres, all agenda_records
+  // rows for agendas/shows regardless of estado, + content_metrics manual
+  // entry, merged) — top_by_revenue above is only the top 5, but every
+  // piece's card needs its own number.
+  revenue_by_content_id: Record<string, { revenue: number; cierres: number; agendas: number; shows: number }>
 }
 
 export async function getContentAnalytics(clientId: string): Promise<ContentAnalytics> {
@@ -79,6 +81,8 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
 
   const revenueByContent: Record<string, number> = {}
   const cierresByContent: Record<string, number> = {}
+  const agendasByContent: Record<string, number> = {}
+  const showsByContent: Record<string, number> = {}
   let total_revenue = 0
   const leadIdsAlreadyCounted = new Set<string>()
 
@@ -108,15 +112,14 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     allPieces.filter((p) => p.keyword_trigger).map((p) => [p.keyword_trigger as string, p.id])
   )
 
-  const { data: closedAgendas } = await supabase
+  const { data: allAgendas } = await supabase
     .from('agenda_records')
-    .select('lead_id, de_donde_vino, monto_facturacion, monto_upfront')
+    .select('lead_id, de_donde_vino, estado, monto_facturacion, monto_upfront')
     .eq('client_id', clientId)
-    .eq('estado', 'Cerrado')
 
-  if (closedAgendas && closedAgendas.length > 0) {
+  if (allAgendas && allAgendas.length > 0) {
     const leadIds = Array.from(
-      new Set(closedAgendas.map((a) => a.lead_id).filter((id): id is string => !!id))
+      new Set(allAgendas.map((a) => a.lead_id).filter((id): id is string => !!id))
     )
     const { data: leadsForAgendas } = leadIds.length > 0
       ? await supabase.from('leads').select('id, first_touch_content_id').in('id', leadIds)
@@ -127,28 +130,44 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
         .map((l) => [l.id, l.first_touch_content_id as string])
     )
 
-    for (const a of closedAgendas) {
+    for (const a of allAgendas) {
       const leadId = a.lead_id as string | null
-      if (leadId && leadIdsAlreadyCounted.has(leadId)) continue
       const cid = (leadId && contentIdByLeadId[leadId])
         || keywordTriggerToContentId[normalizeCta(a.de_donde_vino as string | null) ?? '']
       if (!cid) continue
-      const val = Number(a.monto_facturacion) || Number(a.monto_upfront) || 0
-      if (val <= 0) continue
-      revenueByContent[cid] = (revenueByContent[cid] || 0) + val
-      cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
-      total_revenue += val
-      if (leadId) leadIdsAlreadyCounted.add(leadId)
+
+      agendasByContent[cid] = (agendasByContent[cid] || 0) + 1
+
+      if (a.estado && ['Show', 'No Cerrado', 'Cerrado'].includes(a.estado)) {
+        showsByContent[cid] = (showsByContent[cid] || 0) + 1
+      }
+
+      if (a.estado === 'Cerrado') {
+        if (leadId && leadIdsAlreadyCounted.has(leadId)) continue
+        const val = Number(a.monto_facturacion) || Number(a.monto_upfront) || 0
+        if (val > 0) {
+          revenueByContent[cid] = (revenueByContent[cid] || 0) + val
+          cierresByContent[cid] = (cierresByContent[cid] || 0) + 1
+          total_revenue += val
+          if (leadId) leadIdsAlreadyCounted.add(leadId)
+        }
+      }
     }
   }
 
   // Also check content_metrics for manual revenue
   const { data: metrics } = await supabase
     .from('content_metrics')
-    .select('content_id, cash_collected, cierres')
+    .select('content_id, cash_collected, cierres, agendas, shows')
     .eq('client_id', clientId)
 
   for (const m of metrics || []) {
+    if (m.agendas && m.agendas > 0) {
+      agendasByContent[m.content_id] = (agendasByContent[m.content_id] || 0) + m.agendas
+    }
+    if (m.shows && m.shows > 0) {
+      showsByContent[m.content_id] = (showsByContent[m.content_id] || 0) + m.shows
+    }
     if (m.cash_collected && m.cash_collected > 0) {
       revenueByContent[m.content_id] = (revenueByContent[m.content_id] || 0) + m.cash_collected
       cierresByContent[m.content_id] = (cierresByContent[m.content_id] || 0) + (m.cierres || 0)
@@ -207,10 +226,14 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
   })
 
   const revenue_by_content_id = Object.fromEntries(
-    Object.entries(revenueByContent).map(([content_id, revenue]) => [
-      content_id,
-      { revenue, cierres: cierresByContent[content_id] || 0 },
-    ])
+    allPieces.map((p) => {
+      const content_id = p.id
+      const revenue = revenueByContent[content_id] || 0
+      const cierres = cierresByContent[content_id] || 0
+      const agendas = agendasByContent[content_id] || 0
+      const shows = showsByContent[content_id] || 0
+      return [content_id, { revenue, cierres, agendas, shows }]
+    })
   )
 
   return {

@@ -31,6 +31,7 @@ interface Props {
     existingMetric?: ContentMetric | null
     chatStats?: { chats: number; conversaciones: number } | null
     siblingPieces?: ContentPiece[]
+    crmStats?: { agendas: number; shows: number; cierres: number; revenue: number } | null
     onClose: () => void
     onSaved?: () => void
 }
@@ -256,7 +257,7 @@ function PieceFunnel({
 
 // ── Main form ──────────────────────────────────────────────────────────────
 
-export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, siblingPieces, onClose, onSaved }: Props) {
+export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, siblingPieces, crmStats, onClose, onSaved }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
@@ -372,7 +373,10 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                 {/* Funnel Section */}
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                        Embudo de Conversión
+                        Embudo de Conversión (Manual)
+                    </p>
+                    <p className="text-[10px] text-zinc-500 mb-3 -mt-2">
+                        Si los campos están vacíos, se usarán los valores automáticos del CRM (indicados como placeholder). Completa estos campos solo para sobrescribir los datos automáticos.
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                         <Input
@@ -381,7 +385,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             label="Chats Nuevos"
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder={chatStats?.chats ? chatStats.chats.toString() : "0"}
                             defaultValue={existingMetric?.chats_nuevos ?? ''}
                         />
                         <Input
@@ -390,7 +394,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             label="Conversaciones"
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder={chatStats?.conversaciones ? chatStats.conversaciones.toString() : "0"}
                             defaultValue={existingMetric?.conversaciones_nuevas ?? ''}
                         />
                         <Input
@@ -399,7 +403,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             label="Agendas"
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder={crmStats?.agendas ? crmStats.agendas.toString() : "0"}
                             defaultValue={existingMetric?.agendas ?? ''}
                         />
                         <Input
@@ -408,7 +412,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             label="Shows"
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder={crmStats?.shows ? crmStats.shows.toString() : "0"}
                             defaultValue={existingMetric?.shows ?? ''}
                         />
                         <Input
@@ -417,7 +421,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             label="Cierres"
                             type="number"
                             min="0"
-                            placeholder="0"
+                            placeholder={crmStats?.cierres ? crmStats.cierres.toString() : "0"}
                             defaultValue={existingMetric?.cierres ?? ''}
                         />
                     </div>
@@ -456,7 +460,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                             type="number"
                             min="0"
                             step="0.01"
-                            placeholder="0.00"
+                            placeholder={crmStats?.revenue ? crmStats.revenue.toString() : "0.00"}
                             defaultValue={existingMetric?.cash_collected ?? ''}
                         />
                     </div>

@@ -578,17 +578,33 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                     </p>
                                                 )}
 
-                                                {/* Revenue attributed to this piece — leads, Agendas "Cerrado" rows, and manual content_metrics, merged */}
-                                                {revenueStats && (revenueStats.cierres > 0 || revenueStats.revenue > 0) && (
-                                                    <div className="flex items-center gap-1.5">
-                                                        {revenueStats.cierres > 0 && (
-                                                            <span className="text-[10px] text-emerald-500 font-mono">
-                                                                {revenueStats.cierres} cierre{revenueStats.cierres !== 1 ? 's' : ''}
+                                                {/* Revenue attributed to this piece — leads, Agendas (all statuses for agendas/shows, "Cerrado" for revenue), and manual content_metrics, merged */}
+                                                {revenueStats && (revenueStats.agendas > 0 || revenueStats.shows > 0 || revenueStats.cierres > 0 || revenueStats.revenue > 0) && (
+                                                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                                        {revenueStats.agendas > 0 && (
+                                                            <span className="text-[10px] text-blue-400 font-mono">
+                                                                {revenueStats.agendas} agenda{revenueStats.agendas !== 1 ? 's' : ''}
                                                             </span>
+                                                        )}
+                                                        {revenueStats.shows > 0 && (
+                                                            <>
+                                                                {revenueStats.agendas > 0 && <span className="text-[10px] text-zinc-600">·</span>}
+                                                                <span className="text-[10px] text-amber-400 font-mono">
+                                                                    {revenueStats.shows} show{revenueStats.shows !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                        {revenueStats.cierres > 0 && (
+                                                            <>
+                                                                {(revenueStats.agendas > 0 || revenueStats.shows > 0) && <span className="text-[10px] text-zinc-600">·</span>}
+                                                                <span className="text-[10px] text-emerald-500 font-mono">
+                                                                    {revenueStats.cierres} cierre{revenueStats.cierres !== 1 ? 's' : ''}
+                                                                </span>
+                                                            </>
                                                         )}
                                                         {revenueStats.revenue > 0 && (
                                                             <>
-                                                                {revenueStats.cierres > 0 && <span className="text-[10px] text-zinc-600">·</span>}
+                                                                {(revenueStats.agendas > 0 || revenueStats.shows > 0 || revenueStats.cierres > 0) && <span className="text-[10px] text-zinc-600">·</span>}
                                                                 <span className="text-[10px] text-emerald-600 font-mono">
                                                                     {formatCurrency(revenueStats.revenue)}
                                                                 </span>
@@ -654,6 +670,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     existingMetric={selectedMetric}
                     chatStats={interactionCountsByPiece.get(selectedPiece.id) ?? null}
                     siblingPieces={contentPieces}
+                    crmStats={contentAnalytics.revenue_by_content_id[selectedPiece.id] ?? null}
                     onClose={() => setSelectedPiece(null)}
                     onSaved={reload}
                 />
