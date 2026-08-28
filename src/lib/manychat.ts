@@ -342,10 +342,32 @@ export async function handlePieceWebhook(
         updated_at: new Date().toISOString(),
       }
       if (fullName) updates.full_name = fullName
-      if (contentId && existingLead.first_touch_content_id && existingLead.first_touch_content_id !== contentId) {
-        updates.conversion_touch_content_id = contentId
-        updates.conversion_touch_at = new Date().toISOString()
-        updates.conversion_touch_type = 'manychat_piece'
+      if (contentId && existingLead.first_touch_content_id !== contentId) {
+        // Revenue attribution (content-analytics.ts, live-metrics.ts) reads
+        // first_touch_content_id alone — despite the name, it's meant as
+        // "the CTA that gets credited," not literally the first message
+        // ever. Whichever CTA the lead touches keeps re-attributing here
+        // until they have an agenda booked; once agenda_records has a row
+        // for this lead, that CTA is locked in for good — later touches
+        // still count as interactions (and get logged below, for
+        // visibility) but must never steal credit for a booking/close that
+        // already happened.
+        const { data: existingAgenda } = await supabase
+          .from('agenda_records')
+          .select('id')
+          .eq('lead_id', leadId)
+          .limit(1)
+          .maybeSingle()
+
+        if (!existingAgenda) {
+          updates.first_touch_content_id = contentId
+          updates.first_touch_at = new Date().toISOString()
+          updates.first_touch_type = `manychat:${pieceId}`
+        } else {
+          updates.conversion_touch_content_id = contentId
+          updates.conversion_touch_at = new Date().toISOString()
+          updates.conversion_touch_type = 'manychat_piece'
+        }
       }
       await supabase.from('leads').update(updates).eq('id', leadId)
     } else {
