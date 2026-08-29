@@ -14,6 +14,10 @@ import type { AgencyUser } from './crm-tab'
 const stageInfo = (stage: string) => LEAD_STAGES.find(s => s.id === stage)
 const stageLabel = (stage: string) => stageInfo(stage)?.label || stage
 
+// Posición de cada etapa en el funnel — usado para priorizar el seguimiento
+// desde la etapa más cercana a "Agendado" hacia atrás.
+const STAGE_ORDER = new Map(LEAD_STAGES.map((s, i) => [s.id, i]))
+
 const prettifyKey = (key: string) => {
   const withSpaces = key.replace(/_/g, ' ')
   return withSpaces.charAt(0).toUpperCase() + withSpaces.slice(1)
@@ -120,8 +124,13 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
       }
     }
 
-    // Ordenar los de "ahora" del más urgente (más viejo) al más nuevo
+    // Ordenar los de "ahora" por prioridad de etapa (el más cerca de agendar
+    // primero, retrocediendo en el funnel) para que el setter ataque primero
+    // los leads más calientes y no se sature viendo todo mezclado. Dentro de
+    // una misma etapa, el más urgente (más viejo) va primero.
     ahora.sort((a, b) => {
+      const stageDiff = (STAGE_ORDER.get(b.stage) ?? -1) - (STAGE_ORDER.get(a.stage) ?? -1)
+      if (stageDiff !== 0) return stageDiff
       const timeA = a.next_follow_up_date ? new Date(a.next_follow_up_date).getTime() : new Date(a.updated_at).getTime()
       const timeB = b.next_follow_up_date ? new Date(b.next_follow_up_date).getTime() : new Date(b.updated_at).getTime()
       return timeA - timeB
