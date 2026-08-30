@@ -288,7 +288,7 @@ function StoryDayCard({
         >
             <button
                 onClick={onToggle}
-                className="relative aspect-[9/16] w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
+                className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
             >
                 {cover ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -751,11 +751,13 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 }
                                             }
                                         >
-                                            {/* Thumbnail — carousels (post) are square/4:5 in real life, not
-                                                vertical like Reels/Historias/Trials, so they get their own ratio */}
+                                            {/* Thumbnail — one uniform square crop for every content type, so a
+                                                vertical Reel/Historia doesn't tower over a square carousel in the
+                                                grid. object-cover below centers and crops the source without
+                                                stretching it. */}
                                             <button
                                                 onClick={() => setSelectedPiece(cp)}
-                                                className={`relative w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none ${cp.content_type === 'post' ? 'aspect-square' : 'aspect-[9/16]'}`}
+                                                className="relative w-full aspect-square overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
                                             >
                                                 {cp.ig_thumbnail_url ? (
                                                     // eslint-disable-next-line @next/next/no-img-element
