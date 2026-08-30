@@ -211,7 +211,7 @@ function ToolbarDropdown({ label, options, onPick, isFocus }: {
   )
 }
 
-function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initialValue: string; onChange: (html: string) => void; variant?: 'compact' | 'focus' }) {
+function ScriptEditor({ initialValue, onChange, variant = 'compact', onImageUpload }: { initialValue: string; onChange: (html: string) => void; variant?: 'compact' | 'focus'; onImageUpload?: (file: File) => Promise<string | null> }) {
   const editorRef = useRef<HTMLDivElement>(null)
   const isFocus = variant === 'focus'
 
@@ -227,6 +227,36 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initial
   function exec(command: string, value?: string) {
     editorRef.current?.focus()
     document.execCommand(command, false, value)
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+  }
+
+  // Pasting a screenshot/photo drops it straight into the script, like
+  // pasting into a chat — a text placeholder holds the cursor's spot while
+  // it uploads, then gets swapped for the real <img> once we have a URL.
+  async function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    if (!onImageUpload) return
+    const imageItem = Array.from(e.clipboardData?.items ?? []).find((it) => it.type.startsWith('image/'))
+    if (!imageItem) return
+    e.preventDefault()
+    const file = imageItem.getAsFile()
+    if (!file) return
+
+    const placeholderId = `img-upload-${Date.now()}`
+    document.execCommand('insertHTML', false, `<span id="${placeholderId}" style="color:#71717a;font-size:12px;">Subiendo imagen…</span>`)
+    if (editorRef.current) onChange(editorRef.current.innerHTML)
+
+    const url = await onImageUpload(file)
+    const placeholder = editorRef.current?.querySelector(`#${placeholderId}`)
+    if (placeholder) {
+      if (url) {
+        const img = document.createElement('img')
+        img.src = url
+        img.style.cssText = 'max-width:100%;height:auto;border-radius:8px;display:block;margin:4px 0;'
+        placeholder.replaceWith(img)
+      } else {
+        placeholder.remove()
+      }
+    }
     if (editorRef.current) onChange(editorRef.current.innerHTML)
   }
 
@@ -268,6 +298,7 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initial
         contentEditable
         suppressContentEditableWarning
         onInput={(e) => onChange(e.currentTarget.innerHTML)}
+        onPaste={handlePaste}
         data-placeholder="Escribe el guión, notas o ideas para el reel..."
         className={isFocus
           ? `min-h-[55vh] px-8 py-8 text-[22px] text-zinc-200 outline-none leading-relaxed
@@ -287,7 +318,7 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact' }: { initial
 // ── Script focus mode — large, centered view for reading the script while
 // recording, instead of the drawer pinned to the screen edge ────────────────
 
-function ScriptFocusModal({ title, script, onChange, onClose }: { title: string; script: string; onChange: (html: string) => void; onClose: () => void }) {
+function ScriptFocusModal({ title, script, onChange, onClose, onImageUpload }: { title: string; script: string; onChange: (html: string) => void; onClose: () => void; onImageUpload?: (file: File) => Promise<string | null> }) {
   return (
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6 lg:p-16"
@@ -310,7 +341,7 @@ function ScriptFocusModal({ title, script, onChange, onClose }: { title: string;
           </button>
         </div>
         <div className="p-6">
-          <ScriptEditor initialValue={script} onChange={onChange} variant="focus" />
+          <ScriptEditor initialValue={script} onChange={onChange} variant="focus" onImageUpload={onImageUpload} />
         </div>
       </div>
     </div>
@@ -473,6 +504,21 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
     } finally {
       setUploading(false)
     }
+  }
+
+  async function uploadScriptImage(file: File): Promise<string | null> {
+    const supabase = createClient()
+    const ext = file.type.split('/')[1]?.split('+')[0] || 'png'
+    const path = `${item.client_id}/${item.id}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage
+      .from('pipeline-images')
+      .upload(path, file, { contentType: file.type || 'image/png', upsert: false })
+    if (error) {
+      alert(`Error al subir la imagen: ${error.message}\n\nAsegurate de crear el bucket "pipeline-images" (público) en Supabase → Storage.`)
+      return null
+    }
+    const { data: { publicUrl } } = supabase.storage.from('pipeline-images').getPublicUrl(path)
+    return publicUrl
   }
 
   async function startRecording() {
@@ -824,6 +870,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
             <ScriptEditor
               initialValue={script}
               onChange={(html) => { setScript(html); debounceSave({ script: html }) }}
+              onImageUpload={uploadScriptImage}
             />
           </div>
 
@@ -836,6 +883,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
           script={script}
           onChange={(html) => { setScript(html); debounceSave({ script: html }) }}
           onClose={() => setScriptFocus(false)}
+          onImageUpload={uploadScriptImage}
         />
       )}
     </>,
