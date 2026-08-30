@@ -49,7 +49,7 @@ function rateColor(rate: number): string {
 }
 
 export function ContentConversationTable({ contentPieces, interactions }: Props) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(false)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const rows = useMemo<Row[]>(() => {
