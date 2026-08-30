@@ -11,7 +11,7 @@ import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
 import { syncClientContent } from '@/lib/actions/instagram'
 import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown, Eye, Rocket, ThumbsUp, TrendingDown } from 'lucide-react'
 import type { ContentPiece, Interaction } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
@@ -723,12 +723,15 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                     const revenueStats = contentAnalytics.revenue_by_content_id[cp.id]
                                     const chatStats = interactionCountsByPiece.get(cp.id)
                                     const multiplier = avgViews > 0 ? (cp.views || 0) / avgViews : 0
+                                    const multiplierTier = multiplier >= 1.5 ? 'high' : multiplier >= 1.0 ? 'mid' : 'low'
                                     const multiplierColor =
-                                        multiplier >= 1.5
+                                        multiplierTier === 'high'
                                             ? 'bg-emerald-500/80 text-emerald-50'
-                                            : multiplier >= 1.0
+                                            : multiplierTier === 'mid'
                                                 ? 'bg-amber-500/80 text-amber-50'
                                                 : 'bg-red-500/80 text-red-50'
+                                    const MultiplierIcon = multiplierTier === 'high' ? Rocket : multiplierTier === 'mid' ? ThumbsUp : TrendingDown
+                                    const hasStatsOverlay = (cp.views || 0) > 0 || (cp.likes || 0) > 0 || (cp.comments || 0) > 0 || (cp.shares || 0) > 0 || (cp.saves || 0) > 0
                                     // Only show IG link if it's actually an Instagram URL
                                     const reelUrl = cp.ig_permalink?.includes('instagram.com')
                                         ? cp.ig_permalink
@@ -777,8 +780,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                                                 {/* Multiplier badge — top left (only when views > 0) */}
                                                 {(cp.views || 0) > 0 && (
-                                                    <span className={`absolute top-2 left-2 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
-                                                        ×{multiplier.toFixed(1)}
+                                                    <span className={`absolute top-2 left-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-mono font-semibold ${multiplierColor}`}>
+                                                        <MultiplierIcon className="h-2.5 w-2.5" />
+                                                        {multiplier.toFixed(1)}x
                                                     </span>
                                                 )}
 
@@ -796,9 +800,49 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                     </div>
                                                 )}
 
-                                                {/* CTA tag — always visible, not just on the no-thumbnail placeholder */}
+                                                {/* Stats overlay — views/likes/comments/shares/saves live on the
+                                                    cover itself (like a reel's own stats), not in the card body.
+                                                    Gradient scrim keeps the white text legible over any image. */}
+                                                {hasStatsOverlay && (
+                                                    <div className="absolute inset-x-0 bottom-0 px-2 pb-1.5 pt-6 bg-gradient-to-t from-black/85 via-black/40 to-transparent">
+                                                        {(cp.views || 0) > 0 && (
+                                                            <p className="flex items-center gap-1 text-xs font-mono font-bold text-white">
+                                                                <Eye className="h-3 w-3" />
+                                                                {formatNumber(cp.views)}
+                                                            </p>
+                                                        )}
+                                                        <div className="flex items-center gap-2 text-[10px] font-mono text-zinc-200">
+                                                            {(cp.likes || 0) > 0 && (
+                                                                <span className="flex items-center gap-0.5">
+                                                                    <Heart className="h-2.5 w-2.5" />
+                                                                    {formatNumber(cp.likes)}
+                                                                </span>
+                                                            )}
+                                                            {(cp.comments || 0) > 0 && (
+                                                                <span className="flex items-center gap-0.5">
+                                                                    <MessageCircle className="h-2.5 w-2.5" />
+                                                                    {formatNumber(cp.comments)}
+                                                                </span>
+                                                            )}
+                                                            {(cp.shares || 0) > 0 && (
+                                                                <span className="flex items-center gap-0.5">
+                                                                    <Share2 className="h-2.5 w-2.5" />
+                                                                    {formatNumber(cp.shares)}
+                                                                </span>
+                                                            )}
+                                                            {(cp.saves || 0) > 0 && (
+                                                                <span className="flex items-center gap-0.5">
+                                                                    <Bookmark className="h-2.5 w-2.5" />
+                                                                    {formatNumber(cp.saves)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* CTA tag — sits above the scrim, opposite corner from the stats */}
                                                 {cp.keyword_trigger && (
-                                                    <span className="absolute bottom-2 left-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
+                                                    <span className="absolute bottom-1.5 right-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
                                                         {cp.keyword_trigger}
                                                     </span>
                                                 )}
@@ -806,41 +850,6 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
 
                                             {/* Card body */}
                                             <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                                                {/* Views — big (only when > 0) */}
-                                                {(cp.views || 0) > 0 && (
-                                                    <p className="font-mono text-lg font-bold text-zinc-100 leading-none">
-                                                        {formatNumber(cp.views)}
-                                                    </p>
-                                                )}
-
-                                                {/* Engagement row — only show metrics with value > 0 */}
-                                                <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
-                                                    {(cp.likes || 0) > 0 && (
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Heart className="h-3 w-3" />
-                                                            {formatNumber(cp.likes)}
-                                                        </span>
-                                                    )}
-                                                    {(cp.comments || 0) > 0 && (
-                                                        <span className="flex items-center gap-0.5">
-                                                            <MessageCircle className="h-3 w-3" />
-                                                            {formatNumber(cp.comments)}
-                                                        </span>
-                                                    )}
-                                                    {(cp.shares || 0) > 0 && (
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Share2 className="h-3 w-3" />
-                                                            {formatNumber(cp.shares)}
-                                                        </span>
-                                                    )}
-                                                    {(cp.saves || 0) > 0 && (
-                                                        <span className="flex items-center gap-0.5">
-                                                            <Bookmark className="h-3 w-3" />
-                                                            {formatNumber(cp.saves)}
-                                                        </span>
-                                                    )}
-                                                </div>
-
                                                 {/* Chats / Conversaciones generated by this specific piece */}
                                                 {chatStats && chatStats.chats > 0 && (
                                                     <div className="flex items-center gap-2 text-[11px] font-mono text-violet-400/80">
