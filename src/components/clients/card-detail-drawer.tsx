@@ -230,9 +230,30 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact', onImageUplo
     if (editorRef.current) onChange(editorRef.current.innerHTML)
   }
 
+  // Wraps the <img> in a non-editable, natively resizable box (same
+  // resize:both trick a <textarea> uses) so a pasted screenshot doesn't
+  // have to sit at full width — drag the bottom-right corner to shrink it.
+  // object-fit:contain keeps the picture from stretching as the box resizes.
+  function buildResizableImage(url: string, naturalW: number, naturalH: number): HTMLDivElement {
+    const maxW = 360
+    const w = naturalW > 0 ? Math.min(naturalW, maxW) : maxW
+    const h = naturalW > 0 && naturalH > 0 ? Math.round(w * (naturalH / naturalW)) : Math.round(w * 0.6)
+    const wrapper = document.createElement('div')
+    wrapper.contentEditable = 'false'
+    wrapper.style.cssText = `resize:both;overflow:hidden;display:inline-block;width:${w}px;height:${h}px;max-width:100%;min-width:60px;min-height:40px;border-radius:8px;margin:4px 0;`
+    const img = document.createElement('img')
+    img.src = url
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;'
+    wrapper.appendChild(img)
+    return wrapper
+  }
+
   // Pasting a screenshot/photo drops it straight into the script, like
   // pasting into a chat — a text placeholder holds the cursor's spot while
-  // it uploads, then gets swapped for the real <img> once we have a URL.
+  // it uploads, then gets swapped for the real (resizable) image once we
+  // have a URL. Natural dimensions are read off a local object URL — never
+  // inserted into the editor itself — so a slow upload can't leave a
+  // session-only blob: URL sitting in what debounceSave persists.
   async function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
     if (!onImageUpload) return
     const imageItem = Array.from(e.clipboardData?.items ?? []).find((it) => it.type.startsWith('image/'))
@@ -245,14 +266,19 @@ function ScriptEditor({ initialValue, onChange, variant = 'compact', onImageUplo
     document.execCommand('insertHTML', false, `<span id="${placeholderId}" style="color:#71717a;font-size:12px;">Subiendo imagen…</span>`)
     if (editorRef.current) onChange(editorRef.current.innerHTML)
 
+    const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+      const objectUrl = URL.createObjectURL(file)
+      const probe = new Image()
+      probe.onload = () => { resolve({ w: probe.naturalWidth, h: probe.naturalHeight }); URL.revokeObjectURL(objectUrl) }
+      probe.onerror = () => { resolve({ w: 0, h: 0 }); URL.revokeObjectURL(objectUrl) }
+      probe.src = objectUrl
+    })
+
     const url = await onImageUpload(file)
     const placeholder = editorRef.current?.querySelector(`#${placeholderId}`)
     if (placeholder) {
       if (url) {
-        const img = document.createElement('img')
-        img.src = url
-        img.style.cssText = 'max-width:100%;height:auto;border-radius:8px;display:block;margin:4px 0;'
-        placeholder.replaceWith(img)
+        placeholder.replaceWith(buildResizableImage(url, dims.w, dims.h))
       } else {
         placeholder.remove()
       }
