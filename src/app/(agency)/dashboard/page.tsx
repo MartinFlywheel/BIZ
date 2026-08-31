@@ -175,6 +175,31 @@ async function ClientDetail({
   )
 }
 
+// ── Health overview — one funnel calculation per active client. Streamed in
+// behind its own Suspense boundary so it can't block the page shell (title,
+// period/client toggles) from rendering while it works. ─────────────────────
+
+function HealthAlertsSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="h-4 w-32 rounded bg-white/[0.05]" />
+        <div className="h-3 w-40 rounded bg-white/[0.03]" />
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4" style={{ height: 132 }} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+async function HealthAlertsSection({ selectedId }: { selectedId?: string }) {
+  const alerts = await checkHealthAlerts('weekly')
+  return <HealthAlerts alerts={alerts} selectedId={selectedId} />
+}
+
 // ── Comparison section — independent of the period/type toggle, so switching
 // those doesn't wait on this section's own (heavier) queries. Keyed only by
 // clientId: this data doesn't change when the funnel's period does. ─────────
@@ -219,11 +244,9 @@ export default async function DashboardPage({
     ? (periodParam as FunnelPeriodType)
     : 'weekly'
 
-  // These two queries are fast — run them in the page shell
-  const [clients, healthAlerts] = await Promise.all([
-    getClients(),
-    checkHealthAlerts('weekly'),
-  ])
+  // Only clients is fast — health alerts run one funnel calculation per
+  // active client and stream in behind their own Suspense below instead.
+  const clients = await getClients()
 
   return (
     <div className="stagger-children space-y-8">
@@ -239,8 +262,12 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Agency-wide health overview — always visible */}
-      <HealthAlerts alerts={healthAlerts} selectedId={clientId} />
+      {/* Agency-wide health overview — always visible, streamed independently
+          of the page shell so a slow client (or many active clients) can't
+          delay the title/toggles from showing up. */}
+      <Suspense fallback={<HealthAlertsSkeleton />}>
+        <HealthAlertsSection selectedId={clientId} />
+      </Suspense>
 
       {/* Per-client: streams in behind a skeleton, key resets on client switch.
           Two independent Suspense boundaries — switching the period/type

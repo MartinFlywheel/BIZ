@@ -203,21 +203,24 @@ export async function checkHealthAlerts(
 
   if (!clients || clients.length === 0) return []
 
-  const results: ClientHealthAlert[] = []
-
-  for (const client of clients) {
+  // Each client's funnel is a handful of fully-paginated table scans
+  // (getLiveMetricsBuckets) — running them one client at a time turned this
+  // into "sum of every active client's query time" before the dashboard
+  // could render anything at all. Running them concurrently instead turns
+  // it into "the slowest single client," which is what this was always
+  // meant to cost.
+  const results = await Promise.all(clients.map(async (client): Promise<ClientHealthAlert> => {
     const funnel = await calculateFunnel(client.id, periodType)
 
     if (!funnel) {
-      results.push({
+      return {
         client_id: client.id,
         client_name: client.name,
         ig_handle: client.ig_handle,
         alerts: [],
         worst_stage: null,
         status: 'healthy',
-      })
-      continue
+      }
     }
 
     const alerts = funnel.stages
@@ -231,15 +234,15 @@ export async function checkHealthAlerts(
       }))
       .sort((a, b) => b.deficit - a.deficit)
 
-    results.push({
+    return {
       client_id: client.id,
       client_name: client.name,
       ig_handle: client.ig_handle,
       alerts,
       worst_stage: funnel.bottleneck,
       status: alerts.length > 0 ? 'critical' : 'healthy',
-    })
-  }
+    }
+  }))
 
   return results.sort((a, b) => b.alerts.length - a.alerts.length)
 }
