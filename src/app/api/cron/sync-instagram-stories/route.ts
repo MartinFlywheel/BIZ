@@ -83,7 +83,7 @@ export async function GET(request: Request) {
   for (const client of clients) {
     try {
       const storiesRes = await fetch(
-        `https://graph.facebook.com/${client.ig_account_id}/stories?fields=id,media_type,permalink,timestamp&access_token=${token}`
+        `https://graph.facebook.com/${client.ig_account_id}/stories?fields=id,media_type,media_url,permalink,timestamp&access_token=${token}`
       )
 
       if (!storiesRes.ok) {
@@ -129,6 +129,7 @@ export async function GET(request: Request) {
             content_type: 'story',
             ig_media_id: story.id,
             ig_permalink: story.permalink || null,
+            ig_thumbnail_url: story.media_url || null,
             published_at: story.timestamp || new Date().toISOString(),
             ...fields,
           })

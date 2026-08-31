@@ -1,8 +1,31 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+
+// .env.example ships META_APP_SECRET as a scaffolded placeholder — treat
+// that (or an unset var) as "not really configured yet" so enforcing
+// verification below can't accidentally reject every real Meta event with
+// a secret nobody actually set. Swap in the real App Secret (Meta App
+// Dashboard → Settings → Basic) and this starts enforcing automatically,
+// no second code change needed.
+function isRealAppSecret(value: string | undefined): value is string {
+  if (!value) return false
+  const lower = value.toLowerCase()
+  return !lower.includes('your_') && !lower.includes('_here')
+}
+
+function hasValidSignature(rawBody: string, signatureHeader: string | null, appSecret: string): boolean {
+  if (!signatureHeader?.startsWith('sha256=')) return false
+  const expected = createHmac('sha256', appSecret).update(rawBody).digest('hex')
+  const provided = signatureHeader.slice('sha256='.length)
+  const expectedBuf = Buffer.from(expected, 'hex')
+  const providedBuf = Buffer.from(provided, 'hex')
+  if (expectedBuf.length !== providedBuf.length) return false
+  return timingSafeEqual(expectedBuf, providedBuf)
+}
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -51,8 +74,21 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const rawBody = await request.text()
+  const appSecret = process.env.META_APP_SECRET
+
+  if (isRealAppSecret(appSecret)) {
+    const signature = request.headers.get('x-hub-signature-256')
+    if (!hasValidSignature(rawBody, signature, appSecret)) {
+      console.error('[Meta Webhook] Invalid or missing X-Hub-Signature-256 — rejecting request')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+  } else {
+    console.warn('[Meta Webhook] META_APP_SECRET not configured — skipping signature verification. Anyone who finds this URL can inject fake events until it is set.')
+  }
+
   try {
-    const payload: WebhookPayload = await request.json()
+    const payload: WebhookPayload = JSON.parse(rawBody)
     const supabase = createAdminClient()
 
     const { data: logRow, error: logError } = await supabase

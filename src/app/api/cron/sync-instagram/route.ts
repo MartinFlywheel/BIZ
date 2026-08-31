@@ -24,6 +24,15 @@ function isRealInstagramPermalink(url: string): boolean {
   }
 }
 
+// thumbnail_url only comes back for VIDEO media (reels) — photos and
+// carousels only carry media_url. Falling back straight to thumbnail_url
+// for those left every synced carousel with no cover at all.
+function pickThumbnail(media: { media_type: string; thumbnail_url?: string; media_url?: string }): string | null {
+  if (media.media_type === 'VIDEO' && media.thumbnail_url) return media.thumbnail_url
+  if (media.media_url) return media.media_url
+  return media.thumbnail_url || null
+}
+
 interface Insights {
   views: number
   reach: number
@@ -95,7 +104,7 @@ export async function GET(request: Request) {
   for (const client of clients) {
     try {
       const mediaRes = await fetch(
-        `https://graph.facebook.com/${client.ig_account_id}/media?fields=id,caption,media_type,permalink,thumbnail_url,timestamp&access_token=${token}&limit=50`
+        `https://graph.facebook.com/${client.ig_account_id}/media?fields=id,caption,media_type,permalink,thumbnail_url,media_url,timestamp&access_token=${token}&limit=50`
       )
 
       if (!mediaRes.ok) {
@@ -106,7 +115,7 @@ export async function GET(request: Request) {
       const mediaData = await mediaRes.json()
       type Item = {
         id: string; caption?: string; media_type: string; permalink?: string
-        thumbnail_url?: string; timestamp: string
+        thumbnail_url?: string; media_url?: string; timestamp: string
       }
       // Meta's /media edge sometimes returns a reel twice: once as the real
       // post (permalink like instagram.com/reel/...) and once as its
@@ -122,7 +131,7 @@ export async function GET(request: Request) {
       // content_type, so the cron fills in real metrics on the existing
       // tagged row instead of creating an untagged duplicate that orphans
       // the revenue already logged against it.
-      type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null }
+      type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null; caption: string | null }
       const [{ data: existingRows }, { data: unmatchedRows }] = await Promise.all([
         supabase
           .from('content_pieces')
@@ -131,7 +140,7 @@ export async function GET(request: Request) {
           .not('ig_media_id', 'is', null),
         supabase
           .from('content_pieces')
-          .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url')
+          .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url, caption')
           .eq('client_id', client.id)
           .is('ig_media_id', null),
       ])
@@ -219,15 +228,19 @@ export async function GET(request: Request) {
               .update({ ...metricFields, updated_at: new Date().toISOString() })
               .eq('id', plan.targetId)
           } else if (plan.kind === 'manual') {
-            // Backfill ig_media_id so future syncs match directly — but
-            // never touch caption/keyword_trigger, that's the label the
-            // team gave it.
+            // Backfill ig_media_id so future syncs match directly — never
+            // touch keyword_trigger, that's the team's own label. Caption is
+            // different: pieces are usually created before the reel is
+            // published/captioned, so the field is left blank at creation
+            // time — only skip the real IG caption when the team actually
+            // typed something into it themselves.
             await supabase
               .from('content_pieces')
               .update({
                 ig_media_id: media.id,
-                ig_thumbnail_url: plan.manualMatch.ig_thumbnail_url ?? media.thumbnail_url,
+                ig_thumbnail_url: plan.manualMatch.ig_thumbnail_url ?? pickThumbnail(media),
                 ig_permalink: plan.manualMatch.ig_permalink ?? media.permalink,
+                caption: plan.manualMatch.caption || media.caption,
                 ...metricFields,
                 updated_at: new Date().toISOString(),
               })
@@ -238,7 +251,7 @@ export async function GET(request: Request) {
               content_type: contentType,
               ig_media_id: media.id,
               ig_permalink: media.permalink,
-              ig_thumbnail_url: media.thumbnail_url,
+              ig_thumbnail_url: pickThumbnail(media),
               caption: media.caption,
               published_at: media.timestamp,
               ...metricFields,
