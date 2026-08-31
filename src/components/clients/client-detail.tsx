@@ -16,7 +16,8 @@ import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTabLazy } from './crm-tab'
 import { ProductTab } from './product-tab'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Megaphone } from 'lucide-react'
+import Link from 'next/link'
 import type { Client } from '@/lib/types'
 
 interface Props {
@@ -95,17 +96,28 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
             <p className="mt-1 text-sm text-zinc-300">{formatCurrency(client.monthly_fee)}/mes</p>
           )}
         </div>
-        {!readOnly && isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />
-              Editar
-            </Button>
-            <Button variant="danger" size="sm" onClick={handleDelete}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          {!isSetter && (
+            <Link
+              href={`/clients/${client.id}/ads`}
+              className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 text-xs font-medium text-zinc-100 transition-colors hover:bg-zinc-700 active:bg-zinc-600"
+            >
+              <Megaphone className="h-3.5 w-3.5" />
+              Ads
+            </Link>
+          )}
+          {!readOnly && isAdmin && (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
+                <Pencil className="h-3.5 w-3.5" />
+                Editar
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleDelete}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <Tabs
