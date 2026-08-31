@@ -87,7 +87,7 @@ async function processPlan(
   token: string,
   plan: { media: MediaItem; contentType: string; thumbnail: string | null } & (
     | { kind: 'existing'; targetId: string }
-    | { kind: 'manual'; manualMatch: { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null } }
+    | { kind: 'manual'; manualMatch: { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null; caption: string | null } }
     | { kind: 'new' }
   )
 ): Promise<void> {
@@ -150,14 +150,18 @@ async function processPlan(
       })
       .eq('id', plan.targetId)
   } else if (plan.kind === 'manual') {
-    // Backfill ig_media_id so future syncs match directly — but never touch
-    // caption/keyword_trigger, that's the label the team gave it.
+    // Backfill ig_media_id so future syncs match directly — never touch
+    // keyword_trigger, that's the team's own label. Caption is different:
+    // pieces are usually created before the reel is published/captioned,
+    // so the field is left blank at creation time — only skip the real IG
+    // caption when the team actually typed something into it themselves.
     await supabase
       .from('content_pieces')
       .update({
         ig_media_id: media.id,
         ig_thumbnail_url: plan.manualMatch.ig_thumbnail_url ?? thumbnail,
         ig_permalink: plan.manualMatch.ig_permalink ?? media.permalink,
+        caption: plan.manualMatch.caption || media.caption,
         ...metricFields,
         updated_at: new Date().toISOString(),
       })
@@ -223,7 +227,7 @@ export async function syncClientContent(clientId: string): Promise<{
     // them by permalink first, then by same day + content_type, so the sync
     // fills in real metrics on the existing tagged row instead of creating
     // an untagged duplicate that orphans the revenue already logged against it.
-    type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null }
+    type ManualRow = { id: string; ig_thumbnail_url: string | null; ig_permalink: string | null; caption: string | null }
     const [{ data: existingRows }, { data: unmatchedRows }] = await Promise.all([
       supabase
         .from('content_pieces')
@@ -232,7 +236,7 @@ export async function syncClientContent(clientId: string): Promise<{
         .not('ig_media_id', 'is', null),
       supabase
         .from('content_pieces')
-        .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url')
+        .select('id, content_type, published_at, ig_permalink, ig_thumbnail_url, caption')
         .eq('client_id', clientId)
         .is('ig_media_id', null),
     ])
