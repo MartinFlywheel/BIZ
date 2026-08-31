@@ -122,6 +122,7 @@ export interface Client {
   name: string
   ig_handle: string
   ig_account_id: string | null
+  ad_account_id: string | null
   industry: string | null
   status: ClientStatus
   monthly_fee: number | null

@@ -110,6 +110,18 @@ export function ClientForm({ client, onClose }: ClientFormProps) {
         </div>
         <div className="space-y-1.5">
           <Input
+            id="ad_account_id"
+            name="ad_account_id"
+            label="Meta Ad Account ID"
+            placeholder="act_1234567890123"
+            defaultValue={client?.ad_account_id || ''}
+          />
+          <p className="text-[11px] text-zinc-600 leading-snug">
+            ID de la cuenta publicitaria (con el prefijo act_). Se usa en la pestaña Ads del cliente.
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Input
             id="calendly_token"
             name="calendly_token"
             label="Calendly Personal Access Token"

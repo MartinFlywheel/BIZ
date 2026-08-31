@@ -67,18 +67,39 @@ async function assertIgAccountIdAvailable(
   }
 }
 
+// Same reasoning as ig_account_id — the Ads tab (getClientAds) fetches
+// campaigns/insights scoped to whichever client owns this ad_account_id.
+async function assertAdAccountIdAvailable(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  adAccountId: string | null,
+  excludeId?: string
+): Promise<void> {
+  if (!adAccountId) return
+
+  let query = supabase.from('clients').select('id, name').eq('ad_account_id', adAccountId).limit(1)
+  if (excludeId) query = query.neq('id', excludeId)
+
+  const { data: clash } = await query.maybeSingle()
+  if (clash) {
+    throw new Error(`Ese Meta Ad Account ID ya está en uso por "${clash.name}" — cada cliente necesita el suyo propio.`)
+  }
+}
+
 export async function createClientAction(formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
   await assertAdmin(supabase)
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
   const igAccountId = (formData.get('ig_account_id') as string) || null
+  const adAccountId = (formData.get('ad_account_id') as string) || null
   await assertIgAccountIdAvailable(supabase, igAccountId)
+  await assertAdAccountIdAvailable(supabase, adAccountId)
 
   const { data: client, error } = await supabase.from('clients').insert({
     name: formData.get('name') as string,
     ig_handle: formData.get('ig_handle') as string,
     ig_account_id: igAccountId,
+    ad_account_id: adAccountId,
     industry: (formData.get('industry') as string) || null,
     status: (formData.get('status') as ClientStatus) || 'prospect',
     monthly_fee: formData.get('monthly_fee')
@@ -104,7 +125,9 @@ export async function updateClientAction(id: string, formData: FormData): Promis
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
   const igAccountId = (formData.get('ig_account_id') as string) || null
+  const adAccountId = (formData.get('ad_account_id') as string) || null
   await assertIgAccountIdAvailable(supabase, igAccountId, id)
+  await assertAdAccountIdAvailable(supabase, adAccountId, id)
 
   const { data: existing } = await supabase
     .from('clients')
@@ -118,6 +141,7 @@ export async function updateClientAction(id: string, formData: FormData): Promis
       name: formData.get('name') as string,
       ig_handle: formData.get('ig_handle') as string,
       ig_account_id: igAccountId,
+      ad_account_id: adAccountId,
       industry: (formData.get('industry') as string) || null,
       status: formData.get('status') as ClientStatus,
       monthly_fee: formData.get('monthly_fee')
