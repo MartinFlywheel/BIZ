@@ -78,10 +78,17 @@ export async function POST(request: NextRequest) {
   const appSecret = process.env.META_APP_SECRET
 
   if (isRealAppSecret(appSecret)) {
+    // Log-only for now, deliberately not rejecting yet: this deploys
+    // against a live Vercel Secret whose actual value can't be read back
+    // to confirm it's really the Meta App Secret (vs. something stale or
+    // set for another purpose). Flip this to `return 401` once the logs
+    // below show real inbound traffic consistently matching — rejecting
+    // on an unverified secret risks silently dropping every real DM.
     const signature = request.headers.get('x-hub-signature-256')
     if (!hasValidSignature(rawBody, signature, appSecret)) {
-      console.error('[Meta Webhook] Invalid or missing X-Hub-Signature-256 — rejecting request')
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+      console.error('[Meta Webhook] Signature check FAILED (not enforced yet) — verify META_APP_SECRET is the real Meta App Secret before flipping this to reject.')
+    } else {
+      console.log('[Meta Webhook] Signature check passed.')
     }
   } else {
     console.warn('[Meta Webhook] META_APP_SECRET not configured — skipping signature verification. Anyone who finds this URL can inject fake events until it is set.')
