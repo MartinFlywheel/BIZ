@@ -34,10 +34,44 @@ export async function getContentPiecesCount(clientId: string): Promise<number> {
   return count ?? 0
 }
 
+// Every ManyChat webhook resolves its client by matching keyword_trigger
+// alone (case-insensitive, no client scoping — the incoming URL only
+// carries the piece code, nothing that identifies the client). Two
+// clients sharing a code silently misattributes leads to the wrong one,
+// so this has to be caught before it's saved, not after — the DB-level
+// unique index (034-unique-keyword-trigger.sql) is the backstop, but a
+// raw constraint-violation message isn't a useful thing to show someone
+// filling out this form.
+async function assertKeywordTriggerAvailable(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  keywordTrigger: string | null,
+  excludeId?: string
+): Promise<string | null> {
+  if (!keywordTrigger) return null
+
+  let query = supabase
+    .from('content_pieces')
+    .select('id, client_id, clients(name)')
+    .ilike('keyword_trigger', keywordTrigger)
+    .limit(1)
+
+  if (excludeId) query = query.neq('id', excludeId)
+
+  const { data: clash } = await query.maybeSingle()
+  if (!clash) return null
+
+  const clientName = (clash as { clients?: { name?: string } | null }).clients?.name || 'otro cliente'
+  return `El código "${keywordTrigger}" ya está en uso por una pieza de ${clientName}. Los códigos deben ser únicos en todo el sistema — ManyChat solo identifica la pieza por este código, sin saber a qué cliente pertenece.`
+}
+
 export async function createContentAction(formData: FormData) {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
   const igPermalink = (formData.get('ig_permalink') as string) || null
+  const keywordTrigger = (formData.get('keyword_trigger') as string) || null
+
+  const clashError = await assertKeywordTriggerAvailable(supabase, keywordTrigger)
+  if (clashError) return { success: false as const, error: clashError }
 
   const manualThumbnail = (formData.get('ig_thumbnail_url') as string) || null
   let thumbnailUrl: string | null = manualThumbnail
@@ -51,7 +85,7 @@ export async function createContentAction(formData: FormData) {
     content_type: formData.get('content_type') as ContentType,
     caption: (formData.get('caption') as string) || null,
     hook: (formData.get('hook') as string) || null,
-    keyword_trigger: (formData.get('keyword_trigger') as string) || null,
+    keyword_trigger: keywordTrigger,
     published_at: (formData.get('published_at') as string) || null,
     views: parseInt(formData.get('views') as string) || 0,
     likes: parseInt(formData.get('likes') as string) || 0,
@@ -113,6 +147,10 @@ async function extractIgThumbnail(permalink: string): Promise<string | null> {
 
 export async function updateContentAction(id: string, clientId: string, formData: FormData) {
   const supabase = await createClient()
+  const keywordTrigger = (formData.get('keyword_trigger') as string) || null
+
+  const clashError = await assertKeywordTriggerAvailable(supabase, keywordTrigger, id)
+  if (clashError) return { success: false as const, error: clashError }
 
   // Deliberately excludes views/likes/comments/shares/saves/reach/metrics_source:
   // pieces synced from Instagram (metrics_source 'meta_api') own those via the
@@ -124,7 +162,7 @@ export async function updateContentAction(id: string, clientId: string, formData
       content_type: formData.get('content_type') as ContentType,
       caption: (formData.get('caption') as string) || null,
       hook: (formData.get('hook') as string) || null,
-      keyword_trigger: (formData.get('keyword_trigger') as string) || null,
+      keyword_trigger: keywordTrigger,
       ig_permalink: (formData.get('ig_permalink') as string) || null,
       ig_thumbnail_url: (formData.get('ig_thumbnail_url') as string) || null,
       published_at: (formData.get('published_at') as string) || null,

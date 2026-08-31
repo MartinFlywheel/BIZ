@@ -46,16 +46,39 @@ async function assertAdmin(supabase: Awaited<ReturnType<typeof createClient>>) {
   }
 }
 
+// Instagram sync (syncClientContent, both cron jobs) loops every client
+// with an ig_account_id and pulls that account's media into content_pieces
+// scoped to that client's client_id. A copy-paste mistake landing the same
+// ig_account_id on two clients would sync one Instagram account's content
+// into both clients' dashboards.
+async function assertIgAccountIdAvailable(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  igAccountId: string | null,
+  excludeId?: string
+): Promise<void> {
+  if (!igAccountId) return
+
+  let query = supabase.from('clients').select('id, name').eq('ig_account_id', igAccountId).limit(1)
+  if (excludeId) query = query.neq('id', excludeId)
+
+  const { data: clash } = await query.maybeSingle()
+  if (clash) {
+    throw new Error(`Ese Instagram Account ID ya está en uso por "${clash.name}" — cada cliente necesita el suyo propio.`)
+  }
+}
+
 export async function createClientAction(formData: FormData): Promise<{ calendlyError: string | null }> {
   const supabase = await createClient()
   await assertAdmin(supabase)
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
+  const igAccountId = (formData.get('ig_account_id') as string) || null
+  await assertIgAccountIdAvailable(supabase, igAccountId)
 
   const { data: client, error } = await supabase.from('clients').insert({
     name: formData.get('name') as string,
     ig_handle: formData.get('ig_handle') as string,
-    ig_account_id: (formData.get('ig_account_id') as string) || null,
+    ig_account_id: igAccountId,
     industry: (formData.get('industry') as string) || null,
     status: (formData.get('status') as ClientStatus) || 'prospect',
     monthly_fee: formData.get('monthly_fee')
@@ -80,6 +103,8 @@ export async function updateClientAction(id: string, formData: FormData): Promis
   await assertAdmin(supabase)
 
   const calendlyToken = (formData.get('calendly_token') as string) || null
+  const igAccountId = (formData.get('ig_account_id') as string) || null
+  await assertIgAccountIdAvailable(supabase, igAccountId, id)
 
   const { data: existing } = await supabase
     .from('clients')
@@ -92,7 +117,7 @@ export async function updateClientAction(id: string, formData: FormData): Promis
     .update({
       name: formData.get('name') as string,
       ig_handle: formData.get('ig_handle') as string,
-      ig_account_id: (formData.get('ig_account_id') as string) || null,
+      ig_account_id: igAccountId,
       industry: (formData.get('industry') as string) || null,
       status: formData.get('status') as ClientStatus,
       monthly_fee: formData.get('monthly_fee')

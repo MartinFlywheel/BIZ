@@ -46,8 +46,8 @@ export function ClientForm({ client, onClose }: ClientFormProps) {
       } else {
         onClose()
       }
-    } catch {
-      setError('Error al guardar el cliente')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error al guardar el cliente')
     } finally {
       setLoading(false)
     }

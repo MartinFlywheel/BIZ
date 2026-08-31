@@ -88,23 +88,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fallback: try client_id from payload directly
+    // Fallback: trust an explicit client_id if the flow sent one — leads.client_id
+    // is a real FK, so a bogus value fails loudly on insert below rather than
+    // silently attaching to the wrong client.
     if (!clientId) {
       clientId = payload.client_id || customFields.client_id || null
     }
 
-    // If still no client, try matching by IG account
-    if (!clientId && igUsername) {
-      const { data: clientMatch } = await supabase
-        .from('clients')
-        .select('id')
-        .ilike('ig_handle', `%${igUsername.split('.')[0]}%`)
-        .limit(1)
-        .maybeSingle()
-
-      if (clientMatch) clientId = clientMatch.id
-    }
-
+    // Deliberately no further fallback here. This used to also guess the
+    // client by substring-matching the *prospect's own* ig_username against
+    // clients.ig_handle — those two strings have no real reason to overlap,
+    // so any accidental match silently misattributed a real lead to an
+    // unrelated client. Better to log it for manual review than guess wrong.
     if (!clientId) {
       await markLogError(supabase, webhookLogId, `No client matched for payload_id="${payloadId}" username="${igUsername}"`)
       return NextResponse.json({
