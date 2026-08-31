@@ -262,12 +262,15 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* Agency-wide health overview — always visible, streamed independently
-          of the page shell so a slow client (or many active clients) can't
-          delay the title/toggles from showing up. */}
-      <Suspense fallback={<HealthAlertsSkeleton />}>
-        <HealthAlertsSection selectedId={clientId} />
-      </Suspense>
+      {/* Agency-wide health overview — only in the "no client picked yet"
+          landing state. Once a client is selected its funnel is already
+          shown in full detail below, so computing every OTHER active
+          client's funnel here too would be pure waste. */}
+      {!clientId && (
+        <Suspense fallback={<HealthAlertsSkeleton />}>
+          <HealthAlertsSection />
+        </Suspense>
+      )}
 
       {/* Per-client: streams in behind a skeleton, key resets on client switch.
           Two independent Suspense boundaries — switching the period/type
