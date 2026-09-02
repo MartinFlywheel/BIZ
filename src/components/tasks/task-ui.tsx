@@ -49,8 +49,26 @@ export function formatDue(iso: string): string {
   return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: '2-digit' }) })
 }
 
+/**
+ * Una tarea con rango vence al FINAL del rango, no al principio: la etapa del
+ * 22 al 27 no está atrasada el día 25, está en curso. Por eso se mira end_date
+ * cuando existe y se cae a due_date para las tareas de un solo día.
+ */
 export function isOverdue(task: TeamTask): boolean {
-  return !!task.due_date && task.status !== 'hecha' && daysFromToday(task.due_date) < 0
+  const limite = task.end_date ?? task.due_date
+  return !!limite && task.status !== 'hecha' && daysFromToday(limite) < 0
+}
+
+/** Fecha, o "3 – 8 sept" cuando la tarea ocupa un rango. */
+export function formatRange(task: TeamTask): string {
+  if (!task.due_date) return ''
+  const desde = parseDay(task.due_date)
+  if (!task.end_date || task.end_date <= task.due_date) {
+    return desde.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+  }
+  const hasta = parseDay(task.end_date)
+  const mismoMes = desde.getMonth() === hasta.getMonth()
+  return `${desde.toLocaleDateString('es-ES', mismoMes ? { day: 'numeric' } : { day: 'numeric', month: 'short' })} – ${hasta.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`
 }
 
 // ── Estilos compartidos ───────────────────────────────────────────────────────

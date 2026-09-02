@@ -19,10 +19,10 @@ import {
   Layers,
 } from 'lucide-react'
 import { connectNotionAction, disconnectNotionAction, syncNotionTasksAction, getTaskBoard, type TaskBoardData } from '@/lib/actions/tasks'
-import type { TeamTask, TeamTaskStatus } from '@/lib/types'
-import { TASK_STATUS_LABEL } from '@/lib/types'
+import type { TeamTask, TeamTaskStatus, TeamTaskPriority } from '@/lib/types'
+import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, parseDay, todayISO, personColor, initials, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 import { FieldOptionsModal } from './field-options-modal'
 
@@ -382,6 +382,29 @@ function ListView({
 
 // ── Vista tablero ─────────────────────────────────────────────────────────────
 
+// Alta primero: el tablero se abre para decidir qué se toca ahora, y una
+// tarjeta sin prioridad no puede quedar por encima de una marcada como alta.
+const PRIORITY_RANK: Record<TeamTaskPriority, number> = { alta: 0, media: 1, baja: 2 }
+
+const PRIORITY_STRIPE: Record<TeamTaskPriority, string> = {
+  alta: 'bg-red-500',
+  media: 'bg-amber-500',
+  baja: 'bg-zinc-600',
+}
+
+function byPriorityThenDate(a: TeamTask, b: TeamTask): number {
+  const ra = a.priority ? PRIORITY_RANK[a.priority] : 3
+  const rb = b.priority ? PRIORITY_RANK[b.priority] : 3
+  if (ra !== rb) return ra - rb
+  // Dentro de la misma prioridad manda la fecha; las tareas sin fecha al final.
+  if (a.due_date !== b.due_date) {
+    if (!a.due_date) return 1
+    if (!b.due_date) return -1
+    return a.due_date.localeCompare(b.due_date)
+  }
+  return a.title.localeCompare(b.title, 'es')
+}
+
 function BoardView({
   tasks,
   clientId,
@@ -400,38 +423,66 @@ function BoardView({
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       {columns.map((status) => {
-        const items = tasks.filter((t) => t.status === status)
+        const items = tasks.filter((t) => t.status === status).sort(byPriorityThenDate)
+        const altas = items.filter((t) => t.priority === 'alta' && status !== 'hecha').length
+
         return (
           <div key={status} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-2">
             <div className="mb-2 flex items-center gap-2 px-2 pt-1">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{TASK_STATUS_LABEL[status]}</h3>
               <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">{items.length}</span>
+              {/* Cuántas urgencias hay en esta columna, sin tener que contarlas. */}
+              {altas > 0 && (
+                <span className="ml-auto rounded-full border border-red-900/40 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] text-red-400">
+                  {altas} alta{altas === 1 ? '' : 's'}
+                </span>
+              )}
             </div>
+
             <div className="space-y-1.5">
-              {items.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => onOpen(t)}
-                  className="cursor-pointer rounded-lg border border-white/[0.05] bg-zinc-900/60 p-2.5 transition-colors hover:border-white/[0.12]"
-                >
-                  <div className="flex items-start gap-2">
-                    <TaskCheckbox task={t} clientId={clientId} disabled={!canCheck(t)} onChanged={onChanged} />
-                    <p className={cn('flex-1 text-sm leading-snug', t.status === 'hecha' ? 'text-zinc-600 line-through' : 'text-zinc-200')}>
-                      {t.title}
-                    </p>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 pl-6">
-                    {t.assignee_name && (
-                      <span className={cn('rounded-md border px-1.5 py-0.5 text-[10px]', personColor(t.assignee_name))}>{t.assignee_name}</span>
+              {items.map((t) => {
+                const hecha = t.status === 'hecha'
+                return (
+                  <div
+                    key={t.id}
+                    onClick={() => onOpen(t)}
+                    className="group relative cursor-pointer overflow-hidden rounded-lg border border-white/[0.05] bg-zinc-900/60 p-2.5 pl-3 transition-colors hover:border-white/[0.12]"
+                  >
+                    {/* Franja de prioridad: se lee de un vistazo al recorrer la
+                        columna, sin sumar una insignia más al ruido de la tarjeta. */}
+                    {t.priority && !hecha && (
+                      <span className={cn('absolute inset-y-0 left-0 w-[3px]', PRIORITY_STRIPE[t.priority])} aria-hidden />
                     )}
-                    {t.due_date && (
-                      <span className={cn('text-[10px] tabular-nums', isOverdue(t) ? 'text-red-400' : 'text-zinc-500')}>
-                        {parseDay(t.due_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
-                      </span>
+
+                    <div className="flex items-start gap-2">
+                      <TaskCheckbox task={t} clientId={clientId} disabled={!canCheck(t)} onChanged={onChanged} />
+                      <p className={cn('flex-1 text-sm leading-snug', hecha ? 'text-zinc-600 line-through' : 'text-zinc-200')}>
+                        {t.title}
+                      </p>
+                    </div>
+
+                    {t.group_name && (
+                      <p className="mt-1 truncate pl-6 text-[11px] text-zinc-600">{t.group_name}</p>
                     )}
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-6">
+                      {t.priority && !hecha && (
+                        <span className={cn('rounded border px-1.5 py-0.5 text-[10px] font-medium', PRIORITY_STYLE[t.priority])}>
+                          {TASK_PRIORITY_LABEL[t.priority]}
+                        </span>
+                      )}
+                      {t.assignee_name && (
+                        <span className={cn('rounded-md border px-1.5 py-0.5 text-[10px]', personColor(t.assignee_name))}>{t.assignee_name}</span>
+                      )}
+                      {t.due_date && (
+                        <span className={cn('text-[10px] tabular-nums', isOverdue(t) ? 'text-red-400' : 'text-zinc-500')}>
+                          {formatRange(t)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
               {items.length === 0 && <p className="px-2 py-6 text-center text-xs text-zinc-700">Vacío</p>}
             </div>
           </div>
@@ -442,6 +493,64 @@ function BoardView({
 }
 
 // ── Vista calendario ──────────────────────────────────────────────────────────
+
+interface WeekSegment {
+  task: TeamTask
+  col: number      // 0-6, dónde empieza dentro de esta semana
+  span: number     // cuántos días ocupa dentro de esta semana
+  cortadaIzq: boolean
+  cortadaDer: boolean
+  lane: number
+}
+
+/** Inicio y fin reales de una tarea. Sin end_date, ocupa un solo día. */
+function rangoDe(t: TeamTask): { start: string; end: string } | null {
+  if (!t.due_date) return null
+  return { start: t.due_date, end: t.end_date && t.end_date > t.due_date ? t.end_date : t.due_date }
+}
+
+/**
+ * Coloca las tareas de una semana en carriles, como hace Notion: una barra por
+ * tarea que cruza los días que ocupa, y las que se solapan bajan un carril.
+ *
+ * Antes cada tarea era un chip en el día de `due_date` y nada más, así que una
+ * etapa de seis días se veía como un día suelto y el calendario del dashboard
+ * no se parecía en nada al de Notion.
+ */
+function armarSemana(diasIso: string[], tasks: TeamTask[]): { segmentos: WeekSegment[]; carriles: number } {
+  const desde = diasIso[0]
+  const hasta = diasIso[6]
+
+  const crudos: WeekSegment[] = tasks.flatMap((task) => {
+    const r = rangoDe(task)
+    if (!r || r.end < desde || r.start > hasta) return []
+    const col = r.start <= desde ? 0 : diasIso.indexOf(r.start)
+    const colFin = r.end >= hasta ? 6 : diasIso.indexOf(r.end)
+    if (col < 0 || colFin < 0) return []
+    return [{
+      task,
+      col,
+      span: colFin - col + 1,
+      cortadaIzq: r.start < desde,
+      cortadaDer: r.end > hasta,
+      lane: 0,
+    }]
+  })
+
+  // Las más largas primero, para que las barras grandes queden arriba y las
+  // cortas rellenen huecos en vez de dejar la semana llena de escalones.
+  crudos.sort((a, b) => a.col - b.col || b.span - a.span || a.task.title.localeCompare(b.task.title, 'es'))
+
+  const ocupadoHasta: number[] = []
+  for (const seg of crudos) {
+    let lane = 0
+    while (ocupadoHasta[lane] !== undefined && ocupadoHasta[lane] > seg.col) lane++
+    seg.lane = lane
+    ocupadoHasta[lane] = seg.col + seg.span
+  }
+
+  return { segmentos: crudos, carriles: ocupadoHasta.length }
+}
 
 function CalendarView({
   tasks,
@@ -457,29 +566,21 @@ function CalendarView({
   const today = todayISO()
 
   // La grilla arranca el lunes de la semana del día 1 y cubre semanas enteras.
-  const days = useMemo(() => {
+  const semanas = useMemo(() => {
+    function iso(d: Date) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0')
+    }
     const first = new Date(cursor.year, cursor.month, 1)
     const offset = (first.getDay() + 6) % 7
-    const start = new Date(cursor.year, cursor.month, 1 - offset)
     const total = Math.ceil((offset + new Date(cursor.year, cursor.month + 1, 0).getDate()) / 7) * 7
-    return Array.from({ length: total }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i))
+    const dias = Array.from({ length: total }, (_, i) => new Date(cursor.year, cursor.month, 1 - offset + i))
+    return Array.from({ length: total / 7 }, (_, w) => {
+      const semana = dias.slice(w * 7, w * 7 + 7)
+      return { dias: semana, diasIso: semana.map(iso) }
+    })
   }, [cursor])
 
-  const byDay = useMemo(() => {
-    const map = new Map<string, TeamTask[]>()
-    for (const t of tasks) {
-      if (!t.due_date) continue
-      if (!map.has(t.due_date)) map.set(t.due_date, [])
-      map.get(t.due_date)!.push(t)
-    }
-    return map
-  }, [tasks])
-
   const undated = tasks.filter((t) => !t.due_date)
-
-  function iso(d: Date) {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
 
   function shift(delta: number) {
     const d = new Date(cursor.year, cursor.month + delta, 1)
@@ -519,49 +620,76 @@ function CalendarView({
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.04]">
-            {days.map((d) => {
-              const key = iso(d)
-              const items = byDay.get(key) ?? []
-              const isCurrentMonth = d.getMonth() === cursor.month
-              const isToday = key === today
+          <div className="space-y-px overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.04]">
+            {semanas.map((semana, wi) => {
+              const { segmentos, carriles } = armarSemana(semana.diasIso, tasks)
 
               return (
                 <div
-                  key={key}
-                  className={cn(
-                    'min-h-[92px] bg-zinc-950 p-1.5 transition-colors',
-                    !isCurrentMonth && 'bg-zinc-950/40',
-                    isToday && 'bg-violet-950/20'
-                  )}
+                  key={wi}
+                  className="grid grid-cols-7 gap-px"
+                  style={{ gridTemplateRows: 'auto repeat(' + Math.max(carriles, 1) + ', auto)' }}
                 >
-                  <span
-                    className={cn(
-                      'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] tabular-nums',
-                      isToday ? 'bg-violet-600 font-medium text-white' : isCurrentMonth ? 'text-zinc-400' : 'text-zinc-700'
-                    )}
-                  >
-                    {d.getDate()}
-                  </span>
+                  {/* Fondo de cada día: ocupa todas las filas de carriles para que
+                      las barras crucen por encima de las divisiones entre días. */}
+                  {semana.dias.map((d, i) => {
+                    const key = semana.diasIso[i]
+                    const delMes = d.getMonth() === cursor.month
+                    return (
+                      <div
+                        key={'bg-' + key}
+                        style={{ gridColumn: i + 1, gridRow: '1 / -1' }}
+                        className={cn(
+                          'min-h-[92px] bg-zinc-950',
+                          !delMes && 'bg-zinc-950/40',
+                          key === today && 'bg-violet-950/20'
+                        )}
+                      />
+                    )
+                  })}
 
-                  <div className="mt-1 space-y-1">
-                    {items.slice(0, 3).map((t) => (
+                  {semana.dias.map((d, i) => {
+                    const key = semana.diasIso[i]
+                    const delMes = d.getMonth() === cursor.month
+                    const esHoy = key === today
+                    return (
+                      <div key={'n-' + key} style={{ gridColumn: i + 1, gridRow: 1 }} className="relative z-10 p-1.5">
+                        <span
+                          className={cn(
+                            'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] tabular-nums',
+                            esHoy ? 'bg-violet-600 font-medium text-white' : delMes ? 'text-zinc-400' : 'text-zinc-700'
+                          )}
+                        >
+                          {d.getDate()}
+                        </span>
+                      </div>
+                    )
+                  })}
+
+                  {segmentos.map((seg) => {
+                    const t = seg.task
+                    const hecha = t.status === 'hecha'
+                    return (
                       <button
                         key={t.id}
                         onClick={() => onOpen(t)}
-                        title={`${t.title}${t.assignee_name ? ` — ${t.assignee_name}` : ''}`}
+                        title={t.title + (t.assignee_name ? ' — ' + t.assignee_name : '') + ' · ' + formatRange(t)}
+                        style={{ gridColumn: (seg.col + 1) + ' / span ' + seg.span, gridRow: seg.lane + 2 }}
                         className={cn(
-                          'flex w-full items-center gap-1 rounded border px-1 py-0.5 text-left text-[10px] transition-opacity hover:opacity-80',
-                          t.status === 'hecha' ? 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through' : personColor(t.assignee_name),
-                          isOverdue(t) && 'ring-1 ring-red-500/40'
+                          'relative z-10 mx-1 mb-1 flex items-center gap-1 border px-1.5 py-0.5 text-left text-[10px] transition-opacity hover:opacity-80',
+                          hecha ? 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through' : personColor(t.assignee_name),
+                          isOverdue(t) && 'ring-1 ring-red-500/40',
+                          // Los extremos cortados quedan rectos y pegados al borde:
+                          // así se ve que la barra sigue en la semana de al lado.
+                          seg.cortadaIzq ? 'ml-0 rounded-l-none border-l-0' : 'rounded-l',
+                          seg.cortadaDer ? 'mr-0 rounded-r-none border-r-0' : 'rounded-r'
                         )}
                       >
-                        <span className="font-medium">{initials(t.assignee_name)}</span>
+                        {!seg.cortadaIzq && <span className="font-medium">{initials(t.assignee_name)}</span>}
                         <span className="truncate">{t.title}</span>
                       </button>
-                    ))}
-                    {items.length > 3 && <p className="pl-1 text-[10px] text-zinc-600">+{items.length - 3} más</p>}
-                  </div>
+                    )
+                  })}
                 </div>
               )
             })}

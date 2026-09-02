@@ -295,6 +295,8 @@ export interface NotionTask {
   status_raw: string | null
   priority: 'baja' | 'media' | 'alta' | null
   due_date: string | null
+  /** Fin del rango en Notion. NULL si la tarea ocupa un solo día. */
+  end_date: string | null
   assignee_name: string | null
   assignee_email: string | null
   group_name: string | null
@@ -375,6 +377,9 @@ export async function fetchTasks(databaseId: string, map: NotionTaskMap): Promis
         status_raw: raw,
         priority: readPriority(map.priority ? page.properties[map.priority] : undefined),
         due_date: dateProp?.date?.start ? dateProp.date.start.slice(0, 10) : null,
+        // Notion devuelve `end` sólo cuando la fecha es un rango. Descartarlo
+        // era lo que hacía que una etapa de seis días llegara como un día suelto.
+        end_date: dateProp?.date?.end ? dateProp.date.end.slice(0, 10) : null,
         assignee_name: assignee.name,
         assignee_email: assignee.email,
         group_name: groupProp?.select?.name ?? groupProp?.multi_select?.[0]?.name ?? null,
@@ -396,6 +401,7 @@ export interface NotionTaskFields {
   status?: 'pendiente' | 'en_progreso' | 'hecha'
   assignee?: string | null
   due_date?: string | null
+  end_date?: string | null
   priority?: string | null
   group?: string | null
   note?: string | null
@@ -440,8 +446,14 @@ function buildProperties(map: NotionTaskMap, fields: NotionTaskFields): Record<s
     }
   }
 
-  if (fields.due_date !== undefined && map.date) {
-    props[map.date] = { date: fields.due_date ? { start: fields.due_date } : null }
+  // Escribir sólo `start` borraba el `end` en Notion: editar la fecha de una
+  // etapa desde el CRM le colapsaba el rango a un día. Se manda el rango entero.
+  if ((fields.due_date !== undefined || fields.end_date !== undefined) && map.date) {
+    props[map.date] = {
+      date: fields.due_date
+        ? { start: fields.due_date, ...(fields.end_date ? { end: fields.end_date } : {}) }
+        : null,
+    }
   }
 
   if (fields.priority !== undefined && map.priority) {

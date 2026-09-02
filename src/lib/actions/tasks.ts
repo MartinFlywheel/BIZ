@@ -327,6 +327,7 @@ export async function syncNotionTasksAction(
         status_raw: t.status_raw,
         priority: t.priority,
         due_date: t.due_date,
+        end_date: t.end_date,
         assignee_name: t.assignee_name,
         assigned_to: assignedTo,
         group_name: t.group_name,

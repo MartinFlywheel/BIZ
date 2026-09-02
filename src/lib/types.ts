@@ -620,6 +620,8 @@ export interface TeamTask {
   status_raw: string | null
   priority: TeamTaskPriority | null
   due_date: string | null
+  /** Fin del rango de Notion. NULL cuando la tarea ocupa un solo día. */
+  end_date: string | null
   /** Responsable según Notion, aunque no matchee con ningún usuario del CRM. */
   assignee_name: string | null
   assigned_to: string | null
