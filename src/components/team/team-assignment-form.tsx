@@ -41,6 +41,7 @@ export function TeamAssignmentForm({ clientId, users, onClose }: Props) {
           { value: 'content', label: 'Contenido' },
           { value: 'setting', label: 'Setting (Pre-cualificación)' },
           { value: 'closing', label: 'Closing (Ventas)' },
+          { value: 'sales_direction', label: 'Dirección de ventas' },
           { value: 'strategy', label: 'Estrategia' },
         ]} />
         <div className="flex items-center gap-2">

@@ -81,7 +81,11 @@ export type CallOutcome = 'completed' | 'no_show' | 'rescheduled' | 'cancelled'
 
 export type CallSentiment = 'positive' | 'neutral' | 'negative'
 
-export type Responsibility = 'content' | 'setting' | 'closing' | 'strategy'
+// 'sales_direction' separa "quién dirige las ventas de este cliente" de "quién
+// toma las llamadas" (closing). Hace falta porque el permiso vive en
+// users.role —donde Martín y Fabián son ambos 'admin'— y por eso no sirve para
+// decidir a quién se le asigna una tarea. Ver supabase/039.
+export type Responsibility = 'content' | 'setting' | 'closing' | 'strategy' | 'sales_direction'
 
 export type CampaignStatus = 'draft' | 'active' | 'completed'
 
