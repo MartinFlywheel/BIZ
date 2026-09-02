@@ -2,9 +2,14 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'BIZ — Setter App',
-    short_name: 'BIZ Setter',
-    description: 'Gestioná y avanzá tus leads desde el celular',
+    // El manifiesto define qué abre el ícono instalado, así que no puede estar
+    // atado a un rol: la app móvil la usan los setters y también la dirección
+    // (Fabián en ventas, Martín en marketing), y las tres pantallas ya se
+    // adaptan a quién entra. Con el nombre anterior, instalarla desde la
+    // cuenta de dirección dejaba un ícono que decía "Setter".
+    name: 'BIZ CRM',
+    short_name: 'BIZ',
+    description: 'Leads, agendas y progreso del equipo desde el celular',
     start_url: '/setter-app',
     scope: '/',
     display: 'standalone',

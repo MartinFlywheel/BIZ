@@ -1,7 +1,7 @@
 import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { getClient, getClients } from '@/lib/actions/clients'
+import { getClient, getClientOptions } from '@/lib/actions/clients'
 import { getContentPiecesCount } from '@/lib/actions/content'
 import { getLeadsCount } from '@/lib/actions/leads'
 import { getCallsCount } from '@/lib/actions/calls'
@@ -44,7 +44,7 @@ export default async function ClientDetailPage({
     // and Producto (ProductTab) were already self-fetching.
     const [client, allClients, contentPiecesCount, leadsCount, callsCount, competitorsCount] = await Promise.all([
       getClient(id),
-      getClients(),
+      getClientOptions(),
       getContentPiecesCount(id),
       getLeadsCount(id),
       getCallsCount(id),

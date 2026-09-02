@@ -22,7 +22,9 @@ import type { Client } from '@/lib/types'
 
 interface Props {
   client: Client
-  allClients?: Client[]
+  // Solo id y nombre: es lo único que consume EquipoTab, y traer el registro
+  // completo de cada cliente en cada carga era puro peso muerto.
+  allClients?: { id: string; name: string }[]
   contentPiecesCount: number
   leadsCount: number
   callsCount: number

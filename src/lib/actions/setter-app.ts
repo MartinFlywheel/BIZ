@@ -164,15 +164,33 @@ export interface SetterAgendaRow {
 export async function getMyAgendas(
   clientId: string,
   setterId: string | null,
-  setterFullName: string | null
+  setterFullName: string | null,
+  period?: { year: number; month: number }
 ): Promise<SetterAgendaRow[]> {
   const supabase = await createClient()
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('agenda_records')
     .select('id, lead_id, nombre_lead, avatar, fecha_agenda, estado, de_donde_vino, setter, leads(assigned_to)')
     .eq('client_id', clientId)
     .order('fecha_agenda', { ascending: true })
+
+  // Sin `period` esto traía TODAS las agendas históricas del cliente en cada
+  // carga de la pestaña, y encima con el join a leads — el motivo de que en el
+  // celular tardara tanto. Acotar al mes deja la consulta en decenas de filas.
+  //
+  // Las filas sin fecha_agenda quedan fuera al filtrar, igual que en la
+  // planilla de escritorio (getAgendaRecords): una agenda sin fecha no
+  // pertenece a ningún mes.
+  if (period) {
+    const lastDay = new Date(period.year, period.month, 0).getDate()
+    const mm = String(period.month).padStart(2, '0')
+    query = query
+      .gte('fecha_agenda', `${period.year}-${mm}-01`)
+      .lte('fecha_agenda', `${period.year}-${mm}-${String(lastDay).padStart(2, '0')}`)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
 

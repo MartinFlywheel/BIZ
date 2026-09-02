@@ -16,6 +16,27 @@ export async function getClients() {
   return data
 }
 
+/**
+ * Solo id y nombre, para poblar selectores de cliente.
+ *
+ * La página de detalle llamaba a getClients() —un `select('*')` sobre TODOS
+ * los clientes— nada más que para el desplegable de la pestaña Equipo, que
+ * usa exactamente estos dos campos. Eso arrastraba en cada carga los tokens de
+ * Meta y Calendly, la config de Notion y varios JSONB (pipeline_stages,
+ * custom_avatars, notion_tasks_map) de cada cliente, y se notaba sobre todo en
+ * el celular.
+ */
+export async function getClientOptions(): Promise<{ id: string; name: string }[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name')
+    .order('name', { ascending: true })
+
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getClient(id: string) {
   const supabase = await createClient()
   const { data, error } = await supabase

@@ -8,7 +8,7 @@ import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import { SeguimientosTab } from './seguimientos-tab'
-import type { Lead, ContentPiece, Interaction, Client, PipelineStageConfig } from '@/lib/types'
+import type { Lead, ContentPiece, Interaction, PipelineStageConfig } from '@/lib/types'
 import {
   updateLeadStageAction,
   updateLeadFieldsAction,
@@ -35,7 +35,9 @@ export interface AgencyUser { id: string; full_name: string; email: string; role
 interface Props {
   leads: Lead[]
   agencyUsers: AgencyUser[]
-  allClients?: Client[]
+  // Solo id y nombre: es lo único que consume EquipoTab, y traer el registro
+  // completo de cada cliente en cada carga era puro peso muerto.
+  allClients?: { id: string; name: string }[]
   contentPieces: ContentPiece[]
   interactions?: Interaction[]
   clientId: string
