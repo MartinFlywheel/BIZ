@@ -134,7 +134,7 @@ export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }:
                         placeholder="https://... o pegar link de imagen"
                     />
                     <p className="text-[11px] text-zinc-600 leading-snug">
-                        Tip: abrí el Reel en el navegador, click derecho en la imagen → &quot;Copiar dirección de imagen&quot;
+                        Tip: abre el Reel en el navegador, click derecho en la imagen → &quot;Copiar dirección de imagen&quot;
                     </p>
                 </div>
 

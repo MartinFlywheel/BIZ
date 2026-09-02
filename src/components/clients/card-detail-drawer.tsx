@@ -520,7 +520,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
         .from('pipeline-audio')
         .upload(path, blob, { contentType: 'audio/webm', upsert: true })
       if (error) {
-        alert(`Error al guardar el audio: ${error.message}\n\nAsegurate de crear el bucket "pipeline-audio" en Supabase → Storage.`)
+        alert(`Error al guardar el audio: ${error.message}\n\nAsegúrate de crear el bucket "pipeline-audio" en Supabase → Storage.`)
         return
       }
       const { data: { publicUrl } } = supabase.storage.from('pipeline-audio').getPublicUrl(path)
@@ -540,7 +540,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
       .from('pipeline-images')
       .upload(path, file, { contentType: file.type || 'image/png', upsert: false })
     if (error) {
-      alert(`Error al subir la imagen: ${error.message}\n\nAsegurate de crear el bucket "pipeline-images" (público) en Supabase → Storage.`)
+      alert(`Error al subir la imagen: ${error.message}\n\nAsegúrate de crear el bucket "pipeline-images" (público) en Supabase → Storage.`)
       return null
     }
     const { data: { publicUrl } } = supabase.storage.from('pipeline-images').getPublicUrl(path)
@@ -568,7 +568,7 @@ export function CardDetailDrawer({ item, onClose, onUpdated }: Props) {
       setRecSeconds(0)
       recTimerRef.current = setInterval(() => setRecSeconds((s) => s + 1), 1000)
     } catch {
-      alert('No se pudo acceder al micrófono. Verificá los permisos del navegador.')
+      alert('No se pudo acceder al micrófono. Verifica los permisos del navegador.')
     }
   }
 

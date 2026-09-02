@@ -255,7 +255,7 @@ export async function deleteAgencyUserAction(userId: string): Promise<{ success:
   }
 
   if (userId === currentUser.id) {
-    return { success: false, error: 'No podés eliminar tu propia cuenta' }
+    return { success: false, error: 'No puedes eliminar tu propia cuenta' }
   }
 
   const admin = createAdminClient()

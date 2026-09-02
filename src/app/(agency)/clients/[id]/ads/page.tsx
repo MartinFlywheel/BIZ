@@ -107,7 +107,7 @@ export default async function ClientAdsPage({
           <Megaphone className="mx-auto mb-3 h-8 w-8 text-zinc-700" />
           <p className="text-sm font-medium text-zinc-300">Este cliente todavía no tiene una cuenta publicitaria conectada</p>
           <p className="mx-auto mt-1.5 max-w-sm text-xs leading-relaxed text-zinc-600">
-            Cargá el Meta Ad Account ID desde Editar cliente para ver acá el gasto, campañas y rendimiento.
+            Carga el Meta Ad Account ID desde Editar cliente para ver aquí el gasto, campañas y rendimiento.
           </p>
         </div>
       )}

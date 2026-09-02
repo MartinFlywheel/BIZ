@@ -268,6 +268,17 @@ function BlockView({
   }
 }
 
+/**
+ * Qué opción de Notion corresponde a la prioridad guardada. El espejo guarda
+ * alta/media/baja, pero en Notion la opción puede llamarse "P1" o "Urgente":
+ * se reconoce igual que al leerla (readPriority en services/notion.ts).
+ */
+function optionForPriority(options: string[], priority: TeamTaskPriority | null): string {
+  if (!priority) return ''
+  const re = priority === 'alta' ? /alta|high|urgen|p1/i : priority === 'baja' ? /baja|low|p3/i : /media|medium|normal|p2/i
+  return options.find((o) => re.test(o)) ?? ''
+}
+
 /** Campo del panel: se ve como texto y se edita en el lugar si eres admin. */
 function MetaField({
   icon: Icon,
@@ -471,7 +482,7 @@ export function TaskDetailDrawer({
               editable={edit.canEdit && edit.options.priority.length > 0}
             >
               <select
-                value={edit.options.priority.find((o) => o.toLowerCase().includes(task.priority ?? ' ')) ?? ''}
+                value={optionForPriority(edit.options.priority, task.priority)}
                 onChange={(e) => saveFields({ priority: e.target.value || null }, {})}
                 className={selectCls}
               >

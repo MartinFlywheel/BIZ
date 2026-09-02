@@ -632,7 +632,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
                 </td></tr>
               ) : records.length === 0 ? (
                 <tr><td colSpan={HEADERS.length} className="py-12 text-center text-zinc-600 text-xs">
-                  Sin registros — agregá el primer lead agendado
+                  Sin registros — agrega el primer lead agendado
                 </td></tr>
               ) : (
                 Array.from(weeks.entries()).sort(([a], [b]) => a - b).flatMap(([week, recs]) => {

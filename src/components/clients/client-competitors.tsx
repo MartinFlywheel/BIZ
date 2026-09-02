@@ -592,7 +592,7 @@ export function ClientCompetitors({ competitors, competitorReels, clientId, relo
                     <Users className="h-8 w-8 text-zinc-700 mx-auto mb-3" />
                     <p className="text-sm text-zinc-500">Sin competidores registrados</p>
                     <p className="text-xs text-zinc-600 mt-1">
-                        Agregá competidores para trackear su contenido y estrategia
+                        Agrega competidores para trackear su contenido y estrategia
                     </p>
                     <Button size="sm" className="mt-4" onClick={() => setShowForm(true)}>
                         <Plus className="h-3.5 w-3.5" />

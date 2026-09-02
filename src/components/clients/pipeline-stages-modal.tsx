@@ -93,7 +93,7 @@ export function PipelineStagesModal({ clientId, initialStages, leadCountByStage,
 
   async function handleSave() {
     if (stages.length === 0) {
-      setError('Necesitás al menos una etapa')
+      setError('Necesitas al menos una etapa')
       return
     }
     setLoading(true)

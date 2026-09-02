@@ -124,7 +124,7 @@ export function LeadChatView({ leadId, clientId, fullName, igUsername }: Props) 
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSend() }}
-          placeholder="Escribí un mensaje..."
+          placeholder="Escribe un mensaje..."
           disabled={sending}
           className="flex-1 rounded-full border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-50"
         />

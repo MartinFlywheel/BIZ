@@ -344,7 +344,7 @@ export function ClientCallsList({ clientId, calls, callFolders, agendaLeadOption
             {callsHere.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                     <Mic className="h-8 w-8 text-zinc-700 mb-3" />
-                    <p className="text-sm text-zinc-500">Sin llamadas acá</p>
+                    <p className="text-sm text-zinc-500">Sin llamadas aquí</p>
                     <p className="text-xs text-zinc-600 mt-1">Registrá una llamada o entrá a una subcarpeta</p>
                 </div>
             ) : (

@@ -405,7 +405,7 @@ export async function setTaskStatusAction(
 
   // Cada uno cierra lo suyo; el admin puede cerrar cualquiera.
   if (!viewer.canEdit && task.assigned_to !== viewer.id) {
-    return { success: false, error: 'Esta tarea no está asignada a vos' }
+    return { success: false, error: 'Esta tarea no está asignada a ti' }
   }
 
   const { map } = await loadConfig(clientId)
@@ -615,7 +615,7 @@ async function requireTaskAccess(clientId: string, taskId: string): Promise<{ pa
     .single()
 
   if (!task) return { error: 'La tarea ya no existe' }
-  if (!viewer.canEdit && task.assigned_to !== viewer.id) return { error: 'Esta tarea no está asignada a vos' }
+  if (!viewer.canEdit && task.assigned_to !== viewer.id) return { error: 'Esta tarea no está asignada a ti' }
   return { pageId: task.notion_page_id }
 }
 

@@ -104,13 +104,13 @@ function WebhookBanner() {
 
                     <WebhookUrlRow
                         label="2. Chat abierto (nodo nuevo, junto al disparador/CTA)"
-                        hint="Agregá este nodo apenas entra al flujo — cada llamado cuenta como un chat abierto."
+                        hint="Agrega este nodo apenas entra al flujo — cada llamado cuenta como un chat abierto."
                         url={chatAbiertoUrl}
                     />
 
                     <WebhookUrlRow
                         label="3. Lead calificado (nodo nuevo, en el momento en que califica)"
-                        hint="Agregá este nodo donde el flujo marca al prospecto como calificado — promueve la interacción existente en vez de duplicarla."
+                        hint="Agrega este nodo donde el flujo marca al prospecto como calificado — promueve la interacción existente en vez de duplicarla."
                         url={leadCalificadoUrl}
                     />
 

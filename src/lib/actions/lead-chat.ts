@@ -28,7 +28,7 @@ async function assertCanViewLead(leadId: string) {
   if (isSetter) {
     const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
     const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser.id
-    if (isQualifiedForSomeoneElse) throw new Error('No tenés acceso a este lead')
+    if (isQualifiedForSomeoneElse) throw new Error('No tienes acceso a este lead')
   }
 
   return { supabase, lead, currentUserId: authUser.id }

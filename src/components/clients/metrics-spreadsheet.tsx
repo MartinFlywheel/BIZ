@@ -48,7 +48,7 @@ function OverrideCell({ value, isOverride, onChange, currency = false, editable 
         type="number"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        title={isOverride ? 'Corregido a mano — borrá el valor para volver al cálculo automático' : 'Calculado automáticamente'}
+        title={isOverride ? 'Corregido a mano — borra el valor para volver al cálculo automático' : 'Calculado automáticamente'}
         className={`w-full rounded-md px-2 py-1 text-right text-xs font-mono outline-none transition-colors
           hover:bg-white/[0.04] focus:bg-white/[0.06] focus:ring-1
           ${isOverride

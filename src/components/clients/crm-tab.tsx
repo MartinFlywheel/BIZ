@@ -1438,8 +1438,8 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
       <Dialog
         open={pendingSelfRole !== null}
         onClose={() => setPendingSelfRole(null)}
-        title="Confirmá el cambio de tu rol"
-        description="Estás por cambiar tu propio rol — escribí la contraseña de confirmación para continuar."
+        title="Confirma el cambio de tu rol"
+        description="Estás por cambiar tu propio rol — escribe la contraseña de confirmación para continuar."
       >
         <div className="space-y-4">
           <Input

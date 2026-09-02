@@ -99,8 +99,8 @@ export async function POST(request: Request) {
       const skoolUrl = process.env.PRODUCT_SKOOL_URL
       const welcomeText = [
         `¡Hola${buyer.name ? ` ${buyer.name}` : ''}! Bienvenida al programa 🌿`,
-        formUrl ? `Completá tu formulario de bienvenida acá: ${formUrl}` : null,
-        skoolUrl ? `Y sumate a la comunidad acá: ${skoolUrl}` : null,
+        formUrl ? `Completa tu formulario de bienvenida aquí: ${formUrl}` : null,
+        skoolUrl ? `Y súmate a la comunidad aquí: ${skoolUrl}` : null,
       ].filter(Boolean).join('\n')
 
       try {

@@ -52,7 +52,7 @@ export function NewTaskModal({
   return (
     <Modal onClose={onClose} size="md">
       <h3 className="text-base font-semibold text-zinc-100">Nueva tarea</h3>
-      <p className="mt-1 text-xs text-zinc-500">Se crea en Notion y aparece acá al instante.</p>
+      <p className="mt-1 text-xs text-zinc-500">Se crea en Notion y aparece aquí al instante.</p>
 
       <div className="mt-5 space-y-3">
         <input
@@ -115,7 +115,7 @@ export function NewTaskModal({
 
         {!edit.assigneeEditable && (
           <p className="text-xs text-zinc-600">
-            El responsable de esta base usa la propiedad Persona de Notion, que no se puede asignar por nombre desde acá — se asigna en Notion.
+            El responsable de esta base usa la propiedad Persona de Notion, que no se puede asignar por nombre desde aquí — se asigna en Notion.
           </p>
         )}
 

@@ -154,7 +154,7 @@ function RetentionComparison({ contentPiece, siblingPieces }: { contentPiece: Co
         return (
             <div className="space-y-2">
                 <p className="font-mono text-2xl font-bold text-zinc-100">{seconds}s</p>
-                <p className="text-[11px] text-zinc-600">Necesitás más piezas con retención sincronizada para comparar</p>
+                <p className="text-[11px] text-zinc-600">Necesitas más piezas con retención sincronizada para comparar</p>
             </div>
         )
     }
