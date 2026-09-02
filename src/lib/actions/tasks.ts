@@ -305,18 +305,17 @@ export async function syncNotionTasksAction(
     ])
 
     const candidates = (users ?? []).filter((u) => u.role === 'admin' || u.client_id === clientId)
-    const byEmail = new Map(candidates.map((u) => [u.email?.toLowerCase(), u.id]))
-    const byName = new Map(candidates.map((u) => [normalizeName(u.full_name ?? ''), u.id]))
 
     const existing = new Map((existingRows ?? []).map((r) => [r.notion_page_id, r]))
     const now = new Date().toISOString()
 
     const rows = notionTasks.map((t) => {
       const prev = existing.get(t.notion_page_id)
-      const assignedTo =
-        (t.assignee_email ? byEmail.get(t.assignee_email.toLowerCase()) : undefined) ??
-        (t.assignee_name ? byName.get(normalizeName(t.assignee_name)) : undefined) ??
-        null
+      // "Equipo" y "Fabi - Martin" tocan a varias personas: assignees las
+      // guarda a todas y assigned_to se queda con la primera, que es lo que
+      // siguen leyendo el índice de pendientes y la notificación de asignación.
+      const assignees = resolverResponsables(t.assignee_name, t.assignee_email, candidates)
+      const assignedTo = assignees[0] ?? null
 
       return {
         client_id: clientId,
@@ -331,6 +330,7 @@ export async function syncNotionTasksAction(
         is_stage: t.is_stage,
         assignee_name: t.assignee_name,
         assigned_to: assignedTo,
+        assignees,
         group_name: t.group_name,
         // No se pisa la fecha de completado que ya tenía: sólo se estampa la
         // primera vez que aparece como hecha.
@@ -473,6 +473,69 @@ export async function getTaskContentAction(
 // llamada a Notion falla, no queda una tarea fantasma que sólo existe en el CRM.
 
 /** Traduce el nombre del responsable al usuario del CRM que le corresponde. */
+// ── Responsables ──────────────────────────────────────────────────────────────
+
+/** Un valor que significa "todo el equipo" en vez de una persona concreta. */
+const TODO_EL_EQUIPO_RE = /^(equipo|todos|team|all|todo el equipo)$/i
+
+/** Separadores con que se escriben varios nombres en una sola opción de Notion. */
+const SEPARADORES = /\s*(?:[-\/+&,]|\by\b|\band\b)\s*/i
+
+interface Candidato {
+  id: string
+  full_name: string | null
+  email: string | null
+}
+
+/**
+ * Traduce el "Responsable" de Notion a los usuarios del CRM que toca.
+ *
+ * La propiedad es un select y sus opciones ya no son una persona cada una:
+ * "Equipo" son todos, "Fabi - Martin" son dos. Antes se buscaba el nombre
+ * completo y punto, así que esas dos opciones no resolvían a nadie y la tarea
+ * terminaba sin dueño para todo el mundo.
+ *
+ * El orden importa: primero el correo, después el nombre completo exacto, y
+ * sólo si nada de eso funcionó se intenta partir por separadores. Así
+ * "Carol Soto" nunca se parte en pedazos por tener un espacio.
+ */
+function resolverResponsables(
+  nombre: string | null | undefined,
+  email: string | null | undefined,
+  candidatos: Candidato[]
+): string[] {
+  if (email) {
+    const porCorreo = candidatos.find((u) => u.email?.toLowerCase() === email.toLowerCase())
+    if (porCorreo) return [porCorreo.id]
+  }
+  if (!nombre) return []
+
+  const limpio = nombre.trim()
+  if (TODO_EL_EQUIPO_RE.test(limpio)) return candidatos.map((u) => u.id)
+
+  const exacto = candidatos.find((u) => normalizeName(u.full_name ?? '') === normalizeName(limpio))
+  if (exacto) return [exacto.id]
+
+  // "Fabi - Martin": cada parte se compara contra el nombre completo y contra
+  // el nombre de pila, porque en Notion se escriben apodos ("Fabi" por
+  // "Fabian Juarez"). Se exige 3 letras para no aparear por una inicial.
+  const partes = limpio.split(SEPARADORES).map((p) => normalizeName(p)).filter((p) => p.length >= 3)
+  if (partes.length < 2) return []
+
+  const ids = new Set<string>()
+  for (const parte of partes) {
+    const u = candidatos.find((c) => {
+      const completo = normalizeName(c.full_name ?? '')
+      if (!completo) return false
+      if (completo === parte) return true
+      const pila = completo.split(' ')[0]
+      return pila.startsWith(parte) || parte.startsWith(pila)
+    })
+    if (u) ids.add(u.id)
+  }
+  return [...ids]
+}
+
 async function resolveAssignee(clientId: string, name: string | null | undefined): Promise<string | null> {
   if (!name) return null
   const supabase = await createClient()
@@ -483,11 +546,7 @@ async function resolveAssignee(clientId: string, name: string | null | undefined
     .eq('is_active', true)
 
   const candidates = (users ?? []).filter((u) => u.role === 'admin' || u.client_id === clientId)
-  const target = normalizeName(name)
-  const match =
-    candidates.find((u) => u.email?.toLowerCase() === name.toLowerCase()) ??
-    candidates.find((u) => normalizeName(u.full_name ?? '') === target)
-  return match?.id ?? null
+  return resolverResponsables(name, name.includes('@') ? name : null, candidates)[0] ?? null
 }
 
 export async function createTaskAction(

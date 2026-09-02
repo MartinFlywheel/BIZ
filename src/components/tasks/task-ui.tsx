@@ -125,6 +125,22 @@ export function byUrgency(a: TeamTask, b: TeamTask): number {
   return a.title.localeCompare(b.title, 'es')
 }
 
+/**
+ * Si la tarea le toca a esta persona.
+ *
+ * Mira `assignees` y no `assigned_to`, porque un responsable de Notion puede
+ * ser más de una persona: "Equipo" son todos y "Fabi - Martin" son dos. Con el
+ * campo viejo, esas tareas no le aparecían a nadie como propias.
+ *
+ * Cae a `assigned_to` cuando assignees viene vacío, que es lo que pasa con las
+ * filas que todavía no se resincronizaron desde Notion.
+ */
+export function esMia(task: TeamTask, userId: string | undefined): boolean {
+  if (!userId) return false
+  if (task.assignees?.length) return task.assignees.includes(userId)
+  return task.assigned_to === userId
+}
+
 // ── Etapas ────────────────────────────────────────────────────────────────────
 // Una etapa no se completa: describe el período en el que está el lanzamiento.
 // Las tareas cuya fecha cae dentro de su rango le pertenecen.

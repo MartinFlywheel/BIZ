@@ -631,6 +631,12 @@ export interface TeamTask {
   /** Responsable según Notion, aunque no matchee con ningún usuario del CRM. */
   assignee_name: string | null
   assigned_to: string | null
+  /**
+   * Todos los usuarios que toca el responsable de Notion. Un nombre suelto deja
+   * uno; "Fabi - Martin" deja dos; "Equipo" deja el roster completo del cliente.
+   * assigned_to es el primero de esta lista. Ver supabase/042.
+   */
+  assignees: string[]
   /** Agrupador de Notion: fase del lanzamiento, categoría, semana… */
   group_name: string | null
   completed_at: string | null

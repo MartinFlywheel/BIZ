@@ -22,7 +22,7 @@ import { connectNotionAction, disconnectNotionAction, syncNotionTasksAction, get
 import type { TeamTask, TeamTaskStatus } from '@/lib/types'
 import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, describeWhen, byUrgency, urgenciaDe, soloEtapas, etapaDe, etapaActual, URGENCIA_STRIPE, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, describeWhen, byUrgency, urgenciaDe, soloEtapas, etapaDe, etapaActual, esMia, URGENCIA_STRIPE, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 import { FieldOptionsModal } from './field-options-modal'
 
@@ -109,7 +109,7 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
     return tasks.filter((t) => {
       if (statusFilter === 'abiertas' && t.status === 'hecha') return false
       if (statusFilter !== 'abiertas' && statusFilter !== 'todas' && t.status !== statusFilter) return false
-      if (personFilter === 'mias' && t.assigned_to !== viewerId) return false
+      if (personFilter === 'mias' && !esMia(t, viewerId)) return false
       if (personFilter !== 'todos' && personFilter !== 'mias' && t.assignee_name !== personFilter) return false
       if (q && !t.title.toLowerCase().includes(q) && !(t.group_name ?? '').toLowerCase().includes(q)) return false
       return true
@@ -122,7 +122,9 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
   const etapas = useMemo(() => soloEtapas(tasks), [tasks])
   const visibleTareas = useMemo(() => visible.filter((t) => !t.is_stage), [visible])
 
-  const canCheck = (task: TeamTask) => canEdit || task.assigned_to === viewerId
+  // Cualquiera del grupo puede marcarla: si la tarea es de "Equipo", no tiene
+  // sentido que solo la cierre la primera persona que resolvió el sync.
+  const canCheck = (task: TeamTask) => canEdit || esMia(task, viewerId)
 
   const edit: TaskEditContext = {
     canEdit,
