@@ -1,0 +1,24 @@
+{
+  // Oculta del explorador (y del buscador de archivos) todo lo que es
+  // generado o dependencias. Nada de esto se edita a mano.
+  "files.exclude": {
+    "**/.next": true,
+    "**/node_modules": true,
+    "**/.turbo": true,
+    "**/.vercel": true,
+    "**/tsconfig.tsbuildinfo": true,
+    "**/next-env.d.ts": true,
+    "**/*.tsbuildinfo": true
+  },
+  "search.exclude": {
+    "**/.next": true,
+    "**/node_modules": true,
+    "**/package-lock.json": true
+  },
+  "files.watcherExclude": {
+    "**/.next/**": true,
+    "**/node_modules/**": true
+  },
+  // Las migraciones SQL quedan agrupadas y a la vista dentro de supabase/
+  "explorer.fileNesting.enabled": false
+}
