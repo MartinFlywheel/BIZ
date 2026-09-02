@@ -45,7 +45,7 @@ async function notionFetch<T>(path: string, init?: RequestInit): Promise<T> {
     // con la integración. Vale la pena decirlo en vez de "not found".
     if (res.status === 404) {
       throw new NotionError(
-        'Notion no encuentra esa base de datos. Abrila en Notion → menú ••• → Conexiones → agregá tu integración, y probá de nuevo.',
+        'Notion no encuentra esa base de datos. Ábrela en Notion → menú ••• → Conexiones → agrega tu integración, e inténtalo de nuevo.',
         404
       )
     }
@@ -253,7 +253,7 @@ export async function connectDatabase(urlOrId: string): Promise<{ databaseId: st
   const map = detectTaskMap(db)
   if (!map.status) {
     throw new NotionError(
-      'Esa base no tiene una propiedad de estado. Agregale una propiedad tipo "Estado" (Status) o una casilla "Hecho" y volvé a conectar.'
+      'Esa base no tiene una propiedad de estado. Agrégale una propiedad tipo "Estado" (Status) o una casilla "Hecho" y vuelve a conectar.'
     )
   }
   return { databaseId, map }

@@ -207,8 +207,8 @@ export function FieldOptionsModal({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>
               La API de Notion no deja renombrar una opción directamente, así que {renamed.map((r) => `"${r.originalName}" → "${r.name}"`).join(', ')} se
-              resuelve creando la nueva, moviendo las tareas que la usaban, y borrando la vieja. Si tenés vistas filtradas por esa opción en Notion,
-              revisalas después.
+              resuelve creando la nueva, moviendo las tareas que la usaban, y borrando la vieja. Si tienes vistas filtradas por esa opción en Notion,
+              revísalas después.
             </span>
           </div>
         )}

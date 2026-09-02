@@ -596,7 +596,7 @@ function MigrationNotice() {
     <div className="rounded-xl border border-amber-900/40 bg-amber-950/15 p-5 text-center">
       <p className="text-sm text-amber-300">Falta correr la migración de la base de datos.</p>
       <p className="mt-1 text-xs text-amber-200/70">
-        Ejecutá <code className="rounded bg-amber-950/40 px-1">supabase/036-team-tasks.sql</code> en el editor SQL de Supabase y recargá.
+        Ejecuta <code className="rounded bg-amber-950/40 px-1">supabase/036-team-tasks.sql</code> en el editor SQL de Supabase y recarga la página.
       </p>
     </div>
   )
@@ -634,7 +634,7 @@ function ConnectPanel({ clientId, canEdit, onConnected }: { clientId: string; ca
           <Link2 className="h-4 w-4 text-violet-400" /> Conectar la base de Notion
         </h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Vos planificás en Notion; el equipo ve sus tareas acá adentro y las marca. No necesitan cuenta de Notion.
+          Tú planificas en Notion; el equipo ve sus tareas aquí adentro y las marca. No necesitan cuenta de Notion.
         </p>
       </div>
 
@@ -642,20 +642,20 @@ function ConnectPanel({ clientId, canEdit, onConnected }: { clientId: string; ca
         <li className="flex gap-2">
           <span className="font-mono text-xs text-zinc-600">1.</span>
           <span>
-            Creá una integración interna en{' '}
+            Crea una integración interna en{' '}
             <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer" className="text-blue-400 underline">
               notion.so/my-integrations
             </a>{' '}
-            y copiá el token en la variable <code className="rounded bg-zinc-800 px-1 text-[11px]">NOTION_TOKEN</code>.
+            y copia el token en la variable <code className="rounded bg-zinc-800 px-1 text-[11px]">NOTION_TOKEN</code>.
           </span>
         </li>
         <li className="flex gap-2">
           <span className="font-mono text-xs text-zinc-600">2.</span>
-          <span>Abrí la base de tareas en Notion → menú ••• → Conexiones → agregá esa integración.</span>
+          <span>Abre la base de tareas en Notion → menú ••• → Conexiones → agrega esa integración.</span>
         </li>
         <li className="flex gap-2">
           <span className="font-mono text-xs text-zinc-600">3.</span>
-          <span>Pegá acá el link de esa base.</span>
+          <span>Pega aquí el link de esa base.</span>
         </li>
       </ol>
 

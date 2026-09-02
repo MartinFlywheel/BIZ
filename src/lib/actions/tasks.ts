@@ -644,7 +644,7 @@ export async function appendTaskBlockAction(
 ): Promise<{ success: true; blocks: NotionBlock[] } | { success: false; error: string }> {
   const access = await requireTaskAccess(clientId, taskId)
   if ('error' in access) return { success: false, error: access.error }
-  if (!text.trim()) return { success: false, error: 'Escribí algo primero' }
+  if (!text.trim()) return { success: false, error: 'Escribe algo primero' }
 
   try {
     await appendBlock(access.pageId, text.trim(), kind)
@@ -689,7 +689,7 @@ export async function getFieldOptionsAction(
           propertyName: '',
           editable: false,
           options: [],
-          reason: `Tu base de Notion no tiene una propiedad de ${FIELD_LABEL[field]}. Creala en Notion y sincronizá.`,
+          reason: `Tu base de Notion no tiene una propiedad de ${FIELD_LABEL[field]}. Créala en Notion y sincroniza.`,
         },
       }
     }

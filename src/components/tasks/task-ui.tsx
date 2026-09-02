@@ -268,7 +268,7 @@ function BlockView({
   }
 }
 
-/** Campo del panel: se ve como texto y se edita en el lugar si sos admin. */
+/** Campo del panel: se ve como texto y se edita en el lugar si eres admin. */
 function MetaField({
   icon: Icon,
   label,
@@ -556,7 +556,7 @@ export function TaskDetailDrawer({
               onChange={(e) => setNote(e.target.value)}
               onBlur={() => note !== (task.completion_note ?? '') && saveNote()}
               rows={3}
-              placeholder="¿Qué hiciste? ¿Quedó algo trabado?"
+              placeholder="¿Qué avanzaste? ¿Quedó algo trabado?"
               disabled={!canCheck}
               className="w-full resize-y rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-white/[0.12] focus:outline-none disabled:opacity-50"
             />

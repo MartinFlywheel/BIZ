@@ -97,7 +97,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       <div className="rounded-xl border border-amber-900/40 bg-amber-950/15 py-10 text-center">
         <p className="text-sm text-amber-300">Falta correr la migración de la base de datos.</p>
         <p className="mt-1 text-xs text-amber-200/70">
-          Ejecutá <code className="rounded bg-amber-950/40 px-1">supabase/036-team-tasks.sql</code> en Supabase y recargá.
+          Ejecuta <code className="rounded bg-amber-950/40 px-1">supabase/036-team-tasks.sql</code> en Supabase y recarga la página.
         </p>
       </div>
     )
@@ -143,13 +143,13 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
         {mine.length === 0 ? (
           <>
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
-            <p className="text-sm text-emerald-300">No tenés tareas pendientes.</p>
+            <p className="text-sm text-emerald-300">No tienes tareas pendientes.</p>
           </>
         ) : (
           <>
             <Bell className={cn('h-4 w-4 shrink-0', overdueCount > 0 ? 'text-red-400' : 'text-amber-400')} />
             <p className={cn('text-sm', overdueCount > 0 ? 'text-red-300' : 'text-amber-300')}>
-              Tenés <span className="font-semibold">{mine.length}</span> {mine.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}
+              Tienes <span className="font-semibold">{mine.length}</span> {mine.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}
               {overdueCount > 0 && <> · {overdueCount} vencida{overdueCount > 1 ? 's' : ''}</>}
             </p>
           </>
