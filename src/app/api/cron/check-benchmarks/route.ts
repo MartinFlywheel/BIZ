@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 import { fetchAllRows } from '@/lib/supabase/paginate'
 
 // Cron endpoint — must run at request time, never cached.
@@ -19,6 +20,7 @@ export async function GET(request: Request) {
     .eq('status', 'active')
 
   if (!clients || clients.length === 0) {
+    await logCronRun('check-benchmarks', { clientes: 0, motivo: 'sin clientes activos' })
     return NextResponse.json({ status: 'no_active_clients' })
   }
 
@@ -96,6 +98,11 @@ export async function GET(request: Request) {
   if (notifications.length > 0) {
     await supabaseAdmin.from('notifications').insert(notifications)
   }
+
+  await logCronRun('check-benchmarks', {
+    clientes: clients.length,
+    notificaciones: notifications.length,
+  })
 
   return NextResponse.json({
     status: 'completed',

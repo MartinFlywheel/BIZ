@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 import { generateFollowUpMessage } from '@/lib/services/openai'
 import { generateVoiceNote } from '@/lib/services/elevenlabs'
 
@@ -66,10 +67,19 @@ export async function GET(req: Request) {
       }
     }
 
+    await logCronRun('daily-followup', {
+      encolados: queued,
+      omitidos: skipped,
+      total: students?.length || 0,
+    })
+
     return NextResponse.json({ success: true, queued, skipped, total: students?.length || 0 })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     console.error('[DailyFollowUp] Fatal error:', msg)
+    // Registrar también el fallo: un cron que revienta y no deja rastro es
+    // indistinguible de uno que nunca se disparó.
+    await logCronRun('daily-followup', { fallo: 'error fatal', error: msg })
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

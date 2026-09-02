@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -96,6 +97,9 @@ export async function GET(request: Request) {
     .not('ig_account_id', 'is', null)
 
   if (!clients || clients.length === 0) {
+    // Una corrida que no encontró nada igual es una corrida: sin esta fila no
+    // hay forma de distinguir "no había clientes" de "el cron no se disparó".
+    await logCronRun('sync-instagram', { clientes: 0, motivo: 'sin clientes activos con Instagram conectado' })
     return NextResponse.json({ status: 'no_clients_with_ig' })
   }
 
@@ -267,6 +271,15 @@ export async function GET(request: Request) {
       results.push({ client: client.ig_handle, status: 'error', error: msg })
     }
   }
+
+  const fallidos = results.filter((r) => r.status === 'error')
+  await logCronRun('sync-instagram', {
+    clientes: results.length,
+    ok: results.length - fallidos.length,
+    fallidos: fallidos.length,
+    publicaciones: results.reduce((n, r) => n + (r.processed ?? 0), 0),
+    errores: fallidos.map((r) => ({ cliente: r.client, error: r.error })),
+  })
 
   return NextResponse.json({ results })
 }

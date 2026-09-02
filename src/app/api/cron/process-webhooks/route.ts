@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,10 +22,12 @@ export async function GET(request: Request) {
     .limit(50)
 
   if (fetchError) {
+    await logCronRun('process-webhooks', { fallo: 'no se pudo leer webhook_logs', error: fetchError.message })
     return NextResponse.json({ error: fetchError.message }, { status: 500 })
   }
 
   if (!unprocessed || unprocessed.length === 0) {
+    await logCronRun('process-webhooks', { total: 0, motivo: 'cola vacía' })
     return NextResponse.json({ status: 'nothing_to_process' })
   }
 
@@ -117,6 +120,8 @@ export async function GET(request: Request) {
       errors++
     }
   }
+
+  await logCronRun('process-webhooks', { procesados: processed, errores: errors, total: unprocessed.length })
 
   return NextResponse.json({ processed, errors, total: unprocessed.length })
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
 
   const { data: clients } = await supabase.from('clients').select('id')
   if (!clients || clients.length === 0) {
+    await logCronRun('prune-stale-leads', { borrados: 0, clientesRevisados: 0, motivo: 'sin clientes' })
     return NextResponse.json({ status: 'no_clients', deleted: 0 })
   }
 
@@ -89,13 +91,14 @@ export async function GET(request: Request) {
     perClient[client.id] = staleIds.length
   }
 
-  // Vercel's runtime logs on this project only retain a few hours, and the
-  // route's own response is otherwise unrecoverable once that window
-  // passes — persist a summary so "did it delete anything?" is answerable
-  // anytime, not just right after a run.
-  await supabase.from('cron_runs').insert({
-    job_name: 'prune-stale-leads',
-    summary: { deleted: totalDeleted, clientsScanned: clients.length, perClient },
+  // Pasa por el helper compartido (src/lib/cron-log.ts) igual que el resto de
+  // los crons: el insert directo que había acá descartaba el error de Supabase
+  // sin mirarlo, así que si la tabla no existía el registro se perdía en
+  // silencio — que fue exactamente lo que pasó hasta que se corrió 032.
+  await logCronRun('prune-stale-leads', {
+    borrados: totalDeleted,
+    clientesRevisados: clients.length,
+    porCliente: perClient,
   })
 
   return NextResponse.json({ status: 'completed', deleted: totalDeleted, perClient })

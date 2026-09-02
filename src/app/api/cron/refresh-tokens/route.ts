@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logCronRun } from '@/lib/cron-log'
 
 // Cron endpoint — must run at request time, never cached.
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
     .lte('token_expires_at', sevenDaysFromNow.toISOString())
 
   if (!expiring || expiring.length === 0) {
+    await logCronRun('refresh-tokens', { tokens: 0, motivo: 'ninguno vence dentro de 7 días' })
     return NextResponse.json({ status: 'no_expiring_tokens' })
   }
 
@@ -95,6 +97,14 @@ export async function GET(request: Request) {
       }
     }
   }
+
+  const fallidos = results.filter((r) => r.status === 'error')
+  await logCronRun('refresh-tokens', {
+    tokens: results.length,
+    renovados: results.length - fallidos.length,
+    fallidos: fallidos.length,
+    errores: fallidos.map((r) => ({ plataforma: r.platform, error: r.error })),
+  })
 
   return NextResponse.json({ results })
 }
