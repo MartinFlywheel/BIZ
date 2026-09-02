@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2 } from 'lucide-react'
 import {
-  getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord,
+  getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord, getAgendaPeople,
   type AgendaRecord, type AgendaRecordFields,
 } from '@/lib/actions/agenda-records'
 import { LEAD_AVATARS } from '@/lib/types'
@@ -61,6 +61,48 @@ function diasAnticipacion(fechaAgendado: string | null, fechaAgenda: string | nu
 function fmtDate(d: string | null): string {
   if (!d) return '—'
   return new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+}
+
+// ── Nombres de setter/closer ──────────────────────────────────────────────────
+
+/** Sin tildes, en minúscula y con espacios colapsados — solo para comparar. */
+function normalizeName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Junta varias listas de nombres en una sola sin repetidos, comparando sin
+ * tildes ni mayúsculas. Gana la grafía del primer grupo, así que pasar primero
+ * a los usuarios de la agencia deja su nombre como el canónico.
+ */
+function mergeNames(...groups: string[][]): string[] {
+  const seen = new Map<string, string>()
+  for (const group of groups) {
+    for (const raw of group) {
+      const name = raw?.trim().replace(/\s+/g, ' ')
+      if (!name) continue
+      const key = normalizeName(name)
+      if (!seen.has(key)) seen.set(key, name)
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+/**
+ * Si un nombre escrito a mano ya existe con otra grafía ("mane", "MANE",
+ * "Mané "), lo devuelve con la grafía canónica. Las métricas agrupan por el
+ * string exacto, así que dos grafías del mismo nombre son dos personas.
+ */
+function canonicalName(value: string, options: string[]): string | null {
+  const name = value.trim().replace(/\s+/g, ' ')
+  if (!name) return null
+  const key = normalizeName(name)
+  return options.find(o => normalizeName(o) === key) ?? name
 }
 
 // ── Month selector ────────────────────────────────────────────────────────────
@@ -271,18 +313,10 @@ interface TeamMember {
 
 export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }: { clientId: string; customAvatars?: string[]; agencyUsers?: TeamMember[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
-  // Setter/Closer are free-text columns, but day-to-day they should just be
-  // picked from the actual team so payouts aren't at the mercy of typos
-  // (e.g. "Mane" vs "Mnae") — "Otro" still allows a one-off manual name.
-  const setterOptions = Array.from(new Set(
-    agencyUsers.filter(u => u.role === 'setter' || u.role === 'admin').map(u => u.full_name)
-  ))
-  const closerOptions = Array.from(new Set(
-    agencyUsers.filter(u => u.role === 'closer' || u.role === 'sales_director' || u.role === 'admin').map(u => u.full_name)
-  ))
   const now = new Date()
   const [year, setYear]     = useState(now.getFullYear())
   const [month, setMonth]   = useState(now.getMonth() + 1)
+  const [people, setPeople] = useState<{ setters: string[]; closers: string[] }>({ setters: [], closers: [] })
   const [records, setRecords] = useState<AgendaRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -297,6 +331,33 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   }
 
   useEffect(() => { load() }, [clientId, year, month])
+
+  // Los nombres ya usados en la agenda se cargan una vez por cliente, no por
+  // mes: si Torcuato solo aparece en marzo, tiene que seguir estando en el
+  // desplegable en septiembre. Si falla, los desplegables se quedan con los
+  // usuarios de la agencia y "Otro" sigue disponible — nada se bloquea.
+  useEffect(() => {
+    let cancelled = false
+    getAgendaPeople(clientId)
+      .then(p => { if (!cancelled) setPeople(p) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [clientId])
+
+  // Setter/Closer son columnas de texto libre a propósito: muchos setters son
+  // gente del cliente y no tienen cuenta en el CRM. El desplegable junta a los
+  // usuarios de la agencia con los nombres que ya aparecen en la agenda, para
+  // que no haya que escribir a mano a los de siempre — que es exactamente de
+  // donde salían los typos ("Mane" vs "Mnae") que parten las métricas de
+  // getAgendaTeamStats, que agrupa por el string del nombre.
+  const setterOptions = mergeNames(
+    agencyUsers.filter(u => u.role === 'setter' || u.role === 'admin').map(u => u.full_name),
+    people.setters,
+  )
+  const closerOptions = mergeNames(
+    agencyUsers.filter(u => u.role === 'closer' || u.role === 'sales_director' || u.role === 'admin').map(u => u.full_name),
+    people.closers,
+  )
 
   function sortRecords(recs: AgendaRecord[]) {
     return [...recs].sort((a, b) => (a.fecha_agenda ?? '').localeCompare(b.fecha_agenda ?? ''))
@@ -314,6 +375,23 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
 
   async function commitEdit(id: string, field: string, rawValue: string) {
     setEditingCell(null)
+
+    // Setter y closer pasan por canonicalName: un nombre tipeado a mano que ya
+    // existe con otra grafía se guarda con la canónica, en vez de crear una
+    // persona nueva en las métricas. El nombre realmente nuevo se agrega al
+    // desplegable en el acto, para no tener que volver a escribirlo.
+    if (field === 'setter' || field === 'closer') {
+      const options = field === 'setter' ? setterOptions : closerOptions
+      const value = canonicalName(rawValue, options)
+      if (value && !options.some(o => normalizeName(o) === normalizeName(value))) {
+        setPeople(prev => field === 'setter'
+          ? { ...prev, setters: [...prev.setters, value] }
+          : { ...prev, closers: [...prev.closers, value] })
+      }
+      await saveCell(id, field, value)
+      return
+    }
+
     const trimmed = rawValue.trim()
     const value = trimmed || null
     await saveCell(id, field, value)

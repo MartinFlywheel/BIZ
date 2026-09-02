@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paginate'
 
 export interface AgendaRecord {
   id: string
@@ -54,6 +55,42 @@ export async function getAgendaRecords(clientId: string, year: number, month: nu
 
   if (error) throw error
   return (data ?? []) as AgendaRecord[]
+}
+
+/**
+ * Nombres que ya se usaron como setter o closer en este cliente.
+ *
+ * Los desplegables de la agenda se armaban solo con usuarios de la agencia,
+ * pero buena parte de los setters son gente del propio cliente y no tiene
+ * cuenta en el CRM (Mane, Torcuato, Magui, Mili...). Al no aparecer en la
+ * lista había que escribirlos a mano cada vez, por "Otro (escribir)", y de ahí
+ * salieron los typos que parten las métricas: getAgendaTeamStats agrupa por el
+ * string del nombre, así que "Mnae" contaba como una persona distinta de
+ * "Mane" y sus agendas no sumaban a nadie.
+ */
+export async function getAgendaPeople(clientId: string): Promise<{ setters: string[]; closers: string[] }> {
+  const supabase = await createClient()
+  const rows = await fetchAllRows<{ setter: string | null; closer: string | null }>((from, to) =>
+    supabase
+      .from('agenda_records')
+      .select('setter, closer')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
+
+  const setters = new Set<string>()
+  const closers = new Set<string>()
+  for (const row of rows) {
+    const setter = row.setter?.trim()
+    const closer = row.closer?.trim()
+    if (setter) setters.add(setter)
+    if (closer) closers.add(closer)
+  }
+
+  return {
+    setters: [...setters].sort((a, b) => a.localeCompare(b, 'es')),
+    closers: [...closers].sort((a, b) => a.localeCompare(b, 'es')),
+  }
 }
 
 export async function createAgendaRecord(clientId: string, fields: AgendaRecordFields = {}): Promise<AgendaRecord> {
