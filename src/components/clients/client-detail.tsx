@@ -55,8 +55,13 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
 
   async function handleDelete() {
     if (!confirm('¿Eliminar este cliente? Se eliminarán todos sus datos.')) return
-    await deleteClientAction(client.id)
+    const result = await deleteClientAction(client.id)
+    if (!result.success) {
+      alert(result.error)
+      return
+    }
     router.push('/clients')
+    router.refresh()
   }
 
   const tabs = isSetter ? [

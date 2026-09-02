@@ -205,13 +205,52 @@ export async function saveAvatarsAction(
   return { success: true }
 }
 
-export async function deleteClientAction(id: string) {
+// Devuelve el error en vez de lanzarlo: cuando el borrado fallaba (FK sin
+// cascada, permisos), la excepción del Server Action no llegaba a la UI y el
+// cliente simplemente seguía en la lista sin explicación.
+export async function deleteClientAction(
+  id: string
+): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createClient()
-  await assertAdmin(supabase)
+
+  try {
+    await assertAdmin(supabase)
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'No autorizado' }
+  }
+
+  // El token de Calendly queda registrado con un webhook apuntando a esta app;
+  // si no se da de baja, Calendly sigue enviando eventos de un cliente que ya
+  // no existe.
+  const { data: existing } = await supabase
+    .from('clients')
+    .select('calendly_token, calendly_webhook_id')
+    .eq('id', id)
+    .single()
+
+  if (existing?.calendly_token && existing?.calendly_webhook_id) {
+    await unregisterCalendlyWebhook(existing.calendly_token, existing.calendly_webhook_id)
+  }
+
   const { error } = await supabase.from('clients').delete().eq('id', id)
 
-  if (error) throw error
+  if (error) {
+    // 23503 = foreign_key_violation. Pasa si la base todavía no tiene la
+    // migración 038 (FKs sin ON DELETE CASCADE).
+    if (error.code === '23503') {
+      return {
+        success: false,
+        error:
+          'No se pudo eliminar: el cliente tiene datos asociados y la base aún no está configurada para borrarlos en cascada. Ejecuta la migración supabase/038-client-delete-cascade.sql.',
+      }
+    }
+    return { success: false, error: error.message }
+  }
+
   revalidatePath('/clients')
+  revalidatePath('/dashboard')
+  revalidatePath('/leads')
+  return { success: true }
 }
 
 // Returns null on success, or a user-facing error message on failure — the
@@ -229,7 +268,7 @@ async function registerCalendlyWebhook(
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!meRes.ok) {
-      return `Calendly rechazó el token (HTTP ${meRes.status}). Verificá que esté copiado completo desde calendly.com/integrations/api_webhooks y no haya expirado.`
+      return `Calendly rechazó el token (HTTP ${meRes.status}). Verifica que esté copiado completo desde calendly.com/integrations/api_webhooks y no haya expirado.`
     }
 
     const meData = await meRes.json()
