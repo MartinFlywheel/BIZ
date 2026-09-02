@@ -19,10 +19,10 @@ import {
   Layers,
 } from 'lucide-react'
 import { connectNotionAction, disconnectNotionAction, syncNotionTasksAction, getTaskBoard, type TaskBoardData } from '@/lib/actions/tasks'
-import type { TeamTask, TeamTaskStatus, TeamTaskPriority } from '@/lib/types'
+import type { TeamTask, TeamTaskStatus } from '@/lib/types'
 import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, describeWhen, byUrgency, urgenciaDe, URGENCIA_STRIPE, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 import { FieldOptionsModal } from './field-options-modal'
 
@@ -358,6 +358,8 @@ function ListView({
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(t)
     }
+    // Dentro de cada fase manda la urgencia: lo vencido y lo de hoy arriba.
+    for (const items of map.values()) items.sort(byUrgency)
     return [...map.entries()].sort(([a], [b]) => (a === 'Sin fase' ? 1 : b === 'Sin fase' ? -1 : a.localeCompare(b)))
   }, [tasks])
 
@@ -382,29 +384,6 @@ function ListView({
 
 // ── Vista tablero ─────────────────────────────────────────────────────────────
 
-// Alta primero: el tablero se abre para decidir qué se toca ahora, y una
-// tarjeta sin prioridad no puede quedar por encima de una marcada como alta.
-const PRIORITY_RANK: Record<TeamTaskPriority, number> = { alta: 0, media: 1, baja: 2 }
-
-const PRIORITY_STRIPE: Record<TeamTaskPriority, string> = {
-  alta: 'bg-red-500',
-  media: 'bg-amber-500',
-  baja: 'bg-zinc-600',
-}
-
-function byPriorityThenDate(a: TeamTask, b: TeamTask): number {
-  const ra = a.priority ? PRIORITY_RANK[a.priority] : 3
-  const rb = b.priority ? PRIORITY_RANK[b.priority] : 3
-  if (ra !== rb) return ra - rb
-  // Dentro de la misma prioridad manda la fecha; las tareas sin fecha al final.
-  if (a.due_date !== b.due_date) {
-    if (!a.due_date) return 1
-    if (!b.due_date) return -1
-    return a.due_date.localeCompare(b.due_date)
-  }
-  return a.title.localeCompare(b.title, 'es')
-}
-
 function BoardView({
   tasks,
   clientId,
@@ -423,8 +402,12 @@ function BoardView({
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       {columns.map((status) => {
-        const items = tasks.filter((t) => t.status === status).sort(byPriorityThenDate)
-        const altas = items.filter((t) => t.priority === 'alta' && status !== 'hecha').length
+        const items = tasks.filter((t) => t.status === status).sort(byUrgency)
+        // Lo que ya pide atencion hoy: vencido o en curso. Es el numero que
+        // importa al abrir el tablero, mas que cuantas altas hay marcadas.
+        const urgentes = status === 'hecha'
+          ? 0
+          : items.filter((t) => ['vencida', 'activa'].includes(urgenciaDe(t))).length
 
         return (
           <div key={status} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-2">
@@ -432,9 +415,9 @@ function BoardView({
               <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">{TASK_STATUS_LABEL[status]}</h3>
               <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">{items.length}</span>
               {/* Cuántas urgencias hay en esta columna, sin tener que contarlas. */}
-              {altas > 0 && (
+              {urgentes > 0 && (
                 <span className="ml-auto rounded-full border border-red-900/40 bg-red-950/40 px-1.5 py-0.5 font-mono text-[10px] text-red-400">
-                  {altas} alta{altas === 1 ? '' : 's'}
+                  {urgentes} urgente{urgentes === 1 ? '' : 's'}
                 </span>
               )}
             </div>
@@ -450,8 +433,8 @@ function BoardView({
                   >
                     {/* Franja de prioridad: se lee de un vistazo al recorrer la
                         columna, sin sumar una insignia más al ruido de la tarjeta. */}
-                    {t.priority && !hecha && (
-                      <span className={cn('absolute inset-y-0 left-0 w-[3px]', PRIORITY_STRIPE[t.priority])} aria-hidden />
+                    {!hecha && (
+                      <span className={cn('absolute inset-y-0 left-0 w-[3px]', URGENCIA_STRIPE[urgenciaDe(t)])} aria-hidden />
                     )}
 
                     <div className="flex items-start gap-2">
@@ -475,8 +458,17 @@ function BoardView({
                         <span className={cn('rounded-md border px-1.5 py-0.5 text-[10px]', personColor(t.assignee_name))}>{t.assignee_name}</span>
                       )}
                       {t.due_date && (
-                        <span className={cn('text-[10px] tabular-nums', isOverdue(t) ? 'text-red-400' : 'text-zinc-500')}>
-                          {formatRange(t)}
+                        <span
+                          className={cn(
+                            'text-[10px] tabular-nums',
+                            isOverdue(t)
+                              ? 'font-medium text-red-400'
+                              : urgenciaDe(t) === 'activa'
+                                ? 'font-medium text-orange-400'
+                                : 'text-zinc-500'
+                          )}
+                        >
+                          {describeWhen(t)}
                         </span>
                       )}
                     </div>

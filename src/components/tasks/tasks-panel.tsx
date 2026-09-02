@@ -6,7 +6,7 @@ import { RefreshCw, ArrowUpRight, Bell, CheckCircle2, ChevronDown, AlertTriangle
 import { getTaskBoard, syncNotionTasksAction, type TaskBoardData } from '@/lib/actions/tasks'
 import type { TeamTask } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, isOverdue, personColor, initials, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, isOverdue, byUrgency, personColor, initials, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 
 const STALE_MS = 3 * 60 * 1000
@@ -78,6 +78,9 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(t)
     }
+    // Cada persona ve primero lo vencido y lo de hoy, no el orden en que
+    // Notion devolvió las páginas.
+    for (const items of map.values()) items.sort(byUrgency)
     return [...map.entries()].sort(([a], [b]) => (a === 'Sin responsable' ? 1 : b === 'Sin responsable' ? -1 : a.localeCompare(b)))
   }, [board])
 

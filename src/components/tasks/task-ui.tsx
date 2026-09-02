@@ -59,6 +59,106 @@ export function isOverdue(task: TeamTask): boolean {
   return !!limite && task.status !== 'hecha' && daysFromToday(limite) < 0
 }
 
+// ── Urgencia ──────────────────────────────────────────────────────────────────
+// La importancia real de una tarea no es solo la prioridad que alguien marcó en
+// Notion: una tarea sube de nivel sola a medida que su fecha se acerca. Como
+// Martín calendariza todo, la fecha es la señal más fresca y la prioridad es
+// una anotación que puede quedar vieja.
+//
+// Esto se calcula al renderizar y NO se escribe nunca de vuelta: `priority`
+// sigue siendo exactamente lo que dice Notion, que es la fuente de verdad.
+
+export type Urgencia = 'vencida' | 'activa' | 'manana' | 'semana' | 'futura' | 'sin_fecha'
+
+/**
+ * "activa" cubre tanto la tarea de hoy como la etapa de varios días que ya
+ * empezó y todavía no termina: en ambos casos es lo que hay que estar
+ * haciendo ahora.
+ */
+export function urgenciaDe(task: TeamTask): Urgencia {
+  if (task.status === 'hecha' || !task.due_date) return 'sin_fecha'
+  const inicio = daysFromToday(task.due_date)
+  const fin = daysFromToday(task.end_date ?? task.due_date)
+  if (fin < 0) return 'vencida'
+  if (inicio <= 0) return 'activa'
+  if (inicio === 1) return 'manana'
+  if (inicio <= 7) return 'semana'
+  return 'futura'
+}
+
+const URGENCIA_BASE: Record<Urgencia, number> = {
+  vencida: 0,
+  activa: 100,
+  manana: 200,
+  semana: 300,
+  futura: 500,
+  sin_fecha: 700,
+}
+
+// Una prioridad alta adelanta un tramo entero (120 > 100 de separación), así
+// que "alta para mañana" pasa delante de "baja para hoy". Dos tramos no, a
+// propósito: nada marcado como alta para dentro de un mes debería tapar lo de
+// hoy, que es justo el problema que se quiere evitar.
+const PRIORITY_BOOST: Record<TeamTaskPriority, number> = { alta: 120, media: 40, baja: 0 }
+
+// Sin prioridad se trata como media, no como baja: en Notion la mayoría de las
+// tareas no la tienen puesta, y "sin marcar" no significa "no importa".
+const SIN_PRIORIDAD = 40
+
+export function urgencyScore(task: TeamTask): number {
+  if (task.status === 'hecha') return 9000
+  const boost = task.priority ? PRIORITY_BOOST[task.priority] : SIN_PRIORIDAD
+  return URGENCIA_BASE[urgenciaDe(task)] - boost
+}
+
+/** Orden por urgencia efectiva. Menor score = más arriba. */
+export function byUrgency(a: TeamTask, b: TeamTask): number {
+  const d = urgencyScore(a) - urgencyScore(b)
+  if (d !== 0) return d
+  const fa = a.end_date ?? a.due_date
+  const fb = b.end_date ?? b.due_date
+  if (fa !== fb) {
+    if (!fa) return 1
+    if (!fb) return -1
+    return fa.localeCompare(fb)
+  }
+  return a.title.localeCompare(b.title, 'es')
+}
+
+/** Franja de color del borde: cálida cuando pide atención, neutra cuando no. */
+export const URGENCIA_STRIPE: Record<Urgencia, string> = {
+  vencida: 'bg-red-500',
+  activa: 'bg-orange-500',
+  manana: 'bg-amber-500',
+  semana: 'bg-zinc-500',
+  futura: 'bg-zinc-700',
+  sin_fecha: 'bg-transparent',
+}
+
+/**
+ * Cómo se lee la fecha en una tarjeta. Cuando falta poco gana la palabra
+ * ("Hoy", "En curso", "Venció hace 3 días"); cuando falta mucho gana la fecha,
+ * que es lo que sirve para planificar.
+ */
+export function describeWhen(task: TeamTask): string {
+  if (!task.due_date) return ''
+  const u = urgenciaDe(task)
+  const tieneRango = !!task.end_date && task.end_date > task.due_date
+
+  if (u === 'vencida') {
+    const dias = Math.abs(daysFromToday(task.end_date ?? task.due_date))
+    return dias === 1 ? 'Venció ayer' : `Venció hace ${dias} días`
+  }
+  if (u === 'activa') {
+    if (!tieneRango) return 'Hoy'
+    const hasta = parseDay(task.end_date!).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
+    return `En curso · hasta ${hasta}`
+  }
+  if (u === 'manana' && !tieneRango) return 'Mañana'
+
+  return formatRange(task)
+}
+
 /** Fecha, o "3 – 8 sept" cuando la tarea ocupa un rango. */
 export function formatRange(task: TeamTask): string {
   if (!task.due_date) return ''
@@ -178,7 +278,7 @@ export function TaskRow({
   onOpen: (task: TeamTask) => void
 }) {
   const done = task.status === 'hecha'
-  const overdue = isOverdue(task)
+  const urgencia = urgenciaDe(task)
 
   return (
     <div
@@ -208,10 +308,18 @@ export function TaskRow({
         <span
           className={cn(
             'shrink-0 text-[11px] tabular-nums',
-            done ? 'text-zinc-700' : overdue ? 'font-medium text-red-400' : daysFromToday(task.due_date) <= 1 ? 'text-amber-400' : 'text-zinc-500'
+            done
+              ? 'text-zinc-700'
+              : urgencia === 'vencida'
+                ? 'font-medium text-red-400'
+                : urgencia === 'activa'
+                  ? 'font-medium text-orange-400'
+                  : urgencia === 'manana'
+                    ? 'text-amber-400'
+                    : 'text-zinc-500'
           )}
         >
-          {formatDue(task.due_date)}
+          {describeWhen(task)}
         </span>
       )}
 
