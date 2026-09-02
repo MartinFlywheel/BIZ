@@ -25,8 +25,10 @@ import { Select } from '@/components/ui/select'
 import { Input } from '@/components/ui/input'
 import { saveAvatarsAction } from '@/lib/actions/clients'
 import { PipelineStagesModal } from './pipeline-stages-modal'
+import { TasksPanel } from '@/components/tasks/tasks-panel'
+import { getPendingTaskCount } from '@/lib/actions/tasks'
 
-type SubTab = 'leads' | 'seguimientos' | 'agendas' | 'equipo'
+type SubTab = 'leads' | 'seguimientos' | 'agendas' | 'tareas' | 'equipo'
 
 export interface AgencyUser { id: string; full_name: string; email: string; role: string; client_id?: string | null; lead_weight?: number }
 
@@ -41,6 +43,8 @@ interface Props {
   pipelineStages?: PipelineStageConfig[] | null
   isAdmin?: boolean
   currentUserId?: string
+  /** Pendientes del que mira (todas las del cliente si es admin), para el badge. */
+  pendingTaskCount?: number
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -1641,11 +1645,12 @@ function ConfigurarAvatarsModal({
 // never touch leads at all (Analítica, Contenido, Script...). The setter
 // visibility scoping that used to live in clients/[id]/page.tsx moved into
 // getLeadsForViewer itself, so it still applies here unchanged.
-export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agencyUsers' | 'contentPieces'>) {
+export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agencyUsers' | 'contentPieces' | 'pendingTaskCount'>) {
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [interactions, setInteractions] = useState<Interaction[]>([])
   const [agencyUsers, setAgencyUsers] = useState<AgencyUser[]>([])
   const [contentPieces, setContentPieces] = useState<ContentPiece[]>([])
+  const [pendingTasks, setPendingTasks] = useState<number | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
 
@@ -1657,8 +1662,12 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
       getInteractions(props.clientId),
       getAgencyUsers(props.clientId),
       getContentPieces(props.clientId),
-    ]).then(([leadsData, interactionsData, agencyUsersData, contentPiecesData]) => {
+      // Un count(head) contra team_tasks: barato, y evita que la pestaña
+      // Tareas sea la única sin badge hasta que alguien la abre.
+      getPendingTaskCount(props.clientId).catch(() => 0),
+    ]).then(([leadsData, interactionsData, agencyUsersData, contentPiecesData, pendingCount]) => {
       if (cancelled) return
+      setPendingTasks(pendingCount)
       setLeads(leadsData as unknown as Lead[])
       setInteractions(interactionsData as unknown as Interaction[])
       setAgencyUsers(agencyUsersData as unknown as AgencyUser[])
@@ -1683,10 +1692,19 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
     return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando leads...</div>
   }
 
-  return <CrmTab {...props} leads={leads} interactions={interactions} agencyUsers={agencyUsers} contentPieces={contentPieces} />
+  return (
+    <CrmTab
+      {...props}
+      leads={leads}
+      interactions={interactions}
+      agencyUsers={agencyUsers}
+      contentPieces={contentPieces}
+      pendingTaskCount={pendingTasks}
+    />
+  )
 }
 
-export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, pipelineStages, isAdmin = false, currentUserId }: Props) {
+export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, interactions, clientId, customAvatars, pipelineStages, isAdmin = false, currentUserId, pendingTaskCount }: Props) {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>('leads')
   const [localAvatars, setLocalAvatars] = useState<string[]>(customAvatars ?? [])
   const [showAvatarConfig, setShowAvatarConfig] = useState(false)
@@ -1707,6 +1725,9 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
     { id: 'leads', label: 'Leads', count: leads.length },
     { id: 'seguimientos', label: 'Seguimientos' },
     { id: 'agendas', label: 'Agendas' },
+    // Visible para todos los roles a propósito: es la pestaña donde cada
+    // miembro ve lo que tiene que hacer (Equipo, en cambio, es sólo de admin).
+    { id: 'tareas', label: 'Tareas', count: pendingTaskCount },
   ]
   if (isAdmin) {
     subTabs.push({ id: 'equipo', label: 'Equipo', count: agencyUsers.length })
@@ -1780,6 +1801,9 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
       )}
       {activeSubTab === 'agendas' && (
         <AgendaSpreadsheet clientId={clientId} customAvatars={localAvatars.length > 0 ? localAvatars : undefined} agencyUsers={agencyUsers} />
+      )}
+      {activeSubTab === 'tareas' && (
+        <TasksPanel clientId={clientId} isAdmin={isAdmin} currentUserId={currentUserId} />
       )}
       {activeSubTab === 'equipo' && (
         <EquipoTab clientId={clientId} agencyUsers={agencyUsers} allClients={allClients} isAdmin={isAdmin} currentUserId={currentUserId} />

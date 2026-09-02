@@ -597,3 +597,46 @@ export interface AiMessageQueue {
   generated_at: string
   reviewed_at: string | null
 }
+
+// ── Tareas del equipo (supabase/036-team-tasks.sql) ───────────────────────────
+// Espejo de una base de datos de Notion. Notion es la fuente de verdad; el
+// CRM sólo refleja y devuelve el estado — ver src/lib/services/notion.ts.
+
+export type TeamTaskStatus = 'pendiente' | 'en_progreso' | 'hecha'
+export type TeamTaskPriority = 'baja' | 'media' | 'alta'
+
+export interface TeamTask {
+  id: string
+  client_id: string
+  notion_page_id: string
+  notion_url: string | null
+  title: string
+  status: TeamTaskStatus
+  /** El estado tal cual figura en Notion ("Listo", "En curso"…). */
+  status_raw: string | null
+  priority: TeamTaskPriority | null
+  due_date: string | null
+  /** Responsable según Notion, aunque no matchee con ningún usuario del CRM. */
+  assignee_name: string | null
+  assigned_to: string | null
+  /** Agrupador de Notion: fase del lanzamiento, categoría, semana… */
+  group_name: string | null
+  completed_at: string | null
+  completion_note: string | null
+  notion_last_edited: string | null
+  synced_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export const TASK_STATUS_LABEL: Record<TeamTaskStatus, string> = {
+  pendiente: 'Pendiente',
+  en_progreso: 'En progreso',
+  hecha: 'Hecha',
+}
+
+export const TASK_PRIORITY_LABEL: Record<TeamTaskPriority, string> = {
+  baja: 'Baja',
+  media: 'Media',
+  alta: 'Alta',
+}
