@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { RefreshCw, ArrowUpRight, Bell, CheckCircle2, ChevronDown, AlertTriangle, Plus } from 'lucide-react'
+import { RefreshCw, ArrowUpRight, Bell, CheckCircle2, ChevronDown, AlertTriangle, Plus, Layers } from 'lucide-react'
 import { getTaskBoard, syncNotionTasksAction, type TaskBoardData } from '@/lib/actions/tasks'
 import type { TeamTask } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, isOverdue, byUrgency, personColor, initials, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, isOverdue, byUrgency, soloEtapas, etapaActual, formatRange, personColor, initials, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 
 const STALE_MS = 3 * 60 * 1000
@@ -64,7 +64,10 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
     setOpenTask((prev) => (prev?.id === updated.id ? updated : prev))
   }
 
-  const mine = useMemo(() => (board?.tasks ?? []).filter((t) => t.assigned_to === currentUserId && t.status !== 'hecha'), [board, currentUserId])
+  const mine = useMemo(() => (board?.tasks ?? []).filter((t) => !t.is_stage && t.assigned_to === currentUserId && t.status !== 'hecha'), [board, currentUserId])
+
+  // La etapa en curso: contexto del lanzamiento, no una tarea de nadie.
+  const etapa = useMemo(() => etapaActual(soloEtapas(board?.tasks ?? [])), [board])
   const overdueCount = mine.filter(isOverdue).length
 
   // Agrupado por responsable para la vista de admin. Las tareas cuyo
@@ -73,7 +76,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
   const byPerson = useMemo(() => {
     const map = new Map<string, TeamTask[]>()
     for (const t of board?.tasks ?? []) {
-      if (t.status === 'hecha') continue
+      if (t.status === 'hecha' || t.is_stage) continue
       const key = t.assignee_name ?? 'Sin responsable'
       if (!map.has(key)) map.set(key, [])
       map.get(key)!.push(t)
@@ -122,7 +125,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
     )
   }
 
-  const others = board.tasks.filter((t) => t.status !== 'hecha' && t.assigned_to !== currentUserId)
+  const others = board.tasks.filter((t) => !t.is_stage && t.status !== 'hecha' && t.assigned_to !== currentUserId)
 
   const edit: TaskEditContext = {
     canEdit: isAdmin,
@@ -132,6 +135,17 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
 
   return (
     <div className="space-y-5">
+      {/* En qué parte del lanzamiento están. Va antes que los pendientes
+          porque enmarca todo lo que viene abajo. */}
+      {etapa && (
+        <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2.5">
+          <Layers className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+          <span className="text-[10px] font-medium uppercase tracking-wider text-violet-400/70">Etapa actual</span>
+          <span className="truncate text-sm font-semibold uppercase tracking-wide text-violet-100">{etapa.title}</span>
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-violet-300/70">{formatRange(etapa)}</span>
+        </div>
+      )}
+
       {/* Aviso de pendientes propios — es lo primero que ve cada miembro */}
       <div
         className={cn(

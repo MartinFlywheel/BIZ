@@ -125,6 +125,30 @@ export function byUrgency(a: TeamTask, b: TeamTask): number {
   return a.title.localeCompare(b.title, 'es')
 }
 
+// ── Etapas ────────────────────────────────────────────────────────────────────
+// Una etapa no se completa: describe el período en el que está el lanzamiento.
+// Las tareas cuya fecha cae dentro de su rango le pertenecen.
+
+/** Las etapas de una lista, ordenadas por cuándo empiezan. */
+export function soloEtapas(tasks: TeamTask[]): TeamTask[] {
+  return tasks
+    .filter((t) => t.is_stage && t.due_date)
+    .sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+}
+
+/** La etapa que contiene la fecha de una tarea, si hay alguna. */
+export function etapaDe(task: TeamTask, etapas: TeamTask[]): TeamTask | null {
+  const cuando = task.due_date
+  if (!cuando) return null
+  return etapas.find((e) => e.due_date && cuando >= e.due_date && cuando <= (e.end_date ?? e.due_date)) ?? null
+}
+
+/** La etapa en curso hoy. Si hay varias solapadas, la que empezó antes. */
+export function etapaActual(etapas: TeamTask[]): TeamTask | null {
+  const hoy = todayISO()
+  return etapas.find((e) => e.due_date && hoy >= e.due_date && hoy <= (e.end_date ?? e.due_date)) ?? null
+}
+
 /** Franja de color del borde: cálida cuando pide atención, neutra cuando no. */
 export const URGENCIA_STRIPE: Record<Urgencia, string> = {
   vencida: 'bg-red-500',

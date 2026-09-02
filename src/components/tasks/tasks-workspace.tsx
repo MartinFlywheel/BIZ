@@ -22,7 +22,7 @@ import { connectNotionAction, disconnectNotionAction, syncNotionTasksAction, get
 import type { TeamTask, TeamTaskStatus } from '@/lib/types'
 import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL } from '@/lib/types'
 import { cn, formatRelativeTime } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, describeWhen, byUrgency, urgenciaDe, URGENCIA_STRIPE, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
+import { TaskRow, TaskDetailDrawer, TaskCheckbox, isOverdue, todayISO, personColor, initials, formatRange, describeWhen, byUrgency, urgenciaDe, soloEtapas, etapaDe, etapaActual, URGENCIA_STRIPE, PRIORITY_STYLE, type TaskEditContext } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 import { FieldOptionsModal } from './field-options-modal'
 
@@ -115,6 +115,12 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
       return true
     })
   }, [tasks, search, personFilter, statusFilter, viewerId])
+
+  // Las etapas salen de TODAS las tareas y no de `visible`: filtrar por
+  // persona o por estado no debería borrar el contexto del período en el que
+  // está el lanzamiento. Las tareas, en cambio, sí respetan el filtro.
+  const etapas = useMemo(() => soloEtapas(tasks), [tasks])
+  const visibleTareas = useMemo(() => visible.filter((t) => !t.is_stage), [visible])
 
   const canCheck = (task: TeamTask) => canEdit || task.assigned_to === viewerId
 
@@ -256,17 +262,18 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
         </div>
       </div>
 
-      {visible.length === 0 ? (
+      {visibleTareas.length === 0 && view !== 'calendario' ? (
         <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] py-16 text-center text-sm text-zinc-500">
           No hay tareas que coincidan con el filtro.
         </div>
       ) : view === 'lista' ? (
-        <ListView tasks={visible} clientId={clientId} canCheck={canCheck} onChanged={applyChange} onOpen={setOpenTask} />
+        <ListView tasks={visibleTareas} etapas={etapas} clientId={clientId} canCheck={canCheck} onChanged={applyChange} onOpen={setOpenTask} />
       ) : view === 'tablero' ? (
-        <BoardView tasks={visible} clientId={clientId} canCheck={canCheck} onChanged={applyChange} onOpen={setOpenTask} />
+        <BoardView tasks={visibleTareas} etapas={etapas} clientId={clientId} canCheck={canCheck} onChanged={applyChange} onOpen={setOpenTask} />
       ) : (
         <CalendarView
-          tasks={visible}
+          tasks={visibleTareas}
+          etapas={etapas}
           cursor={monthCursor}
           onCursor={setMonthCursor}
           onOpen={setOpenTask}
@@ -339,45 +346,74 @@ function Header({ clientId, clientName, children }: { clientId: string; clientNa
 
 function ListView({
   tasks,
+  etapas,
   clientId,
   canCheck,
   onChanged,
   onOpen,
 }: {
   tasks: TeamTask[]
+  etapas: TeamTask[]
   clientId: string
   canCheck: (t: TeamTask) => boolean
   onChanged: (t: TeamTask) => void
   onOpen: (t: TeamTask) => void
 }) {
-  // Agrupadas por la fase de Notion; las que no tienen fase van al final.
+  // Agrupadas por la ETAPA en la que cae su fecha, no por la fase de Notion:
+  // la etapa es el período real del lanzamiento y es lo que Martín calendariza.
+  // Las que no caen en ninguna van al final.
   const groups = useMemo(() => {
-    const map = new Map<string, TeamTask[]>()
+    const map = new Map<string, { etapa: TeamTask | null; items: TeamTask[] }>()
     for (const t of tasks) {
-      const key = t.group_name ?? 'Sin fase'
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(t)
+      const etapa = etapaDe(t, etapas)
+      const key = etapa?.id ?? '__sin__'
+      if (!map.has(key)) map.set(key, { etapa, items: [] })
+      map.get(key)!.items.push(t)
     }
-    // Dentro de cada fase manda la urgencia: lo vencido y lo de hoy arriba.
-    for (const items of map.values()) items.sort(byUrgency)
-    return [...map.entries()].sort(([a], [b]) => (a === 'Sin fase' ? 1 : b === 'Sin fase' ? -1 : a.localeCompare(b)))
-  }, [tasks])
+    for (const g of map.values()) g.items.sort(byUrgency)
+    return [...map.values()].sort((a, b) => {
+      if (!a.etapa) return 1
+      if (!b.etapa) return -1
+      return (a.etapa.due_date ?? '').localeCompare(b.etapa.due_date ?? '')
+    })
+  }, [tasks, etapas])
 
   return (
     <div className="space-y-5">
-      {groups.map(([name, items]) => (
-        <div key={name}>
-          <div className="mb-1 flex items-center gap-2 px-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{name}</h3>
-            <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">{items.length}</span>
+      {groups.map(({ etapa, items }) => {
+        const enCurso = etapa ? urgenciaDe(etapa) === 'activa' : false
+        return (
+          <div key={etapa?.id ?? '__sin__'}>
+            <div className="mb-1 flex items-center gap-2 px-3">
+              {etapa ? (
+                <button
+                  onClick={() => onOpen(etapa)}
+                  className={cn(
+                    'text-xs font-semibold uppercase tracking-wider transition-colors',
+                    enCurso ? 'text-violet-300 hover:text-violet-200' : 'text-zinc-500 hover:text-zinc-300'
+                  )}
+                >
+                  {etapa.title}
+                </button>
+              ) : (
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-600">Sin etapa</h3>
+              )}
+              {etapa && <span className="text-[11px] tabular-nums text-zinc-600">{formatRange(etapa)}</span>}
+              {enCurso && (
+                <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                  En curso
+                </span>
+              )}
+              <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">{items.length}</span>
+            </div>
+            <div className={cn('rounded-xl border bg-white/[0.02] p-1', enCurso ? 'border-violet-500/20' : 'border-white/[0.05]')}>
+              {items.map((t) => (
+                <TaskRow key={t.id} task={t} clientId={clientId} canCheck={canCheck(t)} onChanged={onChanged} onOpen={onOpen} />
+              ))}
+            </div>
           </div>
-          <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-1">
-            {items.map((t) => (
-              <TaskRow key={t.id} task={t} clientId={clientId} canCheck={canCheck(t)} onChanged={onChanged} onOpen={onOpen} />
-            ))}
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -386,20 +422,38 @@ function ListView({
 
 function BoardView({
   tasks,
+  etapas,
   clientId,
   canCheck,
   onChanged,
   onOpen,
 }: {
   tasks: TeamTask[]
+  etapas: TeamTask[]
   clientId: string
   canCheck: (t: TeamTask) => boolean
   onChanged: (t: TeamTask) => void
   onOpen: (t: TeamTask) => void
 }) {
   const columns: TeamTaskStatus[] = ['pendiente', 'en_progreso', 'hecha']
+  const actual = etapaActual(etapas)
 
   return (
+    <div className="space-y-3">
+      {/* Las etapas no son tarjetas del tablero: son el contexto. Acá va la que
+          corre hoy, para no perder de vista en qué parte del lanzamiento están. */}
+      {actual && (
+        <button
+          onClick={() => onOpen(actual)}
+          className="flex w-full items-center gap-2.5 rounded-xl border border-violet-500/25 bg-violet-500/10 px-3.5 py-2.5 text-left transition-colors hover:bg-violet-500/15"
+        >
+          <Layers className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+          <span className="text-[10px] font-medium uppercase tracking-wider text-violet-400/70">Etapa actual</span>
+          <span className="truncate text-sm font-semibold uppercase tracking-wide text-violet-100">{actual.title}</span>
+          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-violet-300/70">{formatRange(actual)}</span>
+        </button>
+      )}
+
     <div className="grid gap-3 sm:grid-cols-3">
       {columns.map((status) => {
         const items = tasks.filter((t) => t.status === status).sort(byUrgency)
@@ -481,6 +535,7 @@ function BoardView({
         )
       })}
     </div>
+    </div>
   )
 }
 
@@ -502,18 +557,19 @@ function rangoDe(t: TeamTask): { start: string; end: string } | null {
 }
 
 /**
- * Coloca las tareas de una semana en carriles, como hace Notion: una barra por
- * tarea que cruza los días que ocupa, y las que se solapan bajan un carril.
+ * Coloca en carriles lo que cae dentro de una semana, como hace Notion: una
+ * barra por elemento que cruza los días que ocupa, y las que se solapan bajan
+ * un carril.
  *
  * Antes cada tarea era un chip en el día de `due_date` y nada más, así que una
  * etapa de seis días se veía como un día suelto y el calendario del dashboard
- * no se parecía en nada al de Notion.
+ * no se parecía al de Notion.
  */
-function armarSemana(diasIso: string[], tasks: TeamTask[]): { segmentos: WeekSegment[]; carriles: number } {
+function armarSemana(diasIso: string[], items: TeamTask[]): { segmentos: WeekSegment[]; carriles: number } {
   const desde = diasIso[0]
   const hasta = diasIso[6]
 
-  const crudos: WeekSegment[] = tasks.flatMap((task) => {
+  const crudos: WeekSegment[] = items.flatMap((task) => {
     const r = rangoDe(task)
     if (!r || r.end < desde || r.start > hasta) return []
     const col = r.start <= desde ? 0 : diasIso.indexOf(r.start)
@@ -546,11 +602,13 @@ function armarSemana(diasIso: string[], tasks: TeamTask[]): { segmentos: WeekSeg
 
 function CalendarView({
   tasks,
+  etapas,
   cursor,
   onCursor,
   onOpen,
 }: {
   tasks: TeamTask[]
+  etapas: TeamTask[]
   cursor: { year: number; month: number }
   onCursor: (c: { year: number; month: number }) => void
   onOpen: (t: TeamTask) => void
@@ -614,13 +672,16 @@ function CalendarView({
 
           <div className="space-y-px overflow-hidden rounded-xl border border-white/[0.05] bg-white/[0.04]">
             {semanas.map((semana, wi) => {
-              const { segmentos, carriles } = armarSemana(semana.diasIso, tasks)
+              // Las etapas van en sus propios carriles, arriba de las tareas:
+              // son el contexto de la semana, no un elemento más que compite.
+              const et = armarSemana(semana.diasIso, etapas)
+              const ta = armarSemana(semana.diasIso, tasks)
 
               return (
                 <div
                   key={wi}
                   className="grid grid-cols-7 gap-px"
-                  style={{ gridTemplateRows: 'auto repeat(' + Math.max(carriles, 1) + ', auto)' }}
+                  style={{ gridTemplateRows: 'auto repeat(' + Math.max(et.carriles + ta.carriles, 1) + ', auto)' }}
                 >
                   {/* Fondo de cada día: ocupa todas las filas de carriles para que
                       las barras crucen por encima de las divisiones entre días. */}
@@ -658,7 +719,33 @@ function CalendarView({
                     )
                   })}
 
-                  {segmentos.map((seg) => {
+                  {/* Bandas de etapa: sin casilla, sin iniciales, sin color de
+                      persona. Nombre en versalitas sobre un fondo apagado, para
+                      que se lean como el período y no como algo que hacer. */}
+                  {et.segmentos.map((seg) => {
+                    const e = seg.task
+                    const enCurso = urgenciaDe(e) === 'activa'
+                    return (
+                      <button
+                        key={e.id}
+                        onClick={() => onOpen(e)}
+                        title={e.title + ' · ' + formatRange(e)}
+                        style={{ gridColumn: (seg.col + 1) + ' / span ' + seg.span, gridRow: seg.lane + 2 }}
+                        className={cn(
+                          'relative z-10 mx-1 mb-1 truncate border px-2 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wider transition-opacity hover:opacity-80',
+                          enCurso
+                            ? 'border-violet-500/30 bg-violet-500/15 text-violet-200'
+                            : 'border-white/[0.08] bg-white/[0.06] text-zinc-400',
+                          seg.cortadaIzq ? 'ml-0 rounded-l-none border-l-0' : 'rounded-l',
+                          seg.cortadaDer ? 'mr-0 rounded-r-none border-r-0' : 'rounded-r'
+                        )}
+                      >
+                        {e.title}
+                      </button>
+                    )
+                  })}
+
+                  {ta.segmentos.map((seg) => {
                     const t = seg.task
                     const hecha = t.status === 'hecha'
                     return (
@@ -666,7 +753,7 @@ function CalendarView({
                         key={t.id}
                         onClick={() => onOpen(t)}
                         title={t.title + (t.assignee_name ? ' — ' + t.assignee_name : '') + ' · ' + formatRange(t)}
-                        style={{ gridColumn: (seg.col + 1) + ' / span ' + seg.span, gridRow: seg.lane + 2 }}
+                        style={{ gridColumn: (seg.col + 1) + ' / span ' + seg.span, gridRow: et.carriles + seg.lane + 2 }}
                         className={cn(
                           'relative z-10 mx-1 mb-1 flex items-center gap-1 border px-1.5 py-0.5 text-left text-[10px] transition-opacity hover:opacity-80',
                           hecha ? 'border-zinc-800 bg-zinc-900 text-zinc-600 line-through' : personColor(t.assignee_name),

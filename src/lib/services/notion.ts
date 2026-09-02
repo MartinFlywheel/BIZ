@@ -113,6 +113,8 @@ export interface NotionTaskMap {
   date: string | null
   priority: string | null
   group: string | null
+  /** Propiedad que distingue etapa de tarea. null si la base no la tiene. */
+  kind: string | null
   /** Propiedad de texto donde escribir la nota de cierre, si existe. */
   note: string | null
   /** Opciones que ya existen en Notion, para los desplegables del CRM.
@@ -132,6 +134,12 @@ const PRIORITY_RE = /prioridad|priority|urgenc/i
 const GROUP_RE = /fase|etapa|categor|grupo|area|área|bloque|semana|seccion|sección/i
 const NOTE_RE = /nota|coment|avance|feedback|observ/i
 const STATUS_RE = /estado|status|situacion|situación/i
+
+// Marca qué filas son etapas y no tareas. Se exige que el nombre EMPIECE por
+// "tipo"/"type" y no hay fallback al primer select disponible: si esta
+// propiedad se detectara mal, media base pasaría a ser etapa de golpe.
+const KIND_RE = /^(tipo|type)/i
+const STAGE_VALUE_RE = /etapa|fase|stage|phase|per[ií]odo|bloque/i
 
 function findProp(
   props: Record<string, NotionPropertySchema>,
@@ -169,6 +177,7 @@ export function detectTaskMap(db: NotionDatabase): NotionTaskMap {
   const priorityProp = Object.values(props).find((p) => PRIORITY_RE.test(p.name) && ['select', 'status'].includes(p.type))
   const groupProp = Object.values(props).find((p) => GROUP_RE.test(p.name) && ['select', 'multi_select'].includes(p.type))
   const noteProp = Object.values(props).find((p) => NOTE_RE.test(p.name) && p.type === 'rich_text')
+  const kindProp = Object.values(props).find((p) => KIND_RE.test(p.name) && ['select', 'multi_select', 'status'].includes(p.type))
 
   const statusValueMap: Record<string, string> = {}
   let doneValue: string | null = null
@@ -232,6 +241,7 @@ export function detectTaskMap(db: NotionDatabase): NotionTaskMap {
     date: dateProp?.name ?? null,
     priority: priorityProp?.name ?? null,
     group: groupProp?.name ?? null,
+    kind: kindProp?.name ?? null,
     note: noteProp?.name ?? null,
     assigneeOptions: optionsOf(assigneeProp),
     priorityOptions: optionsOf(priorityProp),
@@ -297,6 +307,8 @@ export interface NotionTask {
   due_date: string | null
   /** Fin del rango en Notion. NULL si la tarea ocupa un solo día. */
   end_date: string | null
+  /** true cuando la fila es una etapa del lanzamiento, no una tarea. */
+  is_stage: boolean
   assignee_name: string | null
   assignee_email: string | null
   group_name: string | null
@@ -368,6 +380,9 @@ export async function fetchTasks(databaseId: string, map: NotionTaskMap): Promis
       const assignee = readAssignee(map.assignee ? page.properties[map.assignee] : undefined)
       const dateProp = map.date ? page.properties[map.date] : undefined
       const groupProp = map.group ? page.properties[map.group] : undefined
+      const kindProp = map.kind ? page.properties[map.kind] : undefined
+      const kindValue =
+        kindProp?.select?.name ?? kindProp?.status?.name ?? kindProp?.multi_select?.[0]?.name ?? null
 
       tasks.push({
         notion_page_id: page.id,
@@ -383,6 +398,7 @@ export async function fetchTasks(databaseId: string, map: NotionTaskMap): Promis
         assignee_name: assignee.name,
         assignee_email: assignee.email,
         group_name: groupProp?.select?.name ?? groupProp?.multi_select?.[0]?.name ?? null,
+        is_stage: !!kindValue && STAGE_VALUE_RE.test(kindValue),
         notion_last_edited: page.last_edited_time,
       })
     }

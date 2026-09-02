@@ -622,6 +622,12 @@ export interface TeamTask {
   due_date: string | null
   /** Fin del rango de Notion. NULL cuando la tarea ocupa un solo día. */
   end_date: string | null
+  /**
+   * true cuando la fila describe una ETAPA del lanzamiento ("PERSONALIDAD",
+   * "EXPERTIZ") y no una tarea que se completa. No se marca, no vence, y las
+   * tareas cuyas fechas caen dentro de su rango le pertenecen. Ver supabase/041.
+   */
+  is_stage: boolean
   /** Responsable según Notion, aunque no matchee con ningún usuario del CRM. */
   assignee_name: string | null
   assigned_to: string | null
