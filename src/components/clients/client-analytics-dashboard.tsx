@@ -118,16 +118,39 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
   const [period, setPeriod] = useState<Period>(90)
   const [metricsTab, setMetricsTab] = useState<'contenido' | 'chat'>('contenido')
   const [data, setData] = useState<ClientAnalyticsPeriod | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
+  // Sin este catch, un fallo de esta pestaña tumbaba la página COMPLETA del
+  // cliente: la promesa rechazada dentro de startTransition sube al error
+  // boundary y el navegador muestra "This page couldn't load". Una pestaña que
+  // no carga tiene que degradarse a un recuadro con error, no llevarse puestas
+  // las otras seis.
   useEffect(() => {
+    let cancelled = false
     startTransition(async () => {
-      const result = await getClientAnalyticsByPeriod(clientId, period)
-      setData(result)
+      try {
+        const result = await getClientAnalyticsByPeriod(clientId, period)
+        if (cancelled) return
+        setError(null)
+        setData(result)
+      } catch (e) {
+        if (cancelled) return
+        const msg = e instanceof Error ? e.message : 'Error inesperado'
+        // 57014 es el statement_timeout de Postgres: la consulta del período
+        // se pasó del presupuesto. Decirlo con palabras evita que parezca una
+        // falla aleatoria y sugiere la salida inmediata, que es acortar el rango.
+        setError(
+          /57014|statement timeout/i.test(msg)
+            ? 'La consulta de este período tardó demasiado. Prueba con un rango más corto.'
+            : msg
+        )
+      }
     })
+    return () => { cancelled = true }
   }, [clientId, period])
 
-  const loading = isPending || !data
+  const loading = isPending || (!data && !error)
 
   return (
     <div className="space-y-5">
@@ -155,12 +178,20 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
         </div>
       </div>
 
+      {error && (
+        <div className="rounded-xl border border-red-900/40 bg-red-950/20 px-4 py-3">
+          <p className="text-sm text-red-300">No se pudo cargar la analítica.</p>
+          <p className="mt-1 text-xs text-red-200/70">{error}</p>
+          <p className="mt-2 text-xs text-zinc-500">Las demás pestañas del cliente siguen disponibles.</p>
+        </div>
+      )}
+
       {/* ── KPI Cards ── */}
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {Array.from({ length: 7 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
-      ) : (
+      ) : !data ? null : (
         <>
           {/* Row 1: content metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -224,7 +255,7 @@ export function ClientAnalyticsDashboard({ clientId }: Props) {
           <SkeletonChart />
           <SkeletonChart />
         </div>
-      ) : (
+      ) : !data ? null : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Visibilidad: Alcance + Impresiones */}
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5">
