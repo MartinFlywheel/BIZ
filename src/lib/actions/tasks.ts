@@ -317,6 +317,17 @@ export async function syncNotionTasksAction(
       const assignees = resolverResponsables(t.assignee_name, t.assignee_email, candidates)
       const assignedTo = assignees[0] ?? null
 
+      // Un responsable que no matchea con nadie no lanza ningún error — el
+      // valor simplemente queda null y assignee_name sigue mostrando el
+      // nombre, así que la tarea SE VE asignada pero no aparece en "mis
+      // tareas" de nadie. Justo lo que pasó con "Martin Senel": su
+      // users.full_name estaba guardado como "martinsenel", sin espacio, y el
+      // desajuste no dejó ningún rastro hasta que alguien notó el conteo. Este
+      // aviso lo deja en los logs de Vercel en vez de en el silencio.
+      if (t.assignee_name && assignees.length === 0) {
+        console.warn(`[sync-notion-tasks] "${t.assignee_name}" no matchea con ningún usuario del CRM (cliente ${clientId}, tarea "${t.title}")`)
+      }
+
       return {
         client_id: clientId,
         notion_page_id: t.notion_page_id,
