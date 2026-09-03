@@ -162,16 +162,6 @@ export const URGENCIA_LABEL: Record<Urgencia, string> = {
   sin_fecha: 'Sin fecha',
 }
 
-/** Franja de color para el borde de una sección agrupada por urgencia. */
-export const URGENCIA_SECTION_BORDER: Record<Urgencia, string> = {
-  vencida: 'border-red-500/25',
-  activa: 'border-orange-500/25',
-  manana: 'border-amber-500/20',
-  semana: 'border-white/[0.05]',
-  futura: 'border-white/[0.05]',
-  sin_fecha: 'border-white/[0.05]',
-}
-
 /**
  * Agrupa una lista YA ordenada por byUrgency en bloques contiguos por urgencia
  * — sin volver a ordenar, para no desarmar el orden fino que byUrgency ya
@@ -386,9 +376,16 @@ export function TaskRow({
   return (
     <div
       onClick={() => onOpen(task)}
-      className="group flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2 transition-colors hover:border-white/[0.06] hover:bg-white/[0.02]"
+      className="group flex cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-white/[0.06] hover:bg-white/[0.03]"
     >
       <TaskCheckbox task={task} clientId={clientId} disabled={!canCheck} onChanged={onChanged} />
+
+      {/* Punto de urgencia: la misma lectura instantánea que un semáforo de
+          estado, sin depender de leer la fecha para saber si algo aprieta. */}
+      <span
+        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', done ? 'bg-zinc-700' : URGENCIA_STRIPE[urgencia])}
+        aria-hidden
+      />
 
       <div className="min-w-0 flex-1">
         <p className={cn('truncate text-sm', done ? 'text-zinc-600 line-through' : 'text-zinc-200')}>{task.title}</p>

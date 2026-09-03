@@ -8,7 +8,7 @@ import type { TeamTask } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
   TaskRow, TaskDetailDrawer, isOverdue, byUrgency, soloEtapas, etapaActual, formatRange, esMia,
-  dentroDelHorizonte, agruparPorUrgencia, HORIZON_LABEL, URGENCIA_LABEL, URGENCIA_SECTION_BORDER,
+  dentroDelHorizonte, agruparPorUrgencia, HORIZON_LABEL, URGENCIA_LABEL, URGENCIA_STRIPE,
   personColor, initials, type TaskEditContext, type Horizon,
 } from './task-ui'
 import { NewTaskModal } from './new-task-modal'
@@ -192,10 +192,14 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       {/* En qué parte del lanzamiento están. Va antes que los pendientes
           porque enmarca todo lo que viene abajo. */}
       {etapa && (
-        <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-2.5">
-          <Layers className="h-3.5 w-3.5 shrink-0 text-violet-300" />
-          <span className="text-[10px] font-medium uppercase tracking-wider text-violet-400/70">Etapa actual</span>
-          <span className="truncate text-sm font-semibold uppercase tracking-wide text-violet-100">{etapa.title}</span>
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-500/25 bg-violet-500/10 px-4 py-3 shadow-[0_8px_28px_-12px_rgba(139,92,246,0.45)] backdrop-blur-xl">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/15">
+            <Layers className="h-4 w-4 text-violet-300" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-violet-400/70">Etapa actual</p>
+            <p className="truncate text-sm font-semibold uppercase tracking-wide text-violet-100">{etapa.title}</p>
+          </div>
           <span className="ml-auto shrink-0 text-[11px] tabular-nums text-violet-300/70">{formatRange(etapa)}</span>
         </div>
       )}
@@ -208,12 +212,12 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
           verdades contradictorias sobre la misma pantalla. */}
       <div
         className={cn(
-          'flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3',
+          'flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 backdrop-blur-xl',
           mineAll.length === 0
-            ? 'border-emerald-900/30 bg-emerald-950/15'
+            ? 'border-emerald-900/30 bg-emerald-950/15 shadow-[0_8px_28px_-14px_rgba(16,185,129,0.35)]'
             : overdueCount > 0
-              ? 'border-red-900/40 bg-red-950/20'
-              : 'border-amber-900/30 bg-amber-950/15'
+              ? 'border-red-900/40 bg-red-950/20 shadow-[0_8px_28px_-14px_rgba(248,113,113,0.35)]'
+              : 'border-amber-900/30 bg-amber-950/15 shadow-[0_8px_28px_-14px_rgba(251,191,36,0.3)]'
         )}
       >
         {mineAll.length === 0 ? (
@@ -235,7 +239,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
           {isAdmin && (
             <button
               onClick={() => setCreating(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-violet-500"
+              className="flex items-center gap-1.5 rounded-full bg-gradient-to-b from-violet-500 to-violet-600 px-3 py-1.5 text-xs font-medium text-white shadow-[0_4px_16px_-4px_rgba(139,92,246,0.6)] transition-colors hover:from-violet-400 hover:to-violet-500"
             >
               <Plus className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Nueva tarea</span>
@@ -245,14 +249,14 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
             onClick={resync}
             disabled={syncing}
             title="Traer los últimos cambios de Notion"
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.06] disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-white/[0.06] disabled:opacity-50"
           >
             <RefreshCw className={cn('h-3.5 w-3.5', syncing && 'animate-spin')} />
             <span className="hidden sm:inline">Sincronizar</span>
           </button>
           <Link
             href={`/clients/${clientId}/tareas`}
-            className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.06]"
+            className="flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-white/[0.06]"
           >
             Ver tablero <ArrowUpRight className="h-3.5 w-3.5" />
           </Link>
@@ -265,18 +269,18 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
           horizonte (dentroDelHorizonte). */}
       {mineAll.length > 0 && (
         <div>
-          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3">
+          <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-1">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
               Mis tareas {mine.length !== mineAll.length && <span className="text-zinc-600">({mine.length} de {mineAll.length})</span>}
             </h3>
-            <div className="ml-auto flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
+            <div className="ml-auto flex items-center gap-0.5 rounded-full border border-white/[0.06] bg-white/[0.02] p-0.5">
               {([7, 14, 30] as const).map((h) => (
                 <button
                   key={h}
                   onClick={() => setHorizon(h)}
                   className={cn(
-                    'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
-                    horizon === h ? 'bg-white/[0.08] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                    'rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors',
+                    horizon === h ? 'bg-white/[0.09] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
                   )}
                 >
                   {HORIZON_LABEL[h]}
@@ -286,22 +290,26 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
           </div>
 
           {mine.length === 0 ? (
-            <p className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-6 text-center text-xs text-zinc-600">
+            <p className="glass-panel rounded-xl px-3 py-6 text-center text-xs text-zinc-600">
               Nada para {HORIZON_LABEL[horizon].toLowerCase()} — tienes {mineAll.length} tarea{mineAll.length === 1 ? '' : 's'} más adelante.
             </p>
           ) : (
             <div className="space-y-3">
               {mineGrupos.map((g) => (
-                <div
-                  key={g.urgencia}
-                  className={cn('overflow-hidden rounded-xl border bg-white/[0.02] p-1', URGENCIA_SECTION_BORDER[g.urgencia])}
-                >
-                  <p className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+                <div key={g.urgencia} className="glass-panel overflow-hidden rounded-xl p-1.5">
+                  {/* La urgencia se lee en el punto de color, no en el borde de
+                      la caja: cambiarle el color al borde competiría con el
+                      borde neutro que ya trae glass-panel. Un punto es una
+                      señal más nítida de todos modos. */}
+                  <p className="flex items-center gap-1.5 px-2 pb-1.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+                    <span className={cn('h-1.5 w-1.5 rounded-full', URGENCIA_STRIPE[g.urgencia])} aria-hidden />
                     {URGENCIA_LABEL[g.urgencia]} <span className="text-zinc-700">· {g.items.length}</span>
                   </p>
-                  {g.items.map((t) => (
-                    <TaskRow key={t.id} task={t} clientId={clientId} canCheck showAssignee={false} onChanged={applyChange} onOpen={setOpenTask} />
-                  ))}
+                  <div className="divide-y divide-white/[0.04]">
+                    {g.items.map((t) => (
+                      <TaskRow key={t.id} task={t} clientId={clientId} canCheck showAssignee={false} onChanged={applyChange} onOpen={setOpenTask} />
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -319,27 +327,29 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       {isAdmin ? (
         <div className="grid gap-3 lg:grid-cols-2">
           {byPerson.map(({ name, items, total }) => (
-            <div key={name} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-1">
-              <div className="flex items-center gap-2 px-3 py-2">
-                <span className={cn('flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-medium', personColor(name))}>
+            <div key={name} className="glass-panel overflow-hidden rounded-xl p-1.5">
+              <div className="flex items-center gap-2.5 px-2 pb-2 pt-1">
+                <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-medium', personColor(name))}>
                   {initials(name)}
                 </span>
-                <h3 className="flex-1 truncate text-sm text-zinc-300">{name}</h3>
-                <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+                <h3 className="flex-1 truncate text-sm font-medium text-zinc-200">{name}</h3>
+                <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">
                   {items.length}{items.length !== total && <span className="text-zinc-600"> / {total}</span>}
                 </span>
               </div>
-              {items.map((t) => (
-                <TaskRow
-                  key={t.id}
-                  task={t}
-                  clientId={clientId}
-                  canCheck
-                  showAssignee={false}
-                  onChanged={applyChange}
-                  onOpen={setOpenTask}
-                />
-              ))}
+              <div className="divide-y divide-white/[0.04]">
+                {items.map((t) => (
+                  <TaskRow
+                    key={t.id}
+                    task={t}
+                    clientId={clientId}
+                    canCheck
+                    showAssignee={false}
+                    onChanged={applyChange}
+                    onOpen={setOpenTask}
+                  />
+                ))}
+              </div>
             </div>
           ))}
           {byPerson.length === 0 && (
@@ -361,7 +371,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
               Del resto del equipo ({others.length})
             </button>
             {showOthers && (
-              <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-1">
+              <div className="glass-panel divide-y divide-white/[0.04] overflow-hidden rounded-xl p-1.5">
                 {others.map((t) => (
                   <TaskRow key={t.id} task={t} clientId={clientId} canCheck={false} onChanged={applyChange} onOpen={setOpenTask} />
                 ))}
