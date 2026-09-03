@@ -6,7 +6,11 @@ import { RefreshCw, ArrowUpRight, Bell, CheckCircle2, ChevronDown, AlertTriangle
 import { getTaskBoard, syncNotionTasksAction, type TaskBoardData } from '@/lib/actions/tasks'
 import type { TeamTask } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { TaskRow, TaskDetailDrawer, isOverdue, byUrgency, soloEtapas, etapaActual, formatRange, esMia, personColor, initials, type TaskEditContext } from './task-ui'
+import {
+  TaskRow, TaskDetailDrawer, isOverdue, byUrgency, soloEtapas, etapaActual, formatRange, esMia,
+  dentroDelHorizonte, agruparPorUrgencia, HORIZON_LABEL, URGENCIA_LABEL, URGENCIA_SECTION_BORDER,
+  personColor, initials, type TaskEditContext, type Horizon,
+} from './task-ui'
 import { NewTaskModal } from './new-task-modal'
 
 const STALE_MS = 3 * 60 * 1000
@@ -29,6 +33,10 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
   const [syncing, setSyncing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [showOthers, setShowOthers] = useState(false)
+  // Por defecto sólo "esta semana": con 14+ tareas visibles de una, la lista
+  // se vuelve ruido y todo pesa igual. Vencidas y en curso nunca se ocultan
+  // (ver dentroDelHorizonte) — el horizonte recorta lo que todavía no empieza.
+  const [horizon, setHorizon] = useState<Horizon>(7)
 
   useEffect(() => {
     let cancelled = false
@@ -78,11 +86,24 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
     setOpenTask((prev) => (prev?.id === updated.id ? updated : prev))
   }
 
-  const mine = useMemo(() => (board?.tasks ?? []).filter((t) => !t.is_stage && esMia(t, currentUserId) && t.status !== 'hecha'), [board, currentUserId])
+  // Ordenadas por urgencia efectiva —vencido y hoy primero, y una prioridad
+  // alta puede adelantar un tramo (ver byUrgency)— no por la fecha cruda: eso
+  // es lo que hace que "la prioridad avance según la fecha" sea visible y no
+  // sólo un dato guardado que nadie ve reflejado en el orden.
+  const mineAll = useMemo(
+    () => (board?.tasks ?? []).filter((t) => !t.is_stage && esMia(t, currentUserId) && t.status !== 'hecha').sort(byUrgency),
+    [board, currentUserId]
+  )
+  const mine = useMemo(() => mineAll.filter((t) => dentroDelHorizonte(t, horizon)), [mineAll, horizon])
+  const mineOcultas = mineAll.length - mine.length
+  const mineGrupos = useMemo(() => agruparPorUrgencia(mine), [mine])
 
   // La etapa en curso: contexto del lanzamiento, no una tarea de nadie.
   const etapa = useMemo(() => etapaActual(soloEtapas(board?.tasks ?? [])), [board])
-  const overdueCount = mine.filter(isOverdue).length
+  // El aviso de arriba ("Tienes N pendientes") cuenta TODO lo propio, no sólo
+  // lo que entra en el horizonte — que el filtro achique la lista visible no
+  // debe achicar cuánto falta por hacer en total.
+  const overdueCount = mineAll.filter(isOverdue).length
 
   // Agrupado por responsable para la vista de admin. Las tareas cuyo
   // responsable en Notion no matchea con nadie del CRM quedan igual visibles
@@ -96,10 +117,26 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       map.get(key)!.push(t)
     }
     // Cada persona ve primero lo vencido y lo de hoy, no el orden en que
-    // Notion devolvió las páginas.
-    for (const items of map.values()) items.sort(byUrgency)
-    return [...map.entries()].sort(([a], [b]) => (a === 'Sin responsable' ? 1 : b === 'Sin responsable' ? -1 : a.localeCompare(b)))
-  }, [board])
+    // Notion devolvió las páginas. El mismo horizonte de "Mis tareas" recorta
+    // acá también, para que el panel entero respire igual de liviano. Se
+    // guarda el total sin filtrar para no confundir "sin nada esta semana"
+    // con "no queda nada pendiente".
+    return [...map.entries()]
+      .map(([name, all]) => {
+        const sorted = all.sort(byUrgency)
+        return { name, total: sorted.length, items: sorted.filter((t) => dentroDelHorizonte(t, horizon)) }
+      })
+      .filter((p) => p.items.length > 0)
+      .sort((a, b) => (a.name === 'Sin responsable' ? 1 : b.name === 'Sin responsable' ? -1 : a.name.localeCompare(b.name)))
+  }, [board, horizon])
+
+  // Si el tablero tiene tareas pendientes pero ninguna cae dentro del
+  // horizonte, byPerson queda vacío por el filtro — y eso no es lo mismo que
+  // "no queda nada pendiente". El mensaje de abajo distingue los dos casos.
+  const totalPendientesEquipo = useMemo(
+    () => (board?.tasks ?? []).filter((t) => t.status !== 'hecha' && !t.is_stage).length,
+    [board]
+  )
 
   if (error) {
     return (
@@ -139,7 +176,10 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
     )
   }
 
-  const others = board.tasks.filter((t) => !t.is_stage && t.status !== 'hecha' && !esMia(t, currentUserId))
+  const others = board.tasks
+    .filter((t) => !t.is_stage && t.status !== 'hecha' && !esMia(t, currentUserId))
+    .sort(byUrgency)
+    .filter((t) => dentroDelHorizonte(t, horizon))
 
   const edit: TaskEditContext = {
     canEdit: isAdmin,
@@ -214,29 +254,75 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
         </div>
       </div>
 
-      {/* Mis tareas */}
-      {mine.length > 0 && (
+      {/* Mis tareas — recortadas al horizonte elegido y agrupadas por urgencia,
+          para que abrir el CRM no sea toparse con 14 tareas del mismo peso de
+          una sola vez. Vencidas y en curso están siempre, sin importar el
+          horizonte (dentroDelHorizonte). */}
+      {mineAll.length > 0 && (
         <div>
-          <h3 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-zinc-500">Mis tareas</h3>
-          <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-1">
-            {mine.map((t) => (
-              <TaskRow key={t.id} task={t} clientId={clientId} canCheck showAssignee={false} onChanged={applyChange} onOpen={setOpenTask} />
-            ))}
+          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Mis tareas {mine.length !== mineAll.length && <span className="text-zinc-600">({mine.length} de {mineAll.length})</span>}
+            </h3>
+            <div className="ml-auto flex items-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5">
+              {([7, 14, 30] as const).map((h) => (
+                <button
+                  key={h}
+                  onClick={() => setHorizon(h)}
+                  className={cn(
+                    'rounded-md px-2 py-1 text-[11px] font-medium transition-colors',
+                    horizon === h ? 'bg-white/[0.08] text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'
+                  )}
+                >
+                  {HORIZON_LABEL[h]}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {mine.length === 0 ? (
+            <p className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-6 text-center text-xs text-zinc-600">
+              Nada para {HORIZON_LABEL[horizon].toLowerCase()} — tienes {mineAll.length} tarea{mineAll.length === 1 ? '' : 's'} más adelante.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {mineGrupos.map((g) => (
+                <div
+                  key={g.urgencia}
+                  className={cn('overflow-hidden rounded-xl border bg-white/[0.02] p-1', URGENCIA_SECTION_BORDER[g.urgencia])}
+                >
+                  <p className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wider text-zinc-600">
+                    {URGENCIA_LABEL[g.urgencia]} <span className="text-zinc-700">· {g.items.length}</span>
+                  </p>
+                  {g.items.map((t) => (
+                    <TaskRow key={t.id} task={t} clientId={clientId} canCheck showAssignee={false} onChanged={applyChange} onOpen={setOpenTask} />
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {mineOcultas > 0 && mine.length > 0 && (
+            <p className="mt-1.5 px-3 text-[11px] text-zinc-600">
+              +{mineOcultas} tarea{mineOcultas === 1 ? '' : 's'} más allá de {HORIZON_LABEL[horizon].toLowerCase()}.
+            </p>
+          )}
         </div>
       )}
 
       {/* Admin: todo el equipo, repartido por responsable */}
       {isAdmin ? (
         <div className="grid gap-3 lg:grid-cols-2">
-          {byPerson.map(([name, items]) => (
+          {byPerson.map(({ name, items, total }) => (
             <div key={name} className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-1">
               <div className="flex items-center gap-2 px-3 py-2">
                 <span className={cn('flex h-6 w-6 items-center justify-center rounded-full border text-[10px] font-medium', personColor(name))}>
                   {initials(name)}
                 </span>
                 <h3 className="flex-1 truncate text-sm text-zinc-300">{name}</h3>
-                <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">{items.length}</span>
+                <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
+                  {items.length}{items.length !== total && <span className="text-zinc-600"> / {total}</span>}
+                </span>
               </div>
               {items.map((t) => (
                 <TaskRow
@@ -252,7 +338,11 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
             </div>
           ))}
           {byPerson.length === 0 && (
-            <p className="col-span-full py-10 text-center text-sm text-zinc-600">No queda nada pendiente en el tablero.</p>
+            <p className="col-span-full py-10 text-center text-sm text-zinc-600">
+              {totalPendientesEquipo === 0
+                ? 'No queda nada pendiente en el tablero.'
+                : `Nada para ${HORIZON_LABEL[horizon].toLowerCase()} — hay ${totalPendientesEquipo} tarea${totalPendientesEquipo === 1 ? '' : 's'} más adelante.`}
+            </p>
           )}
         </div>
       ) : (

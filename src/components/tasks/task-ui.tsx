@@ -125,6 +125,69 @@ export function byUrgency(a: TeamTask, b: TeamTask): number {
   return a.title.localeCompare(b.title, 'es')
 }
 
+// ── Horizonte ─────────────────────────────────────────────────────────────────
+// Cuántos días hacia adelante se muestran en una vista compacta (el panel de
+// "Mis tareas" dentro del CRM, pensado para no fatigar con todo el backlog).
+
+export type Horizon = 7 | 14 | 30
+
+export const HORIZON_LABEL: Record<Horizon, string> = {
+  7: 'Esta semana',
+  14: '14 días',
+  30: '30 días',
+}
+
+/**
+ * Si la tarea entra en la ventana de "los próximos N días".
+ *
+ * Lo vencido y lo que ya está en curso NUNCA se ocultan por horizonte: filtrar
+ * eso escondería justo lo que más urge. Lo sin fecha tampoco se oculta —no hay
+ * fecha contra la cual filtrarlo, y desaparecer una tarea sin fecha sería
+ * perderla de vista sin que nadie lo note. El corte por días sólo aplica a lo
+ * que todavía no empezó.
+ */
+export function dentroDelHorizonte(task: TeamTask, days: Horizon): boolean {
+  if (!task.due_date) return true
+  const u = urgenciaDe(task)
+  if (u === 'vencida' || u === 'activa') return true
+  return daysFromToday(task.due_date) <= days
+}
+
+export const URGENCIA_LABEL: Record<Urgencia, string> = {
+  vencida: 'Vencidas',
+  activa: 'Hoy · en curso',
+  manana: 'Mañana',
+  semana: 'Esta semana',
+  futura: 'Más adelante',
+  sin_fecha: 'Sin fecha',
+}
+
+/** Franja de color para el borde de una sección agrupada por urgencia. */
+export const URGENCIA_SECTION_BORDER: Record<Urgencia, string> = {
+  vencida: 'border-red-500/25',
+  activa: 'border-orange-500/25',
+  manana: 'border-amber-500/20',
+  semana: 'border-white/[0.05]',
+  futura: 'border-white/[0.05]',
+  sin_fecha: 'border-white/[0.05]',
+}
+
+/**
+ * Agrupa una lista YA ordenada por byUrgency en bloques contiguos por urgencia
+ * — sin volver a ordenar, para no desarmar el orden fino que byUrgency ya
+ * calculó dentro de cada tramo (prioridad, luego fecha, luego título).
+ */
+export function agruparPorUrgencia(tasks: TeamTask[]): { urgencia: Urgencia; items: TeamTask[] }[] {
+  const grupos: { urgencia: Urgencia; items: TeamTask[] }[] = []
+  for (const t of tasks) {
+    const u = urgenciaDe(t)
+    const ultimo = grupos[grupos.length - 1]
+    if (ultimo && ultimo.urgencia === u) ultimo.items.push(t)
+    else grupos.push({ urgencia: u, items: [t] })
+  }
+  return grupos
+}
+
 /**
  * Si la tarea le toca a esta persona.
  *
