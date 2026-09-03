@@ -200,18 +200,23 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
         </div>
       )}
 
-      {/* Aviso de pendientes propios — es lo primero que ve cada miembro */}
+      {/* Aviso de pendientes propios — es lo primero que ve cada miembro.
+          Cuenta mineAll (el total real), NO mine (que es lo que entra en el
+          horizonte elegido). Contar `mine` acá era el bug: con el horizonte
+          en "Esta semana" mostraba "No tienes tareas pendientes" al mismo
+          tiempo que el bloque de abajo decía "Mis tareas (0 de 14)" —dos
+          verdades contradictorias sobre la misma pantalla. */}
       <div
         className={cn(
           'flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3',
-          mine.length === 0
+          mineAll.length === 0
             ? 'border-emerald-900/30 bg-emerald-950/15'
             : overdueCount > 0
               ? 'border-red-900/40 bg-red-950/20'
               : 'border-amber-900/30 bg-amber-950/15'
         )}
       >
-        {mine.length === 0 ? (
+        {mineAll.length === 0 ? (
           <>
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
             <p className="text-sm text-emerald-300">No tienes tareas pendientes.</p>
@@ -220,7 +225,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
           <>
             <Bell className={cn('h-4 w-4 shrink-0', overdueCount > 0 ? 'text-red-400' : 'text-amber-400')} />
             <p className={cn('text-sm', overdueCount > 0 ? 'text-red-300' : 'text-amber-300')}>
-              Tienes <span className="font-semibold">{mine.length}</span> {mine.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}
+              Tienes <span className="font-semibold">{mineAll.length}</span> {mineAll.length === 1 ? 'tarea pendiente' : 'tareas pendientes'}
               {overdueCount > 0 && <> · {overdueCount} vencida{overdueCount > 1 ? 's' : ''}</>}
             </p>
           </>
