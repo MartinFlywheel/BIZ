@@ -22,6 +22,7 @@ import {
   type NotionTaskFields,
   type NotionBlock,
 } from '@/lib/services/notion'
+import { TASK_STATUS_LABEL } from '@/lib/types'
 import type { TeamTask, TeamTaskStatus } from '@/lib/types'
 
 // Conectar la base de Notion y sincronizar es sólo de admin, igual que la
@@ -446,6 +447,31 @@ export async function setTaskStatusAction(
 
   const { map } = await loadConfig(clientId)
   if (!map) return { success: false, error: 'Este cliente no tiene una base de Notion conectada' }
+
+  // buildProps sólo escribe el estado en Notion si conoce el NOMBRE exacto de
+  // la opción que corresponde (map.doneValue / progressValue / pendingValue).
+  // Cuando ninguna opción de la base coincide con lo que se busca, ese valor
+  // queda en null y la escritura se saltaba sin decir nada: la fila local
+  // pasaba a "hecha", Notion se quedaba como estaba, y el siguiente sync la
+  // revertía. Desde afuera se veía como "marco la tarea y sigue ahí".
+  //
+  // Se corta antes de tocar la fila local, así no queda un estado que el
+  // próximo sync va a deshacer igual.
+  if (map.statusType && map.statusType !== 'checkbox') {
+    const valorEnNotion =
+      status === 'hecha' ? map.doneValue : status === 'en_progreso' ? map.progressValue : map.pendingValue
+
+    if (!valorEnNotion) {
+      const cuales = map.statusOptions.length > 0 ? ` Las que hay son: ${map.statusOptions.join(', ')}.` : ''
+      return {
+        success: false,
+        error:
+          `Ninguna opción de "${map.status}" en Notion se reconoce como "${TASK_STATUS_LABEL[status]}", ` +
+          `así que el cambio no se podría guardar allá.${cuales} ` +
+          `Renombra la opción correspondiente en Notion (por ejemplo "Hecho", "Listo" o "Completado") y vuelve a sincronizar.`,
+      }
+    }
+  }
 
   const note = completionNote?.trim() || null
   const { error } = await supabase
