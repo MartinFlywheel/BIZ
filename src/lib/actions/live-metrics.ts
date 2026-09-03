@@ -61,6 +61,83 @@ function emptyMetrics(): PeriodMetrics {
 // -> content_pieces.content_type, so only bookings made after that link was
 // added (lead_id populated by the Calendly webhook) can be attributed; older
 // agenda_records rows have no lead_id and are excluded from a filtered view.
+interface InteractionDayCount {
+  day: string
+  content_type: string | null
+  classification: string | null
+  n: number
+}
+
+/**
+ * Cuántas interacciones hubo por día, tipo de contenido de origen y
+ * clasificación.
+ *
+ * Antes esto se resolvía trayendo TODAS las filas del rango con paginación por
+ * OFFSET y contándolas en memoria. En un cliente grande, una página profunda
+ * obliga a Postgres a recorrer y descartar decenas de miles de filas antes de
+ * devolver las siguientes mil, y esa sentencia sola se pasaba del
+ * statement_timeout de 8s: era el 57014 que tumbaba la pestaña Analítica.
+ *
+ * La agregación vive ahora en la función metrics_interactions_by_day
+ * (supabase/044) y devuelve como mucho un par de miles de filas.
+ *
+ * Si la función todavía no existe en la base, se cae al camino anterior en vez
+ * de romper: desplegar código que depende de una migración sin correr es
+ * exactamente lo que ya rompió el CRM una vez.
+ */
+async function interactionCountsByDay(
+  clientId: string,
+  rangeStart: string,
+  rangeEnd: string,
+): Promise<InteractionDayCount[]> {
+  const supabase = await createClient()
+  const startIso = `${rangeStart}T00:00:00Z`
+  const endIso = `${rangeEnd}T23:59:59Z`
+
+  const { data, error } = await supabase.rpc('metrics_interactions_by_day', {
+    p_client_id: clientId,
+    p_start: startIso,
+    p_end: endIso,
+  })
+
+  if (!error && data) {
+    return (data as InteractionDayCount[]).map((r) => ({ ...r, n: Number(r.n) || 0 }))
+  }
+
+  console.warn('[live-metrics] metrics_interactions_by_day no disponible, usando el camino lento:', error?.message)
+
+  const rows = await fetchAllRows<{ classification: string; bot_triggered_at: string; content_id: string | null }>(
+    (from, to) =>
+      supabase
+        .from('interactions')
+        .select('classification, bot_triggered_at, content_id')
+        .eq('client_id', clientId)
+        .gte('bot_triggered_at', startIso)
+        .lte('bot_triggered_at', endIso)
+        .range(from, to)
+  )
+
+  const ids = Array.from(new Set(rows.map((r) => r.content_id).filter((id): id is string => !!id)))
+  let typeById: Record<string, string> = {}
+  if (ids.length > 0) {
+    const { data: pieces } = await supabase.from('content_pieces').select('id, content_type').in('id', ids)
+    typeById = Object.fromEntries((pieces || []).map((p) => [p.id as string, p.content_type as string]))
+  }
+
+  // Se agrupa acá para que el resto de la función vea siempre la misma forma.
+  const acc = new Map<string, InteractionDayCount>()
+  for (const r of rows) {
+    const day = r.bot_triggered_at?.slice(0, 10)
+    if (!day) continue
+    const type = r.content_id ? (typeById[r.content_id] ?? null) : null
+    const key = `${day}|${type ?? ''}|${r.classification ?? ''}`
+    const prev = acc.get(key)
+    if (prev) prev.n += 1
+    else acc.set(key, { day, content_type: type, classification: r.classification ?? null, n: 1 })
+  }
+  return [...acc.values()]
+}
+
 export async function getLiveMetricsBuckets(
   clientId: string,
   buckets: DateBucket[],
@@ -79,7 +156,7 @@ export async function getLiveMetricsBuckets(
   // routinely exceeds the 1000-row cap (see paginate.ts) for active clients,
   // which was silently truncating chats/conversaciones/agendas the wider the
   // selected period got. fetchAllRows pages through with .range() instead.
-  const [pieces, interactions, agendas] = await Promise.all([
+  const [pieces, interactionCounts, agendas] = await Promise.all([
     fetchAllRows<{ content_type: string; views: number; published_at: string | null }>((from, to) =>
       supabase
         .from('content_pieces')
@@ -89,15 +166,7 @@ export async function getLiveMetricsBuckets(
         .lte('published_at', `${rangeEnd}T23:59:59Z`)
         .range(from, to)
     ),
-    fetchAllRows<{ classification: string; bot_triggered_at: string; content_id: string | null }>((from, to) =>
-      supabase
-        .from('interactions')
-        .select('classification, bot_triggered_at, content_id')
-        .eq('client_id', clientId)
-        .gte('bot_triggered_at', `${rangeStart}T00:00:00Z`)
-        .lte('bot_triggered_at', `${rangeEnd}T23:59:59Z`)
-        .range(from, to)
-    ),
+    interactionCountsByDay(clientId, rangeStart, rangeEnd),
     fetchAllRows<{ fecha_agenda: string; estado: string | null; monto_facturacion: number | null; monto_upfront: number | null; lead_id: string | null }>((from, to) =>
       supabase
         .from('agenda_records')
@@ -111,19 +180,6 @@ export async function getLiveMetricsBuckets(
 
   function bucketFor(dateStr: string): DateBucket | undefined {
     return buckets.find((b) => dateStr >= b.start && dateStr <= b.end)
-  }
-
-  // Resolve reel-vs-historia origin for interactions via their content_id
-  const interactionContentIds = Array.from(
-    new Set(interactions.map((i) => i.content_id).filter((id): id is string => !!id))
-  )
-  let contentTypeById: Record<string, string> = {}
-  if (interactionContentIds.length > 0) {
-    const { data: piecesForType } = await supabase
-      .from('content_pieces')
-      .select('id, content_type')
-      .in('id', interactionContentIds)
-    contentTypeById = Object.fromEntries((piecesForType || []).map((p) => [p.id, p.content_type as string]))
   }
 
   // Resolve reel-vs-historia origin for agenda_records via lead_id -> leads.first_touch_content_id
@@ -169,23 +225,25 @@ export async function getLiveMetricsBuckets(
     else if (p.content_type === 'story') r.views_historias += p.views || 0
   }
 
-  for (const i of interactions) {
-    const interactionType = i.content_id ? contentTypeById[i.content_id as string] : undefined
+  // Mismo cálculo que antes, pero sumando conteos ya agrupados por Postgres en
+  // vez de recorrer fila por fila. `n` es cuántas interacciones había en ese
+  // día con ese tipo de origen y esa clasificación.
+  for (const i of interactionCounts) {
+    const interactionType = i.content_type ?? undefined
     if (contentType && interactionType !== contentType) continue
-    const date = (i.bot_triggered_at as string | null)?.slice(0, 10)
-    if (!date) continue
-    const b = bucketFor(date)
+    if (!i.day) continue
+    const b = bucketFor(i.day)
     if (!b) continue
     const r = result[b.key]
 
-    r.chats_abiertos += 1
-    if (interactionType === 'reel') r.chats_abiertos_reel += 1
-    else if (interactionType === 'story') r.chats_abiertos_historia += 1
+    r.chats_abiertos += i.n
+    if (interactionType === 'reel') r.chats_abiertos_reel += i.n
+    else if (interactionType === 'story') r.chats_abiertos_historia += i.n
 
     if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') {
-      r.conversaciones += 1
-      if (interactionType === 'reel') r.conversaciones_reel += 1
-      else if (interactionType === 'story') r.conversaciones_historia += 1
+      r.conversaciones += i.n
+      if (interactionType === 'reel') r.conversaciones_reel += i.n
+      else if (interactionType === 'story') r.conversaciones_historia += i.n
     }
   }
 
