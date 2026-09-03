@@ -559,8 +559,8 @@ function resolverResponsables(
   return [...ids]
 }
 
-async function resolveAssignee(clientId: string, name: string | null | undefined): Promise<string | null> {
-  if (!name) return null
+async function resolveAssignees(clientId: string, name: string | null | undefined): Promise<string[]> {
+  if (!name) return []
   const supabase = await createClient()
   const { data: users } = await supabase
     .from('users')
@@ -569,7 +569,7 @@ async function resolveAssignee(clientId: string, name: string | null | undefined
     .eq('is_active', true)
 
   const candidates = (users ?? []).filter((u) => u.role === 'admin' || u.client_id === clientId)
-  return resolverResponsables(name, name.includes('@') ? name : null, candidates)[0] ?? null
+  return resolverResponsables(name, name.includes('@') ? name : null, candidates)
 }
 
 export async function createTaskAction(
@@ -638,8 +638,13 @@ export async function updateTaskFieldsAction(
     }
     if (fields.group !== undefined) updates.group_name = fields.group || null
     if (fields.assignee !== undefined) {
+      // Los dos campos se escriben juntos: si sólo se movía assigned_to, poner
+      // "Equipo" desde el CRM dejaba assignees con el valor viejo y "mis
+      // tareas" mentía hasta el siguiente sync.
+      const ids = await resolveAssignees(clientId, fields.assignee)
       updates.assignee_name = fields.assignee || null
-      updates.assigned_to = await resolveAssignee(clientId, fields.assignee)
+      updates.assignees = ids
+      updates.assigned_to = ids[0] ?? null
     }
 
     const { error } = await supabase.from('team_tasks').update(updates).eq('id', taskId).eq('client_id', clientId)
