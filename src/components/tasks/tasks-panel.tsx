@@ -11,6 +11,11 @@ import { NewTaskModal } from './new-task-modal'
 
 const STALE_MS = 3 * 60 * 1000
 
+// Ver la nota en tasks-workspace.tsx: si el sync falla, syncedAt no avanza y
+// este panel —que vive dentro de la pestaña CRM— relanzaría un sync completo
+// contra Notion en cada visita a cualquier cliente.
+const autoSyncFallido = new Set<string>()
+
 /**
  * Lo que ve el equipo dentro del CRM, al lado de Equipo: el espejo de lo que
  * Martín configuró en Notion. Cada persona ve primero SUS pendientes (con el
@@ -32,9 +37,13 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
         if (cancelled) return
         setBoard(data)
         const stale = data.config.connected && (!data.config.syncedAt || Date.now() - new Date(data.config.syncedAt).getTime() > STALE_MS)
-        if (!stale) return
+        if (!stale || autoSyncFallido.has(clientId)) return
         const result = await syncNotionTasksAction(clientId).catch(() => ({ success: false as const, error: '' }))
-        if (cancelled || !result.success) return
+        if (!result.success) {
+          autoSyncFallido.add(clientId)
+          return
+        }
+        if (cancelled) return
         const fresh = await getTaskBoard(clientId)
         if (!cancelled) setBoard(fresh)
       })
@@ -50,8 +59,13 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
       success: false as const,
       error: e instanceof Error ? e.message : 'Error inesperado',
     }))
-    if (result.success) setBoard(await getTaskBoard(clientId))
-    else setError(result.error)
+    if (result.success) {
+      autoSyncFallido.delete(clientId)
+      setBoard(await getTaskBoard(clientId))
+    } else {
+      autoSyncFallido.add(clientId)
+      setError(result.error)
+    }
     setSyncing(false)
   }
 

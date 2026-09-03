@@ -35,6 +35,14 @@ const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 // ~1s por consulta, así que no tiene sentido pegarle en cada navegación.
 const STALE_MS = 3 * 60 * 1000
 
+// Un sync que falla no actualiza notion_tasks_synced_at, así que el espejo
+// sigue "vencido" y el efecto de abajo lo vuelve a disparar en CADA montaje.
+// Con una migración pendiente eso convierte una pantalla rota en un martilleo
+// constante contra Notion y Supabase, que es capaz de tumbar el CRM entero.
+// Se recuerda el fallo por cliente mientras dure la pestaña; el botón
+// Sincronizar sigue funcionando a mano y limpia la marca al salir bien.
+const autoSyncFallido = new Set<string>()
+
 export function TasksWorkspace({ clientId, clientName, initialData }: { clientId: string; clientName: string; initialData: TaskBoardData }) {
   const [tasks, setTasks] = useState<TeamTask[]>(initialData.tasks)
   const [config, setConfig] = useState(initialData.config)
@@ -64,8 +72,10 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
     setSyncing(false)
     if (!result.success) {
       setSyncError(result.error)
+      autoSyncFallido.add(clientId)
       return
     }
+    autoSyncFallido.delete(clientId)
     // La acción revalida la ruta, pero el estado local es lo que se ve: se
     // vuelve a pedir el tablero para no depender del refresh del router.
     const fresh = await getTaskBoard(clientId)
@@ -78,10 +88,16 @@ export function TasksWorkspace({ clientId, clientName, initialData }: { clientId
     const stale = !config.syncedAt || Date.now() - new Date(config.syncedAt).getTime() > STALE_MS
     if (!stale) return
 
+    if (autoSyncFallido.has(clientId)) return
+
     let cancelled = false
     void (async () => {
       const result = await syncNotionTasksAction(clientId).catch(() => ({ success: false as const, error: '' }))
-      if (cancelled || !result.success) return
+      if (!result.success) {
+        autoSyncFallido.add(clientId)
+        return
+      }
+      if (cancelled) return
       const fresh = await getTaskBoard(clientId)
       if (cancelled) return
       setTasks(fresh.tasks)

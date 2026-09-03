@@ -343,7 +343,21 @@ export async function syncNotionTasksAction(
 
     if (rows.length > 0) {
       const { error } = await supabase.from('team_tasks').upsert(rows, { onConflict: 'client_id,notion_page_id' })
-      if (error) return { success: false, error: error.message }
+      if (error) {
+        // 42703 = columna inexistente. Pasa cuando el código ya escribe un
+        // campo cuya migración todavía no se corrió. Sin este mensaje la
+        // pantalla muestra un error crudo de PostgREST que no dice qué hacer,
+        // y el sync se queda fallando en cada montaje.
+        if (MISSING_SCHEMA_CODES.includes(error.code ?? '')) {
+          return {
+            success: false,
+            error:
+              'Faltan columnas en team_tasks. Corre las migraciones pendientes de la carpeta supabase/ ' +
+              '(040 end_date, 041 is_stage, 042 assignees) y vuelve a sincronizar.',
+          }
+        }
+        return { success: false, error: error.message }
+      }
     }
 
     // Lo que ya no está en Notion (borrado o archivado) se va del espejo.
@@ -396,17 +410,26 @@ export async function setTaskStatusAction(
   if (!canSeeClient(viewer, clientId)) return { success: false, error: 'Sin acceso a este cliente' }
 
   const supabase = await createClient()
+  // select('*') a propósito y no una lista de columnas: es una sola fila, y
+  // así este camino no se rompe cuando el código conoce una columna cuya
+  // migración todavía no se aplicó.
   const { data: task } = await supabase
     .from('team_tasks')
-    .select('id, notion_page_id, title, assigned_to, status, completion_note')
+    .select('*')
     .eq('id', taskId)
     .eq('client_id', clientId)
     .single()
 
   if (!task) return { success: false, error: 'La tarea ya no existe' }
 
-  // Cada uno cierra lo suyo; el admin puede cerrar cualquiera.
-  if (!viewer.canEdit && task.assigned_to !== viewer.id) {
+  // Cada uno cierra lo suyo; el admin puede cerrar cualquiera. Mira también
+  // assignees: una tarea de "Equipo" o de "Fabi - Martin" toca a varias
+  // personas, y el frontend ya les habilita la casilla — sin esto el servidor
+  // las rechazaba y el check se revertía solo.
+  const leToca =
+    task.assigned_to === viewer.id ||
+    (Array.isArray(task.assignees) && task.assignees.includes(viewer.id))
+  if (!viewer.canEdit && !leToca) {
     return { success: false, error: 'Esta tarea no está asignada a ti' }
   }
 
