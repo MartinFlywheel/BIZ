@@ -1,9 +1,11 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { Client } from '@/lib/types'
+// Sólo lo que el <option> pinta: pedir el Client entero obligaba a la página
+// a traer todas las columnas de todos los clientes para usar tres.
+interface ClientOption { id: string; name: string; ig_handle: string }
 
-export function ClientSelector({ clients, selectedId }: { clients: Client[]; selectedId?: string }) {
+export function ClientSelector({ clients, selectedId }: { clients: ClientOption[]; selectedId?: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
 

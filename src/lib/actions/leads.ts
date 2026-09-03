@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type { LeadStage, Lead } from '@/lib/types'
-import { fetchAllRows, fetchAllRowsByCursor } from '@/lib/supabase/paginate'
+import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 import { pickBalancedSetter } from '@/lib/manychat'
 
 export async function getLeads(clientId?: string) {
@@ -15,7 +15,12 @@ export async function getLeads(clientId?: string) {
   const rows = await fetchAllRowsByCursor<Lead>((cursor, limit) => {
     let query = supabase
       .from('leads')
-      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification, prequalification_data)')
+      // `prequalification_data` salía de acá y nadie la leía: los tres
+      // consumidores del join (getLeadsForViewer, lead-chat, setter-app) sólo
+      // miran `classification`, y la ficha de calificación del drawer la saca
+      // del array de interactions que se pide aparte. Era un blob JSONB por
+      // cada uno de los ~9.900 leads del cliente, traído para descartarlo.
+      .select('*, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name), interactions(classification)')
       .order('id', { ascending: true })
       .limit(limit)
 
@@ -27,6 +32,47 @@ export async function getLeads(clientId?: string) {
   // Restore the "most recently updated first" order the CRM tab expects —
   // cheap in JS now that everything's already in memory.
   return rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+}
+
+export interface LeadPipelineRow {
+  id: string
+  client_id: string
+  ig_username: string | null
+  full_name: string | null
+  stage: LeadStage
+  assigned_to: string | null
+  close_value: number | null
+  days_to_close: number | null
+  first_touch_type: string | null
+  created_at: string
+  clients: { name: string; ig_handle: string } | null
+  users: { full_name: string } | null
+}
+
+/**
+ * Los leads del pipeline de /leads, con las columnas exactas que ese tablero
+ * declara en su interface (LeadWithRelations) y nada más.
+ *
+ * Antes esa página llamaba a getLeads() SIN clientId: todos los leads de la
+ * base, con las 30 columnas y los tres joins —incluido el JSONB de
+ * prequalification_data— para un tablero que usa diez campos y ni siquiera
+ * mira el join de interactions. Es de las pocas consultas que además crece con
+ * cada cliente nuevo, porque no filtra por ninguno.
+ */
+export async function getLeadsForPipeline(): Promise<LeadPipelineRow[]> {
+  const supabase = await createClient()
+
+  const rows = await fetchAllRowsByCursor<LeadPipelineRow & { id: string }>((cursor, limit) => {
+    let query = supabase
+      .from('leads')
+      .select('id, client_id, ig_username, full_name, stage, assigned_to, close_value, days_to_close, first_touch_type, created_at, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name)')
+      .order('id', { ascending: true })
+      .limit(limit)
+    if (cursor) query = query.gt('id', cursor)
+    return query as unknown as PromiseLike<{ data: (LeadPipelineRow & { id: string })[] | null; error: { message: string } | null }>
+  })
+
+  return rows
 }
 
 // Cheap count for tab badges — a client with thousands of leads shouldn't
@@ -43,18 +89,24 @@ export async function getLeadsCount(clientId: string): Promise<number> {
   return count ?? 0
 }
 
-// Bare id/name for the "which lead is this call about" lookup in the
-// Llamadas tab — no joins, none of the CRM tab's full row, so it stays
-// fast even for a client with thousands of leads.
-export async function getLeadOptions(clientId: string): Promise<{ id: string; full_name: string | null; ig_username: string | null }[]> {
+// Bare id/name for the "which lead is this call about" lookup — no joins,
+// none of the CRM tab's full row, so sigue siendo barato incluso con miles de
+// leads. Sin clientId trae los de todos los clientes, que es lo que necesita
+// la página /calls: antes esa página llamaba a getLeads() y se traía las 30
+// columnas y los tres joins de cada lead de la base para quedarse con estos
+// tres campos.
+export async function getLeadOptions(clientId?: string): Promise<{ id: string; full_name: string | null; ig_username: string | null }[]> {
   const supabase = await createClient()
-  return fetchAllRows((from, to) =>
-    supabase
+  return fetchAllRowsByCursor<{ id: string; full_name: string | null; ig_username: string | null }>((cursor, limit) => {
+    let query = supabase
       .from('leads')
       .select('id, full_name, ig_username')
-      .eq('client_id', clientId)
-      .range(from, to)
-  )
+      .order('id', { ascending: true })
+      .limit(limit)
+    if (clientId) query = query.eq('client_id', clientId)
+    if (cursor) query = query.gt('id', cursor)
+    return query
+  })
 }
 
 // The full, richly-joined lead list the CRM tab actually renders — kept

@@ -26,11 +26,11 @@ export async function getClients() {
  * custom_avatars, notion_tasks_map) de cada cliente, y se notaba sobre todo en
  * el celular.
  */
-export async function getClientOptions(): Promise<{ id: string; name: string }[]> {
+export async function getClientOptions(): Promise<{ id: string; name: string; ig_handle: string }[]> {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('clients')
-    .select('id, name')
+    .select('id, name, ig_handle')
     .order('name', { ascending: true })
 
   if (error) throw error

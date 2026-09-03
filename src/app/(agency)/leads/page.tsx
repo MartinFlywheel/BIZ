@@ -1,5 +1,5 @@
-import { getLeads } from '@/lib/actions/leads'
-import { getClients } from '@/lib/actions/clients'
+import { getLeadsForPipeline } from '@/lib/actions/leads'
+import { getClientOptions } from '@/lib/actions/clients'
 import { LeadsPipeline } from '@/components/leads/leads-pipeline'
 import { LeadsFilter } from '@/components/leads/leads-filter'
 
@@ -9,7 +9,7 @@ export default async function LeadsPage({
   searchParams: Promise<{ client?: string }>
 }) {
   const { client: filterClient } = await searchParams
-  const [leads, clients] = await Promise.all([getLeads(), getClients()])
+  const [leads, clients] = await Promise.all([getLeadsForPipeline(), getClientOptions()])
 
   return (
     <div className="space-y-6">
@@ -23,7 +23,7 @@ export default async function LeadsPage({
         <LeadsFilter clients={clients} selectedClient={filterClient || ''} />
       </div>
 
-      <LeadsPipeline leads={leads as any} filterClient={filterClient || ''} />
+      <LeadsPipeline leads={leads} filterClient={filterClient || ''} />
     </div>
   )
 }

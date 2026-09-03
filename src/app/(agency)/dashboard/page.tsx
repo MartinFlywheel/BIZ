@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { getClients } from '@/lib/actions/clients'
+import { getClientOptions } from '@/lib/actions/clients'
 import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType } from '@/lib/actions/funnel'
 import { getDashboardMetrics, getBenchmarkAlerts, getMonthOverMonthComparison } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
@@ -105,7 +105,7 @@ async function ClientDetail({
   period,
 }: {
   clientId: string
-  clients: Awaited<ReturnType<typeof getClients>>
+  clients: Awaited<ReturnType<typeof getClientOptions>>
   contentType?: ContentTypeFilter
   period: FunnelPeriodType
 }) {
@@ -246,7 +246,7 @@ export default async function DashboardPage({
 
   // Only clients is fast — health alerts run one funnel calculation per
   // active client and stream in behind their own Suspense below instead.
-  const clients = await getClients()
+  const clients = await getClientOptions()
 
   return (
     <div className="stagger-children space-y-8">

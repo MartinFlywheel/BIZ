@@ -1,9 +1,10 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import type { Client } from '@/lib/types'
+// Ver la nota en client-selector.tsx: sólo se pintan estos tres campos.
+interface ClientOption { id: string; name: string; ig_handle: string }
 
-export function LeadsFilter({ clients, selectedClient }: { clients: Client[]; selectedClient: string }) {
+export function LeadsFilter({ clients, selectedClient }: { clients: ClientOption[]; selectedClient: string }) {
   const router = useRouter()
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
