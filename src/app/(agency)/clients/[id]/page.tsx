@@ -66,7 +66,15 @@ export default async function ClientDetailPage({
         />
       </Suspense>
     )
-  } catch {
-    notFound()
+  } catch (e) {
+    // Antes cualquier fallo se convertía en notFound() sin dejar rastro, así
+    // que un timeout de Postgres (57014, el que tumbaba esta pantalla) se
+    // disfrazaba de "cliente no encontrado" y no quedaba nada en los logs para
+    // saberlo. Ahora sólo es 404 cuando el cliente realmente no existe;
+    // cualquier otra cosa se registra y sube.
+    console.error(`[ClientDetailPage] ${id} falló:`, e)
+    // PGRST116 = .single() no devolvió filas.
+    if ((e as { code?: string })?.code === 'PGRST116') notFound()
+    throw e
   }
 }
