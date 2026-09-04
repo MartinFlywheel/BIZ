@@ -162,7 +162,7 @@ export async function updateLeadStageAction(id: string, stage: string, agendaDat
     .from('leads')
     .update(updates)
     .eq('id', id)
-    .select('id, client_id, full_name, content_id, first_touch_at, first_touch_type, lead_avatar')
+    .select('id, client_id, full_name, ig_username, content_id, first_touch_at, first_touch_type, lead_avatar')
     .single()
   if (error) throw error
 
@@ -209,9 +209,57 @@ export async function updateLeadStageAction(id: string, stage: string, agendaDat
   return { agendaError }
 }
 
+/**
+ * Todos los CTAs que tocó un lead, en el orden en que los tocó.
+ *
+ * Las interacciones se enlazan al lead por ig_username dentro del mismo
+ * cliente (es el mismo criterio que usa la pestaña CRM para armar la ficha de
+ * calificación), y cada una apunta a la pieza de contenido cuyo
+ * keyword_trigger es el CTA visible ("H_18_08" y similares).
+ *
+ * Se compara en minúsculas porque el usuario de Instagram llega con distinta
+ * capitalización según por dónde entró.
+ */
+async function ctasDelLead(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  clientId: string,
+  igUsername: string | null
+): Promise<string | null> {
+  if (!igUsername) return null
+
+  const { data: interacciones } = await supabase
+    .from('interactions')
+    .select('content_id, bot_triggered_at')
+    .eq('client_id', clientId)
+    .ilike('ig_username', igUsername)
+    .order('bot_triggered_at', { ascending: true })
+
+  const ids = [...new Set((interacciones ?? []).map((i) => i.content_id).filter((id): id is string => !!id))]
+  if (ids.length === 0) return null
+
+  const { data: piezas } = await supabase
+    .from('content_pieces')
+    .select('id, keyword_trigger')
+    .in('id', ids)
+
+  const keywordPorPieza = new Map((piezas ?? []).map((p) => [p.id as string, p.keyword_trigger as string | null]))
+
+  const vistos = new Set<string>()
+  const ctas: string[] = []
+  for (const i of interacciones ?? []) {
+    const kw = i.content_id ? keywordPorPieza.get(i.content_id) : null
+    if (kw && !vistos.has(kw)) {
+      vistos.add(kw)
+      ctas.push(kw)
+    }
+  }
+
+  return ctas.length > 0 ? ctas.join(' · ') : null
+}
+
 async function ensureAgendaRecordForLead(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  lead: { id: string; client_id: string; full_name: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null },
+  lead: { id: string; client_id: string; full_name: string | null; ig_username: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null },
   agendaDate: string
 ) {
   const { data: existing, error: existingError } = await supabase
@@ -254,6 +302,12 @@ async function ensureAgendaRecordForLead(
     primer_cta: keyword,
     // The visible "CTA" column in Agendas reads de_donde_vino, not primer_cta
     de_donde_vino: keyword,
+    // Estos dos quedaban siempre vacíos y había que llenarlos a mano, aunque
+    // el dato ya existía: el Instagram está en el lead y los CTAs salen de sus
+    // interacciones. Son columnas de texto editable, así que quien quiera
+    // puede corregirlas después — esto sólo evita partir de cero.
+    link_perfil: lead.ig_username ? `https://instagram.com/${lead.ig_username.replace(/^@/, '')}` : null,
+    todos_los_ctas: await ctasDelLead(supabase, lead.client_id, lead.ig_username),
     estado: 'Pendiente',
   })
   if (insertError) {
