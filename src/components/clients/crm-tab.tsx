@@ -83,6 +83,7 @@ const ROL_BADGE: Record<string, { label: string; color: string }> = {
   admin: { label: 'Admin', color: 'bg-violet-950/50 text-violet-400 border border-violet-900/40' },
   sales_director: { label: 'Director', color: 'bg-amber-950/50 text-amber-400 border border-amber-900/40' },
   editor: { label: 'Editor', color: 'bg-zinc-800 text-zinc-400 border border-zinc-700' },
+  creador: { label: 'Creador', color: 'bg-fuchsia-950/50 text-fuchsia-400 border border-fuchsia-900/40' },
 }
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto',
@@ -1108,6 +1109,7 @@ const ROLES = [
   { value: 'closer', label: 'Closer' },
   { value: 'setter', label: 'Setter' },
   { value: 'editor', label: 'Editor' },
+  { value: 'creador', label: 'Creador' },
 ]
 
 function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }: { clientId: string; agencyUsers: AgencyUser[]; allClients: { id: string; name: string }[]; isAdmin: boolean; currentUserId?: string }) {

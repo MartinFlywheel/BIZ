@@ -23,7 +23,11 @@ export function objectiveColor(objective: string) {
 
 export type UserType = 'agency' | 'client'
 
-export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'editor' | 'client_owner'
+// Sólo `admin` navega la agencia completa. Todos los demás quedan
+// confinados por middleware a /clients/{su client_id} y sin barra lateral.
+// `creador` produce el contenido de la marca personal del cliente y ve el
+// panel entero de ese negocio. Ver supabase/045.
+export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'editor' | 'client_owner' | 'creador'
 
 export type ClientStatus = 'prospect' | 'onboarding' | 'active' | 'paused' | 'churned'
 
