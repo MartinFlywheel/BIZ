@@ -33,7 +33,7 @@ export default function LoginPage() {
 
     const { data: profile } = await supabase
       .from('users')
-      .select('id, user_type, role')
+      .select('id, user_type, role, client_id')
       .eq('id', authData.user.id)
       .single()
 
@@ -66,12 +66,20 @@ export default function LoginPage() {
     // would bounce them straight back off it. Sending them there first was
     // a wasted redirect that happened to land on the desktop CRM table
     // (/clients/{id}) instead of the mobile setter-app they actually want.
+    // El `creador` es la persona del negocio dueña de la marca: su alcance es
+    // el panel de SU cliente (analítica, contenido, script...), no la app de
+    // setting. Mandarlo a /setter-app lo dejaba en una pantalla de leads y
+    // metas de ciclo que no le corresponde — que es justo lo que le pasaba a
+    // Carol al entrar.
+    const esAgencia = profile?.user_type === 'agency'
     const dest =
       profile?.user_type === 'client'
         ? '/portal/dashboard'
-        : profile?.user_type === 'agency' && profile.role !== 'admin'
-          ? '/setter-app'
-          : '/dashboard'
+        : esAgencia && profile.role === 'creador'
+          ? (profile.client_id ? `/clients/${profile.client_id}` : '/login')
+          : esAgencia && profile.role !== 'admin'
+            ? '/setter-app'
+            : '/dashboard'
     router.push(dest)
     router.refresh()
   }

@@ -20,12 +20,21 @@ export default async function SetterAppLayout({
 
   const { data: profile } = await supabase
     .from('users')
-    .select('user_type, is_active')
+    .select('user_type, role, client_id, is_active')
     .eq('id', user.id)
     .single()
 
   if (!profile || profile.user_type !== 'agency' || profile.is_active === false) {
     redirect('/login')
+  }
+
+  // Esta app es una herramienta de setting: leads que tocar, agendas del día,
+  // metas de ciclo y el reporte de cierre. Un `creador` no hace nada de eso —
+  // su alcance es el panel de su cliente y nada más—, así que se lo manda ahí
+  // en vez de dejarlo entrar a una app que no le corresponde. El middleware
+  // deja pasar /setter-app a cualquier no-admin, así que el corte va acá.
+  if (profile.role === 'creador') {
+    redirect(profile.client_id ? `/clients/${profile.client_id}` : '/login')
   }
 
   return (
