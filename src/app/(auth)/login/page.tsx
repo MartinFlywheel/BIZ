@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ROLES_SESION_PERSISTENTE, type UserRole } from '@/lib/types'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -57,7 +58,7 @@ export default function LoginPage() {
     // the browser fully closes, not just the tab). Middleware requires it on
     // every request; without it they're signed out and sent back here, so
     // they can't stay logged in indefinitely like an admin can.
-    if (profile?.user_type === 'agency' && profile.role !== 'admin') {
+    if (profile?.user_type === 'agency' && !ROLES_SESION_PERSISTENTE.includes(profile.role as UserRole)) {
       document.cookie = 'biz_active_session=1; path=/; SameSite=Lax'
     }
 

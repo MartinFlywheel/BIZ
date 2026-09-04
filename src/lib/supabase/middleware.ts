@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { ROLES_SESION_PERSISTENTE, type UserRole } from '@/lib/types'
 
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -86,12 +87,18 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    // Non-admins don't get to stay logged in indefinitely like an admin can —
-    // require a session-only marker cookie (set at login, no Max-Age) on
-    // every request. Once the browser is fully closed the cookie is gone
-    // even though the Supabase refresh-token cookie may still be valid, so
-    // force them back through /login instead of silently letting them in.
-    if (profile?.user_type === 'agency' && profile.role !== 'admin' && !request.cookies.has('biz_active_session')) {
+    // Los perfiles operativos no se quedan logueados indefinidamente: se les
+    // exige una cookie de sesión (puesta al entrar, sin Max-Age) en cada
+    // request. Cuando el navegador se cierra del todo la cookie desaparece
+    // aunque el refresh token de Supabase siga vivo, así que vuelven a pasar
+    // por /login en vez de entrar solos. Quiénes quedan exentos vive en
+    // ROLES_SESION_PERSISTENTE, para que login y middleware no se
+    // desincronicen.
+    if (
+      profile?.user_type === 'agency' &&
+      !ROLES_SESION_PERSISTENTE.includes(profile.role as UserRole) &&
+      !request.cookies.has('biz_active_session')
+    ) {
       await supabase.auth.signOut()
       const url = request.nextUrl.clone()
       url.pathname = '/login'

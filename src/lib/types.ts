@@ -29,6 +29,20 @@ export type UserType = 'agency' | 'client'
 // panel entero de ese negocio. Ver supabase/045.
 export type UserRole = 'admin' | 'sales_director' | 'closer' | 'setter' | 'editor' | 'client_owner' | 'creador'
 
+/**
+ * Roles cuya sesión sobrevive al cierre del navegador.
+ *
+ * Al resto se le exige la cookie de sesión `biz_active_session` (sin Max-Age,
+ * se borra al cerrar el navegador) en cada request: son perfiles operativos
+ * que suelen entrar desde equipos compartidos, y dejarlos logueados
+ * indefinidamente es un riesgo real.
+ *
+ * El `creador` no encaja en eso: es la dueña de la marca entrando desde su
+ * propio computador a mirar su panel, y obligarla a reingresar cada vez que
+ * cierra el navegador es fricción sin nada a cambio.
+ */
+export const ROLES_SESION_PERSISTENTE: readonly UserRole[] = ['admin', 'creador']
+
 export type ClientStatus = 'prospect' | 'onboarding' | 'active' | 'paused' | 'churned'
 
 export type ContentType = 'reel' | 'story' | 'post' | 'live' | 'trial'
