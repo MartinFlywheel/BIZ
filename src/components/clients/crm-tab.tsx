@@ -17,7 +17,7 @@ import {
   getLeadsForViewer,
 } from '@/lib/actions/leads'
 import { getInteractions } from '@/lib/actions/interactions'
-import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction, getAgencyUsers } from '@/lib/actions/team'
+import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction, getAgencyUsers, type TeamMemberStats } from '@/lib/actions/team'
 import { getContentPieces } from '@/lib/actions/content'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -1112,8 +1112,10 @@ const ROLES = [
   { value: 'creador', label: 'Creador' },
 ]
 
+const EMPTY_STATS: TeamMemberStats = { agendas: 0, resueltas: 0, shows: 0, llamadas: 0, cerradas: 0 }
+
 function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }: { clientId: string; agencyUsers: AgencyUser[]; allClients: { id: string; name: string }[]; isAdmin: boolean; currentUserId?: string }) {
-  const [stats, setStats] = useState<Record<string, { agendas: number; shows: number; cerradas: number }>>({})
+  const [stats, setStats] = useState<Record<string, TeamMemberStats>>({})
   const [loading, setLoading] = useState(true)
   const [localUsers, setLocalUsers] = useState(agencyUsers)
   const [editing, setEditing] = useState<{ userId: string; field: 'full_name' | 'email' } | null>(null)
@@ -1272,9 +1274,14 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
                   .reduce((sum, u) => sum + (u.lead_weight ?? 1), 0)
 
                 return localUsers.map(user => {
-                const s = stats[user.full_name] ?? { agendas: 0, shows: 0, cerradas: 0 }
-                const showRate = s.agendas > 0 ? (s.shows / s.agendas) * 100 : 0
-                const closeRate = s.shows > 0 ? (s.cerradas / s.shows) * 100 : 0
+                // Por id, no por full_name: el cruce contra el texto libre de
+                // agenda_records lo resuelve getAgendaTeamStats normalizando.
+                const s = stats[user.id] ?? EMPTY_STATS
+                // null (no 0) cuando no hay denominador. Un 0.00% se lee como
+                // "lo hace pésimo"; lo correcto es decir que no aplica — a un
+                // setter que nunca cerró no se le pone un close rate.
+                const showRate = s.resueltas > 0 ? (s.shows / s.resueltas) * 100 : null
+                const closeRate = s.llamadas > 0 ? (s.cerradas / s.llamadas) * 100 : null
                 const badge = ROL_BADGE[user.role] ?? { label: user.role, color: 'bg-zinc-800 text-zinc-400 border border-zinc-700' }
                 const isSaving = saving === user.id
 
@@ -1396,18 +1403,32 @@ function EquipoTab({ clientId, agencyUsers, allClients, isAdmin, currentUserId }
                       </td>
                     )}
 
-                    <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.agendas}</td>
+                    <td
+                      className="px-3 py-3 text-sm font-mono text-zinc-200 text-center"
+                      title={s.agendas > s.resueltas ? `${s.agendas - s.resueltas} sin resultado todavía (pendientes, reagendadas o no calificadas)` : undefined}
+                    >
+                      {s.agendas}
+                      {s.agendas > s.resueltas && <span className="text-zinc-600"> ({s.resueltas})</span>}
+                    </td>
                     <td className="px-3 py-3 text-sm font-mono text-zinc-200 text-center">{s.shows}</td>
                     <td className="px-3 py-3 text-sm font-mono text-center font-semibold text-emerald-400">{s.cerradas}</td>
-                    <td className="px-3 py-3 text-sm font-mono text-center">
-                      <span className={showRate >= 60 ? 'text-emerald-400' : showRate >= 40 ? 'text-amber-400' : 'text-zinc-500'}>
-                        {s.agendas > 0 ? `${showRate.toFixed(2)}%` : '0.00%'}
-                      </span>
+                    <td className="px-3 py-3 text-sm font-mono text-center" title={showRate === null ? 'Sin agendas resueltas como setter' : `${s.shows} de ${s.resueltas} agendas resueltas`}>
+                      {showRate === null ? (
+                        <span className="text-zinc-700">—</span>
+                      ) : (
+                        <span className={showRate >= 60 ? 'text-emerald-400' : showRate >= 40 ? 'text-amber-400' : 'text-zinc-500'}>
+                          {showRate.toFixed(2)}%
+                        </span>
+                      )}
                     </td>
-                    <td className="px-3 py-3 text-sm font-mono text-center">
-                      <span className={closeRate >= 20 ? 'text-emerald-400' : closeRate >= 10 ? 'text-amber-400' : 'text-zinc-500'}>
-                        {s.shows > 0 ? `${closeRate.toFixed(2)}%` : '0.00%'}
-                      </span>
+                    <td className="px-3 py-3 text-sm font-mono text-center" title={closeRate === null ? 'No toma llamadas como closer' : `${s.cerradas} de ${s.llamadas} llamadas atendidas`}>
+                      {closeRate === null ? (
+                        <span className="text-zinc-700">—</span>
+                      ) : (
+                        <span className={closeRate >= 20 ? 'text-emerald-400' : closeRate >= 10 ? 'text-amber-400' : 'text-zinc-500'}>
+                          {closeRate.toFixed(2)}%
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-3 text-right pr-4">
                       {isAdmin && (

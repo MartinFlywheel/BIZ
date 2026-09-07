@@ -85,34 +85,110 @@ export async function createAssignmentAction(formData: FormData) {
   revalidatePath(`/clients/${clientId}`)
 }
 
-export async function getAgendaTeamStats(clientId: string): Promise<Record<string, { agendas: number; shows: number; cerradas: number }>> {
+export interface TeamMemberStats {
+  // Lado setter: lo que consiguió agendar.
+  agendas: number    // todas sus filas como setter, resueltas o no
+  resueltas: number  // las que ya tienen desenlace — el denominador del show rate
+  shows: number      // de esas, las que asistieron
+  // Lado closer: las llamadas que atendió.
+  llamadas: number   // agendas que ocurrieron con él como closer — denominador del close rate
+  cerradas: number   // de esas, las que cerró
+}
+
+// Una agenda Pendiente o Reagendada todavía no ocurrió, y una No Calificado se
+// descartó antes de la llamada: ninguna es show ni no-show. Antes entraban al
+// denominador del show rate como si fueran ausencias, así que hundían a quien
+// tuviera agendas recién puestas y favorecían a quien sólo tenía historial
+// viejo ya resuelto.
+const ESTADOS_RESUELTOS = new Set(['Show', 'No Show', 'No Cerrado', 'Cerrado'])
+// El lead se presentó. 'No Cerrado' y 'Cerrado' implican que la llamada pasó.
+const ESTADOS_ASISTIO = new Set(['Show', 'No Cerrado', 'Cerrado'])
+
+// agenda_records.setter y .closer son texto libre, escrito a mano. Sin
+// normalizar, un "magui" o un "Magui  Del Pazo" con doble espacio no le sumaba
+// a nadie: la fila se perdía en silencio.
+function normalizarNombre(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/s+/g, ' ')
+    .trim()
+}
+
+// PostgREST tipa todo join como arreglo aunque la relación sea a uno, y el
+// tipo generado no distingue el caso. Se acepta cualquiera de las dos formas y
+// se normaliza al leer, igual que en getAgendaGoalProgress.
+type FilaAgenda = {
+  closer: string | null
+  setter: string | null
+  estado: string | null
+  leads: { assigned_to: string | null } | { assigned_to: string | null }[] | null
+}
+
+/**
+ * Métricas por persona, separando los dos papeles que puede tener en una misma
+ * agenda.
+ *
+ * No se decide por el campo `role`: un admin baja a setear cuando hace falta, y
+ * un setter no cierra nunca. Quién hizo qué se lee de la fila — del campo
+ * `setter` sale el show rate, del campo `closer` sale el close rate — así que
+ * cada quien recibe sólo las métricas de los papeles que efectivamente ocupó.
+ */
+export async function getAgendaTeamStats(clientId: string): Promise<Record<string, TeamMemberStats>> {
   const supabase = await createClient()
-  const data = await fetchAllRows((from, to) =>
-    supabase
-      .from('agenda_records')
-      .select('closer, setter, estado')
-      .eq('client_id', clientId)
-      .range(from, to)
-  )
 
-  const stats: Record<string, { agendas: number; shows: number; cerradas: number }> = {}
+  const [roster, data] = await Promise.all([
+    getAgencyUsers(clientId),
+    fetchAllRows<FilaAgenda>((from, to) =>
+      supabase
+        .from('agenda_records')
+        .select('closer, setter, estado, leads(assigned_to)')
+        .eq('client_id', clientId)
+        .range(from, to) as unknown as PromiseLike<{ data: FilaAgenda[] | null; error: { message: string } | null }>
+    ),
+  ])
 
-  function bump(name: string | null | undefined, estado: string | null) {
-    const key = name?.trim()
-    if (!key) return
-    if (!stats[key]) stats[key] = { agendas: 0, shows: 0, cerradas: 0 }
-    stats[key].agendas++
-    if (estado === 'Show' || estado === 'No Cerrado' || estado === 'Cerrado') stats[key].shows++
-    if (estado === 'Cerrado') stats[key].cerradas++
+  const porNombre = new Map<string, string>()
+  for (const u of roster) porNombre.set(normalizarNombre(u.full_name), u.id)
+
+  const resolver = (nombre: string | null | undefined): string | null => {
+    const key = nombre?.trim()
+    return key ? porNombre.get(normalizarNombre(key)) ?? null : null
   }
 
-  // A setter's number is "leads they booked" and a closer's is "calls they
-  // took" — different roles on the same row, so both get credit for it
-  // (unless it's literally the same name in both fields, which would
-  // otherwise double-count one row as two agendas for that person).
+  const stats: Record<string, TeamMemberStats> = {}
+  function bucket(userId: string): TeamMemberStats {
+    if (!stats[userId]) stats[userId] = { agendas: 0, resueltas: 0, shows: 0, llamadas: 0, cerradas: 0 }
+    return stats[userId]
+  }
+
   for (const r of data) {
-    bump(r.setter, r.estado)
-    if (r.closer?.trim() && r.closer.trim() !== r.setter?.trim()) bump(r.closer, r.estado)
+    const resuelta = ESTADOS_RESUELTOS.has(r.estado ?? '')
+    const asistio = ESTADOS_ASISTIO.has(r.estado ?? '')
+
+    // El nombre manda sobre el FK: se escribe al agendar y es el registro
+    // histórico de quién consiguió ESA agenda. leads.assigned_to es el dueño
+    // actual del lead, que cambia si se reasigna, así que sólo entra como
+    // respaldo cuando el nombre viene vacío o no cruza con nadie del equipo.
+    const lead = Array.isArray(r.leads) ? r.leads[0] : r.leads
+    const setterId = resolver(r.setter) ?? lead?.assigned_to ?? null
+    if (setterId) {
+      const b = bucket(setterId)
+      b.agendas++
+      if (resuelta) b.resueltas++
+      if (asistio) b.shows++
+    }
+
+    // Al closer sólo se le cuentan las llamadas que ocurrieron: que el lead no
+    // se presente no es algo que él controle, y arrastrarlo a su denominador
+    // le cobraría el trabajo de agendamiento de otro.
+    const closerId = resolver(r.closer)
+    if (closerId && asistio) {
+      const b = bucket(closerId)
+      b.llamadas++
+      if (r.estado === 'Cerrado') b.cerradas++
+    }
   }
 
   return stats
