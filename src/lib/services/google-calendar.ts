@@ -142,7 +142,18 @@ export interface EventoGoogle {
   updated?: string
   start?: { dateTime?: string; date?: string; timeZone?: string }
   end?: { dateTime?: string; date?: string; timeZone?: string }
-  attendees?: { email: string; responseStatus?: string; organizer?: boolean }[]
+  attendees?: {
+    email: string
+    displayName?: string
+    responseStatus?: string
+    /** El dueño del evento: la cuenta del negocio, no el prospecto. */
+    organizer?: boolean
+    /** La propia cuenta que hace la consulta. */
+    self?: boolean
+    /** Salas y recursos, que no son personas. */
+    resource?: boolean
+  }[]
+  organizer?: { email?: string; displayName?: string; self?: boolean }
 }
 
 export interface ResultadoEventos {

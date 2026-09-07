@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarCambios, credencialesConfiguradas } from '@/lib/services/google-calendar'
-import { parsearEventoCalendly } from '@/lib/services/calendly-event'
+import { datosDeLaReserva } from '@/lib/services/agenda-sync'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -80,7 +80,7 @@ export async function GET(request: Request) {
       // Calendly, el calendario es el equivocado.
       const deCalendly = eventos
         .filter((e) => e.status !== 'cancelled')
-        .map((e) => ({ evento: e, datos: parsearEventoCalendly(e.description) }))
+        .map((e) => ({ evento: e, datos: datosDeLaReserva(e) }))
         .filter((x) => x.datos.calendlyUuid)
 
       resultados.push({
@@ -110,6 +110,16 @@ export async function GET(request: Request) {
           telefono: x.datos.telefono,
           tipoEvento: x.datos.tipoEvento,
           respuestas: x.datos.respuestas,
+          // El formato de la descripción lo decide Calendly y va cambiando.
+          // Con `?crudo=1` se ve el texto tal cual llega, que es la única forma
+          // de arreglar el parser sin adivinar cuando un campo sale en null.
+          ...(params.get('crudo')
+            ? {
+                titulo: x.evento.summary,
+                invitados: x.evento.attendees,
+                descripcionCruda: x.evento.description?.slice(0, 2000) ?? null,
+              }
+            : {}),
         })),
       })
     } catch (e) {

@@ -33,6 +33,35 @@ export interface ResumenSync {
 /** Cómo se encontró el lead. Queda guardado para poder auditar los cruces. */
 type MatchMetodo = 'instagram' | 'email' | 'nombre' | null
 
+/**
+ * Los datos de la reserva, juntando la descripción con el resto del evento.
+ *
+ * La descripción sola no alcanza: Calendly dejó de rotular "Invitee:" e
+ * "Invitee Email:" en el texto, y ahora el prospecto viaja como asistente del
+ * evento de Google. El formulario, en cambio, sigue viniendo en la
+ * descripción. Hay que leer las dos partes.
+ *
+ * El titulo lo escribe Calendly como "{invitado} and {anfitrion}", asi que
+ * sirve de respaldo para el nombre cuando el asistente no trae displayName.
+ */
+export function datosDeLaReserva(evento: EventoGoogle): EventoCalendly {
+  const datos = parsearEventoCalendly(evento.description)
+
+  // El prospecto es el asistente que no es el organizador ni la propia cuenta.
+  // Las salas y recursos se descartan: no son personas.
+  const invitado = (evento.attendees ?? []).find(
+    (a) => !a.organizer && !a.self && !a.resource && a.email
+  )
+
+  const nombreDelTitulo = evento.summary?.split(/\s+(?:and|y)\s+/i)[0]?.trim() || null
+
+  return {
+    ...datos,
+    nombre: datos.nombre ?? invitado?.displayName ?? nombreDelTitulo,
+    email: datos.email ?? invitado?.email?.toLowerCase() ?? null,
+  }
+}
+
 type Supabase = ReturnType<typeof createAdminClient>
 
 function esErrorDeMigracion(error: { code?: string } | null | undefined): boolean {
@@ -130,7 +159,7 @@ async function procesarEvento(
     return
   }
 
-  const datos = parsearEventoCalendly(evento.description)
+  const datos = datosDeLaReserva(evento)
 
   // Sin UUID de Calendly no es una reserva, es otra cosa que hay en la agenda.
   if (!datos.calendlyUuid) {
