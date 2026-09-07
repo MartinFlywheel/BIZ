@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
+import { TriagePopup } from './triage-popup'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import { SeguimientosTab } from './seguimientos-tab'
@@ -1830,6 +1831,10 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
       {activeSubTab === 'tareas' && (
         <TasksPanel clientId={clientId} isAdmin={isAdmin} currentUserId={currentUserId} />
       )}
+      {/* Fuera de las pestañas: una agenda sin revisar hay que verla se esté
+          donde se esté, no solo si a alguien se le ocurre abrir "agendas". */}
+      <TriagePopup clientId={clientId} />
+
       {activeSubTab === 'equipo' && (
         <EquipoTab clientId={clientId} agencyUsers={agencyUsers} allClients={allClients} isAdmin={isAdmin} currentUserId={currentUserId} />
       )}
