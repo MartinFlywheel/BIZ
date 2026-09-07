@@ -58,6 +58,19 @@ export function TriagePopup({ clientId }: { clientId: string }) {
     return () => { vigente = false }
   }, [clientId, recarga])
 
+  // El popup vive fuera de las pestañas y no se entera de lo que pasa en ellas:
+  // borrar la agenda desde la planilla lo dejaba mostrando una tarea que ya no
+  // existía. Se vuelve a consultar al volver a la ventana y cada pocos minutos.
+  useEffect(() => {
+    const refrescar = () => setRecarga(n => n + 1)
+    const cada = setInterval(refrescar, 180_000)
+    window.addEventListener('focus', refrescar)
+    return () => {
+      clearInterval(cada)
+      window.removeEventListener('focus', refrescar)
+    }
+  }, [])
+
   const siguiente = useCallback(() => {
     setUsuario('')
     setAviso(null)

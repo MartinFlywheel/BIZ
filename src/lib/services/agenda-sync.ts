@@ -56,6 +56,14 @@ interface ContextoCliente {
    * correo, y el cruce con Fathom queda para cuando la migración se corra.
    */
   emailDisponible: boolean
+  /** Si existe agenda_records.cancelada_at (migración 055). */
+  canceladasDisponible: boolean
+  /**
+   * Eventos cuya agenda alguien borró a mano. Volver a crearlos convertiría el
+   * borrado en algo que se deshace solo a los diez minutos, que es lo que
+   * pasaba antes de la 055.
+   */
+  ignorados: Set<string>
 }
 
 /** Cómo se encontró el lead. Queda guardado para poder auditar los cruces. */
@@ -225,8 +233,32 @@ async function procesarEvento(
       ? existente.comentarios
       : [existente.comentarios, nota].filter(Boolean).join(' ')
 
-    await supabase.from('agenda_records').update({ comentarios }).eq('id', existente.id)
+    // La fila no se borra: una llamada caída cuenta para el show rate, y
+    // borrarla haría que las métricas mientan hacia arriba.
+    await supabase
+      .from('agenda_records')
+      .update(
+        ctx.canceladasDisponible
+          ? { comentarios, cancelada_at: new Date().toISOString() }
+          : { comentarios }
+      )
+      .eq('id', existente.id)
+
+    // Y se cierra el triaje: no tiene sentido seguir pidiendo el Instagram de
+    // una llamada que ya no va a ocurrir.
+    await supabase
+      .from('system_tasks')
+      .update({ estado: 'descartada' })
+      .eq('agenda_record_id', existente.id)
+      .eq('estado', 'pendiente')
+
     resumen.canceladas++
+    return
+  }
+
+  // Alguien borró esta agenda a propósito. Se respeta.
+  if (!existente && ctx.ignorados.has(evento.id)) {
+    resumen.ignoradas++
     return
   }
 
@@ -349,7 +381,9 @@ export async function sincronizarCliente(
   syncToken: string | null,
   notetakerEmail: string | null = null,
   notetakerDisponible = false,
-  emailDisponible = false
+  emailDisponible = false,
+  canceladasDisponible = false,
+  ignorados: Set<string> = new Set()
 ): Promise<ResumenSync> {
   const supabase = createAdminClient()
   const resumen: ResumenSync = {
@@ -368,6 +402,8 @@ export async function sincronizarCliente(
     notetakerEmail,
     notetakerDisponible,
     emailDisponible,
+    canceladasDisponible,
+    ignorados,
   }
 
   try {
@@ -454,10 +490,30 @@ export async function sincronizarAgendas(): Promise<{
     clientes = conNotetaker.data ?? []
   }
 
-  // Una consulta barata para saber si la 052 ya se corrió. Sale más simple que
-  // intentar el insert y reintentar sin la columna cuando falla.
+  // Consultas baratas para saber que migraciones ya se corrieron. Sale mas
+  // simple que intentar cada escritura y reintentar sin la columna al fallar.
   const sonda = await supabase.from('agenda_records').select('email_lead').limit(1)
   const emailDisponible = !esErrorDeMigracion(sonda.error)
+
+  const sondaCancel = await supabase.from('agenda_records').select('cancelada_at').limit(1)
+  const canceladasDisponible = !esErrorDeMigracion(sondaCancel.error)
+
+  // Las lápidas de todos los clientes de una vez: son pocas y se reparten
+  // después, en vez de una consulta por cliente.
+  const ignoradosPorCliente = new Map<string, Set<string>>()
+  const { data: lapidas, error: errorLapidas } = await supabase
+    .from('agenda_eventos_ignorados')
+    .select('client_id, google_event_id')
+
+  // Sin la 055 la tabla no existe y no hay nada que ignorar. El sync sigue
+  // igual, solo que borrar a mano vuelve a ser reversible por el sync.
+  if (!errorLapidas) {
+    for (const l of lapidas ?? []) {
+      const set = ignoradosPorCliente.get(l.client_id as string) ?? new Set<string>()
+      set.add(l.google_event_id as string)
+      ignoradosPorCliente.set(l.client_id as string, set)
+    }
+  }
 
   const resultados: ResumenSync[] = []
   for (const c of clientes) {
@@ -469,7 +525,9 @@ export async function sincronizarAgendas(): Promise<{
         c.google_calendar_sync_token,
         c.notetaker_email,
         notetakerDisponible,
-        emailDisponible
+        emailDisponible,
+        canceladasDisponible,
+        ignoradosPorCliente.get(c.id) ?? new Set<string>()
       )
     )
   }
