@@ -80,3 +80,35 @@ COMMENT ON COLUMN clients.google_calendar_id IS
   'Calendario de Google que Calendly llena para este cliente. Normalmente el correo de la cuenta. NULL = módulo apagado para este cliente.';
 COMMENT ON COLUMN clients.google_calendar_sync_token IS
   'syncToken de la API de Calendar para pedir sólo lo que cambió desde la última vuelta, en vez de releer el calendario entero cada vez.';
+COMMENT ON COLUMN agenda_records.match_metodo IS
+  'Como se asocio el lead: instagram, email o nombre. Las de "nombre" son las dudosas y valen la pena revisar.';
+
+-- ── Ultimo paso, a correr aparte ────────────────────────────────────────────
+-- Esta migracion solo crea columnas. El cron que efectivamente lee el
+-- calendario se agenda con pg_cron (ver 037-pg-cron-scheduler.sql), y va
+-- SUELTO a proposito: agendar aqui significaria que el job empieza a correr
+-- antes de que existan GOOGLE_SA_EMAIL y GOOGLE_SA_PRIVATE_KEY en Vercel, y
+-- cada vuelta seria una respuesta inutil en net._http_response.
+--
+-- Correr recien cuando (1) las variables esten en Vercel, (2) haya un deploy
+-- posterior a haberlas guardado, y (3) clients.google_calendar_id tenga valor:
+--
+--   SELECT cron.schedule(
+--     'sync-agendas',
+--     '*/10 * * * *',
+--     $cmd$ SELECT private.call_cron_endpoint('/api/cron/sync-agendas') $cmd$
+--   );
+--
+-- Cada 10 minutos y no cada minuto porque la agenda la reserva una persona:
+-- diez minutos de atraso no le cambian la vida a nadie, y asi el job gasta
+-- ~4.300 llamadas al mes en vez de 43.000.
+--
+-- Para comprobar que quedo andando:
+--   SELECT jobid, status, return_message, start_time
+--   FROM cron.job_run_details WHERE jobid = (
+--     SELECT jobid FROM cron.job WHERE jobname = 'sync-agendas'
+--   ) ORDER BY start_time DESC LIMIT 5;
+--
+-- Y que efectivamente trajo algo:
+--   SELECT summary, created_at FROM cron_runs
+--   WHERE job_name = 'sync-agendas' ORDER BY created_at DESC LIMIT 5;
