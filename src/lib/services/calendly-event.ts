@@ -66,6 +66,14 @@ const PREGUNTA_TELEFONO = /tel[eé]fono|celular|whatsapp|phone|m[oó]vil/i
 const ENCABEZADOS = new Set(['questions', 'preguntas'])
 
 /**
+ * Todas las etiquetas de campo conocidas, ya normalizadas. Solo estas se
+ * aceptan como etiqueta cuando la línea no trae dos puntos.
+ */
+const ETIQUETAS_CONOCIDAS = new Set(
+  Object.values(ETIQUETAS).flat().map(normalizarEtiqueta)
+)
+
+/**
  * HTML de Google → texto plano con saltos de línea reales.
  *
  * Se hace a mano y no con un parser de HTML porque esto corre en el servidor
@@ -166,7 +174,21 @@ export function parsearEventoCalendly(descripcion: string | null | undefined): E
     const linea = lineas[i]
     // Las URLs traen "https://" y partirían mal por el primer ":".
     const corte = linea.indexOf(':')
-    if (corte <= 0) continue
+
+    // Calendly escribe "Event Name" sin dos puntos, con el valor en la línea
+    // siguiente. Una línea sin ":" solo se acepta como etiqueta si coincide
+    // exactamente con un campo conocido; si no, es texto suelto de la
+    // descripción y tomar la línea de abajo inventaría datos.
+    if (corte <= 0) {
+      const sola = normalizarEtiqueta(linea)
+      if (!ETIQUETAS_CONOCIDAS.has(sola)) continue
+      const siguiente = lineas[i + 1]
+      if (!siguiente) continue
+      if (!campos.has(sola)) campos.set(sola, siguiente)
+      consumidas.add(i + 1)
+      continue
+    }
+
     const etiqueta = normalizarEtiqueta(linea.slice(0, corte))
     if (!etiqueta) continue
 
