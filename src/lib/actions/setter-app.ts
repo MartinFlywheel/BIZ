@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getAgencyUsers } from './team'
 import type { LeadStage } from '@/lib/types'
@@ -261,8 +262,17 @@ const DEFAULT_GOALS: SetterGoals = {
 // (supabase/029-setter-daily-agenda-goal.sql) — same 42703 pattern as
 // users.lead_weight earlier in this project.
 export async function getSetterGoals(userId: string, clientId: string): Promise<SetterGoals> {
-  const supabase = await createClient()
+  return fetchSetterGoals(await createClient(), userId, clientId)
+}
 
+// La versión interna reusa el cliente de quien llama. getCycleProgress corre
+// varias veces por pantalla y cada createClient() abre su propia conexión: en
+// el plan free de Supabase el pool es chico y eso se nota.
+async function fetchSetterGoals(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  clientId: string
+): Promise<SetterGoals> {
   async function query(withDailyGoal: boolean) {
     const cols = `min_leads_touched, min_followups_per_stage, min_agendas_week, min_agendas_month, min_booking_rate${withDailyGoal ? ', min_agendas_day' : ''}`
     return supabase
@@ -357,9 +367,56 @@ async function getCycleStart(
 export async function getCycleProgress(userId: string, clientId: string): Promise<CycleProgress> {
   const supabase = await createClient()
   const [goals, cycleStartedAt] = await Promise.all([
-    getSetterGoals(userId, clientId),
+    fetchSetterGoals(supabase, userId, clientId),
     getCycleStart(supabase, userId),
   ])
+
+  const cicloVacio = (needsReport: boolean): CycleProgress => ({
+    cycleStartedAt,
+    leadsTouched: 0,
+    agendasSet: 0,
+    followupsByStage: TRACKED_FOLLOWUP_STAGES.map(({ stage, label }) => ({ stage, label, count: 0 })),
+    goals,
+    needsReport,
+  })
+
+  // Los tres conteos en una sola consulta, en vez de traer TODAS las filas del
+  // ciclo a Node para contarlas en memoria. Ver supabase/048-setter-cycle-progress.sql:
+  // además del costo (esto corría hasta cinco veces por envío de reporte), el
+  // SELECT suelto se topaba con el corte de 1000 filas de PostgREST y devolvía
+  // conteos truncados sin avisar en cuanto un ciclo se hacía largo.
+  const rpc = await supabase.rpc('setter_cycle_progress', {
+    p_user_id: userId,
+    p_client_id: clientId,
+    p_cycle_start: cycleStartedAt,
+    p_max_followups_per_lead: MAX_FOLLOWUPS_PER_LEAD_STAGE,
+  })
+
+  if (!rpc.error && Array.isArray(rpc.data) && rpc.data.length > 0) {
+    const fila = rpc.data[0] as {
+      leads_touched: number; agendas_set: number; followups: Record<string, number> | null
+    }
+    const porEtapa = fila.followups ?? {}
+    const leadsTouched = Number(fila.leads_touched) || 0
+    return {
+      cycleStartedAt,
+      leadsTouched,
+      agendasSet: Number(fila.agendas_set) || 0,
+      followupsByStage: TRACKED_FOLLOWUP_STAGES.map(({ stage, label }) => ({
+        stage,
+        label,
+        count: Number(porEtapa[stage]) || 0,
+      })),
+      goals,
+      needsReport: leadsTouched >= goals.minLeadsTouched,
+    }
+  }
+
+  // 42P01 viniendo de la función = las tablas de 028 no existen todavía; abajo
+  // se explica por qué eso no debe tumbar la app. Cualquier otro error (típico:
+  // la función de 048 sin crear) cae a la consulta de siempre.
+  if (rpc.error && (rpc.error as { code?: string }).code === '42P01') return cicloVacio(false)
+  console.warn('[setter-app] setter_cycle_progress no disponible, usando la consulta suelta:', rpc.error?.message)
 
   const { data, error } = await supabase
     .from('lead_activity_logs')
@@ -373,16 +430,7 @@ export async function getCycleProgress(userId: string, clientId: string): Promis
   // cycle instead of taking down the whole setter-app (leads list, agendas)
   // for every setter until someone runs it.
   if (error) {
-    if ((error as { code?: string }).code === '42P01') {
-      return {
-        cycleStartedAt,
-        leadsTouched: 0,
-        agendasSet: 0,
-        followupsByStage: TRACKED_FOLLOWUP_STAGES.map(({ stage, label }) => ({ stage, label, count: 0 })),
-        goals,
-        needsReport: false,
-      }
-    }
+    if ((error as { code?: string }).code === '42P01') return cicloVacio(false)
     throw error
   }
 
@@ -481,6 +529,20 @@ export async function submitDailyReport(userId: string, clientId: string, input:
   const progress = await getCycleProgress(userId, clientId)
   const followupsTotal = progress.followupsByStage.reduce((sum, f) => sum + f.count, 0)
 
+  // Un reporte con los tres contadores en cero nunca es legítimo: para que la
+  // app pida el reporte, el setter tuvo que cruzar min_leads_touched (100 por
+  // defecto). El 0/0/0 aparece cuando reenvía el reporte y el primero ya
+  // reinició el ciclo — getCycleStart toma el submitted_at del último reporte,
+  // así que la ventana del segundo mide unos minutos vacíos.
+  //
+  // Se corta acá y se devuelve éxito en vez de error: el reporte del setter SÍ
+  // quedó guardado, sólo que en el envío anterior. Mostrarle un error por algo
+  // que funcionó es justo lo que lo lleva a reenviarlo una tercera vez.
+  if (progress.leadsTouched === 0 && progress.agendasSet === 0 && followupsTotal === 0) {
+    revalidatePath('/setter-app')
+    return
+  }
+
   const { error } = await supabase.from('daily_setter_reports').insert({
     user_id: userId,
     client_id: clientId,
@@ -492,7 +554,17 @@ export async function submitDailyReport(userId: string, clientId: string, input:
     common_objections: input.commonObjections || null,
     marketing_feedback: input.marketingFeedback || null,
   })
-  if (error) throw error
+
+  // 23505 = unique_violation contra daily_setter_reports_user_cycle_uniq
+  // (supabase/048): dos envíos simultáneos alcanzaron a leer el mismo
+  // cycle_started_at antes de que el primero se guardara. El reporte ya está
+  // en la tabla; no hay nada que reportar como error.
+  if (error && (error as { code?: string }).code !== '23505') throw error
+
+  // Sin esto, la lista de leads y el contador de progreso salen del caché con
+  // los datos de antes del reporte. Antes lo forzaba un router.refresh() en el
+  // cliente, que re-renderizaba /setter-app entero una segunda vez.
+  revalidatePath('/setter-app')
 }
 
 export interface DailyReportRow {

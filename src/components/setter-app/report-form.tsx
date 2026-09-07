@@ -15,6 +15,7 @@ export function ReportForm({ userId, clientId, progress }: Props) {
   const [commonObjections, setCommonObjections] = useState('')
   const [marketingFeedback, setMarketingFeedback] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
@@ -24,8 +25,14 @@ export function ReportForm({ userId, clientId, progress }: Props) {
     setError(null)
     try {
       await submitDailyReport(userId, clientId, { commonObjections, marketingFeedback })
-      router.push('/setter-app')
-      router.refresh()
+      // El reporte ya está guardado acá. Se confirma antes de navegar porque
+      // router.push tarda: /setter-app se renderiza en el servidor y durante
+      // esos segundos la pantalla no cambiaba de "Enviando...". Un setter lo
+      // leyó como que se había colgado, recargó y envió el reporte dos veces.
+      setSent(true)
+      // Sin router.refresh(): el server action ya hace revalidatePath, y
+      // llamarlo acá volvía a renderizar /setter-app entero una segunda vez.
+      router.push('/setter-app?reporte=enviado')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo enviar el reporte — intenta de nuevo')
       setSubmitting(false)
@@ -81,7 +88,7 @@ export function ReportForm({ userId, clientId, progress }: Props) {
       )}
 
       <Button type="submit" disabled={submitting} className="w-full">
-        {submitting ? 'Enviando...' : 'Enviar reporte y continuar'}
+        {sent ? '✓ Reporte enviado — abriendo tus leads...' : submitting ? 'Enviando...' : 'Enviar reporte y continuar'}
       </Button>
     </form>
   )

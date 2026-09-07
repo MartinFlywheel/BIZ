@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 import { getSetterContext, getMyActiveLeads, getMyClientOptions, getCycleProgress } from '@/lib/actions/setter-app'
 import { LeadList } from '@/components/setter-app/lead-list'
+import { ReportSentBanner } from '@/components/setter-app/report-sent-banner'
 
 export default async function SetterAppPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string }>
+  searchParams: Promise<{ client?: string; reporte?: string }>
 }) {
-  const { client: requestedClientId } = await searchParams
+  const { client: requestedClientId, reporte } = await searchParams
   const context = await getSetterContext(requestedClientId)
 
   if (!context) {
@@ -66,16 +67,19 @@ export default async function SetterAppPage({
   // Blocking daily report — a setter who's crossed their touch quota gets
   // bounced here before they can do anything else. Admins have no personal
   // quota, so they're exempt.
-  if (!context.isAdmin) {
-    const progress = await getCycleProgress(context.userId, context.clientId)
-    if (progress.needsReport) redirect('/setter-app/report')
-  }
+  //
+  // Un solo cálculo para las dos cosas: el corte de arriba y el "x/100 tocados"
+  // del encabezado. Antes eran dos llamadas idénticas en el mismo render, y
+  // cada una recorría todo el log de actividad del ciclo.
+  const progress = context.isAdmin ? null : await getCycleProgress(context.userId, context.clientId)
+  if (progress?.needsReport) redirect('/setter-app/report')
 
   const { leads, hasMore } = await getMyActiveLeads(context.clientId, setterId, 0)
-  const progress = context.isAdmin ? null : await getCycleProgress(context.userId, context.clientId)
 
   return (
     <div className="pt-5">
+      {/* Lo pone ReportForm al redirigir tras enviar; el banner se saca solo de la URL. */}
+      {reporte === 'enviado' && <ReportSentBanner />}
       <div className="px-4 pb-4">
         <p className="text-xs uppercase tracking-wider text-zinc-500">{context.clientName ?? 'Mis leads'}</p>
         <h1 className="pr-12 text-xl font-semibold text-white">
