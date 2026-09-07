@@ -1,7 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { normalizarInstagram } from '@/lib/services/calendly-event'
+import { pickBalancedSetter } from '@/lib/manychat'
 
 /**
  * El triaje de las agendas nuevas.
@@ -33,6 +36,8 @@ export interface TareaTriaje {
   emailLead: string | null
   /** Si la agenda ya tiene lead asociado. Es lo que hay que revisar. */
   tieneLead: boolean
+  /** Usuario de Instagram ya guardado en la agenda, si lo hay. */
+  instagram: string | null
 }
 
 /**
@@ -46,7 +51,7 @@ export async function getTareasDeTriaje(clientId: string): Promise<TareaTriaje[]
 
   const { data, error } = await supabase
     .from('system_tasks')
-    .select('id, client_id, agenda_record_id, vence_at, pospuesta_veces, agenda_records(nombre_lead, hora_agenda, email_lead, lead_id)')
+    .select('id, client_id, agenda_record_id, vence_at, pospuesta_veces, agenda_records(nombre_lead, hora_agenda, email_lead, lead_id, link_perfil)')
     .eq('client_id', clientId)
     .eq('tipo', 'triaje_agenda')
     .eq('estado', 'pendiente')
@@ -66,7 +71,13 @@ export async function getTareasDeTriaje(clientId: string): Promise<TareaTriaje[]
     // El join viene como objeto o como arreglo de uno según la relación.
     const bruto = (t as { agenda_records?: unknown }).agenda_records
     const agenda = (Array.isArray(bruto) ? bruto[0] : bruto) as
-      | { nombre_lead?: string | null; hora_agenda?: string | null; email_lead?: string | null; lead_id?: string | null }
+      | {
+          nombre_lead?: string | null
+          hora_agenda?: string | null
+          email_lead?: string | null
+          lead_id?: string | null
+          link_perfil?: string | null
+        }
       | undefined
 
     return {
@@ -79,6 +90,7 @@ export async function getTareasDeTriaje(clientId: string): Promise<TareaTriaje[]
       horaAgenda: agenda?.hora_agenda ?? null,
       emailLead: agenda?.email_lead ?? null,
       tieneLead: !!agenda?.lead_id,
+      instagram: normalizarInstagram(agenda?.link_perfil),
     }
   })
 }
@@ -129,5 +141,133 @@ export async function posponerTriaje(taskId: string, horas = 2): Promise<void> {
     .eq('id', taskId)
 
   if (error && !faltaMigracion(error)) throw error
+  revalidatePath('/clients')
+}
+
+/**
+ * Resultado de intentar resolver el triaje con un usuario de Instagram.
+ *
+ * `sin_lead` no es un error: es el caso normal cuando la persona reservo sin
+ * haber pasado antes por el CRM, y lo que sigue es ofrecer crear el lead.
+ */
+export type ResultadoInstagram =
+  | { estado: 'asociado'; leadId: string; nombreLead: string | null }
+  | { estado: 'sin_lead'; instagram: string }
+  | { estado: 'invalido' }
+
+/**
+ * Asocia la agenda al lead que tenga ese usuario de Instagram.
+ *
+ * Es el trabajo que el triaje le exige al setter: sin el usuario de Instagram
+ * la agenda no se puede atribuir a nadie, y toda la medicion de que contenido
+ * trajo esa llamada se pierde. Por eso el popup no deja cerrar sin esto.
+ *
+ * El usuario se normaliza antes de comparar: la gente escribe "@juan", "juan" o
+ * la URL completa, y las tres tienen que encontrar al mismo lead.
+ */
+export async function asociarPorInstagram(
+  taskId: string,
+  agendaId: string,
+  clientId: string,
+  usuario: string
+): Promise<ResultadoInstagram> {
+  const ig = normalizarInstagram(usuario)
+  if (!ig) return { estado: 'invalido' }
+
+  const supabase = await createClient()
+
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .select('id, full_name')
+    .eq('client_id', clientId)
+    .ilike('ig_username', ig)
+    .limit(1)
+    .maybeSingle()
+
+  if (error && !faltaMigracion(error)) throw error
+  if (!lead) return { estado: 'sin_lead', instagram: ig }
+
+  await asociarYCerrar(taskId, agendaId, lead.id, ig)
+  return { estado: 'asociado', leadId: lead.id, nombreLead: lead.full_name }
+}
+
+/**
+ * Crea el lead con ese Instagram y lo asocia a la agenda.
+ *
+ * Se usa cuando la persona reservo sin haber pasado nunca por el CRM. El nombre
+ * y el correo salen de lo que escribio en Calendly, asi que el lead nace con
+ * datos reales en vez de solo un usuario suelto.
+ *
+ * El setter asignado sale del mismo reparto balanceado que usan los webhooks de
+ * ManyChat: un lead sin duenio se queda sin seguimiento, y crear leads por una
+ * via que se salte esa asignacion es como se producen esos huecos.
+ */
+export async function crearLeadYAsociar(
+  taskId: string,
+  agendaId: string,
+  clientId: string,
+  usuario: string,
+  nombre: string | null,
+  email: string | null
+): Promise<{ leadId: string }> {
+  const ig = normalizarInstagram(usuario)
+  if (!ig) throw new Error('El usuario de Instagram no es válido')
+
+  const supabase = await createClient()
+  const admin = createAdminClient()
+
+  const { data: lead, error } = await supabase
+    .from('leads')
+    .insert({
+      client_id: clientId,
+      ig_username: ig,
+      full_name: nombre,
+      email,
+      stage: 'agenda_set',
+      assigned_to: await pickBalancedSetter(admin, clientId),
+    })
+    .select('id')
+    .single()
+
+  if (error) throw error
+
+  await asociarYCerrar(taskId, agendaId, lead.id, ig)
+  revalidatePath('/leads')
+  return { leadId: lead.id }
+}
+
+/**
+ * Deja la agenda apuntando al lead y cierra el triaje.
+ *
+ * El perfil se guarda tambien en la agenda y no solo en el lead: la planilla de
+ * agendas se lee sola, sin abrir cada lead, y ahi es donde el setter mira.
+ */
+async function asociarYCerrar(
+  taskId: string,
+  agendaId: string,
+  leadId: string,
+  ig: string
+): Promise<void> {
+  const supabase = await createClient()
+  const { data: sesion } = await supabase.auth.getUser()
+
+  const { error } = await supabase
+    .from('agenda_records')
+    .update({ lead_id: leadId, link_perfil: `https://instagram.com/${ig}` })
+    .eq('id', agendaId)
+
+  if (error) throw error
+
+  const { error: errorTarea } = await supabase
+    .from('system_tasks')
+    .update({
+      estado: 'hecha',
+      completada_at: new Date().toISOString(),
+      completada_por: sesion.user?.id ?? null,
+    })
+    .eq('id', taskId)
+
+  if (errorTarea && !faltaMigracion(errorTarea)) throw errorTarea
+
   revalidatePath('/clients')
 }
