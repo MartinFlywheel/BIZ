@@ -50,6 +50,12 @@ interface ContextoCliente {
    * esperando una migración.
    */
   notetakerDisponible: boolean
+  /**
+   * Si existe agenda_records.email_lead (migración 052). Mismo criterio que
+   * arriba: sin esa columna el sync sigue creando agendas, solo que sin el
+   * correo, y el cruce con Fathom queda para cuando la migración se corra.
+   */
+  emailDisponible: boolean
 }
 
 /** Cómo se encontró el lead. Queda guardado para poder auditar los cruces. */
@@ -268,6 +274,9 @@ async function procesarEvento(
     google_event_id: evento.id,
     calendly_uuid: datos.calendlyUuid,
     nombre_lead: datos.nombre,
+    // Se guarda aunque ya se haya usado para buscar el lead: es lo que después
+    // permite cruzar la grabación de Fathom con esta agenda.
+    ...(ctx.emailDisponible ? { email_lead: datos.email } : {}),
     link_perfil: datos.instagram ? `https://instagram.com/${datos.instagram}` : null,
     hora_agenda: inicio,
     fecha_agenda: inicio ? inicio.split('T')[0] : null,
@@ -339,7 +348,8 @@ export async function sincronizarCliente(
   calendarId: string,
   syncToken: string | null,
   notetakerEmail: string | null = null,
-  notetakerDisponible = false
+  notetakerDisponible = false,
+  emailDisponible = false
 ): Promise<ResumenSync> {
   const supabase = createAdminClient()
   const resumen: ResumenSync = {
@@ -352,7 +362,13 @@ export async function sincronizarCliente(
     notetakerInvitada: 0,
     error: null,
   }
-  const ctx: ContextoCliente = { clientId, calendarId, notetakerEmail, notetakerDisponible }
+  const ctx: ContextoCliente = {
+    clientId,
+    calendarId,
+    notetakerEmail,
+    notetakerDisponible,
+    emailDisponible,
+  }
 
   try {
     let resultado = await listarCambios(calendarId, syncToken)
@@ -438,6 +454,11 @@ export async function sincronizarAgendas(): Promise<{
     clientes = conNotetaker.data ?? []
   }
 
+  // Una consulta barata para saber si la 052 ya se corrió. Sale más simple que
+  // intentar el insert y reintentar sin la columna cuando falla.
+  const sonda = await supabase.from('agenda_records').select('email_lead').limit(1)
+  const emailDisponible = !esErrorDeMigracion(sonda.error)
+
   const resultados: ResumenSync[] = []
   for (const c of clientes) {
     resultados.push(
@@ -447,7 +468,8 @@ export async function sincronizarAgendas(): Promise<{
         c.google_calendar_id as string,
         c.google_calendar_sync_token,
         c.notetaker_email,
-        notetakerDisponible
+        notetakerDisponible,
+        emailDisponible
       )
     )
   }
