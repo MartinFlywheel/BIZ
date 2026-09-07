@@ -136,6 +136,73 @@ function Field({ label, children, full }: { label: string; children: React.React
     </div>
   )
 }
+/**
+ * Lo que trajo el sync automático: el formulario de Calendly y el resumen de
+ * Fathom.
+ *
+ * Va aparte de los campos editables y en solo lectura a propósito. Esto no lo
+ * escribió nadie del equipo: lo contestó el prospecto al reservar o lo generó
+ * Fathom, y si alguien lo edita el próximo sync lo pisa igual. Mostrarlo como
+ * un input haría creer que se puede corregir.
+ *
+ * No se renderiza nada si la agenda no tiene ninguno de los dos, que es el caso
+ * de todas las cargadas a mano.
+ */
+function DatosDelSync({ record }: { record: AgendaRecord }) {
+  const respuestas = Object.entries(record.respuestas_formulario ?? {})
+  const resumen = record.fathom_resumen
+  if (respuestas.length === 0 && !resumen) return null
+
+  const hora = record.hora_agenda
+    ? new Date(record.hora_agenda).toLocaleString('es-CL', {
+        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      })
+    : null
+
+  return (
+    <>
+      <SectionHead>Lo que trajo la reserva</SectionHead>
+
+      {(hora || record.email_lead) && (
+        <div className="col-span-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-zinc-500">
+          {hora && <span>Agendada para <span className="text-zinc-300 font-mono">{hora}</span></span>}
+          {record.email_lead && (
+            <span>Reservó con <span className="text-zinc-300">{record.email_lead}</span></span>
+          )}
+          {record.match_metodo && (
+            <span>Lead asociado por <span className="text-zinc-300">{record.match_metodo}</span></span>
+          )}
+        </div>
+      )}
+
+      {respuestas.length > 0 && (
+        <div className="col-span-2 space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+          {respuestas.map(([pregunta, respuesta]) => (
+            <div key={pregunta}>
+              <p className="text-[11px] uppercase tracking-wide text-zinc-600">{pregunta}</p>
+              <p className="text-sm text-zinc-200 whitespace-pre-wrap break-words">{respuesta}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {resumen && (
+        <div className="col-span-2">
+          <p className="mb-1.5 text-[11px] uppercase tracking-wide text-zinc-600">
+            Resumen de la llamada (Fathom)
+          </p>
+          {/* El resumen viene en markdown. Se muestra tal cual, respetando los
+              saltos de línea, en vez de traer un renderizador de markdown solo
+              para esto: son listas y títulos simples y se leen bien así. */}
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap break-words">
+            {resumen}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
     <div className="col-span-2 pt-1">
@@ -240,6 +307,8 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
         <SectionHead>Llamada</SectionHead>
         <LinkField label="Link a la reunión" field="link_reunion" />
         <LinkField label="Link al reporte" field="link_reporte" />
+
+        <DatosDelSync record={local} />
 
         <SectionHead>Resultado</SectionHead>
         <Field label="Facturación actual del lead">

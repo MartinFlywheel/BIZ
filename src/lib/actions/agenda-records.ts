@@ -35,6 +35,21 @@ export interface AgendaRecord {
   comentarios: string | null
   created_at: string
   updated_at: string
+  // ── Lo que llena solo el sync con Google Calendar y Fathom ────────────────
+  // Todo opcional: las agendas cargadas a mano antes de que existiera el sync
+  // no tienen nada de esto, y las migraciones 049 y 052 pueden no haberse
+  // corrido todavía en algún entorno.
+  /** Hora exacta de la llamada. fecha_agenda solo guarda el día. */
+  hora_agenda?: string | null
+  /** Correo con el que la persona reservó en Calendly. */
+  email_lead?: string | null
+  /** Respuestas del formulario de Calendly, tal como vinieron. */
+  respuestas_formulario?: Record<string, string> | null
+  /** Cómo se asoció el lead: instagram, email o nombre. */
+  match_metodo?: string | null
+  /** Resumen en markdown que genera Fathom. */
+  fathom_resumen?: string | null
+  fathom_recording_id?: string | null
 }
 
 export type AgendaRecordFields = Partial<Omit<AgendaRecord, 'id' | 'client_id' | 'created_at' | 'updated_at'>>
