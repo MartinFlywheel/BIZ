@@ -24,9 +24,10 @@ export async function GET(request: Request) {
       actualizadas: acc.actualizadas + r.actualizadas,
       canceladas: acc.canceladas + r.canceladas,
       sinLead: acc.sinLead + r.sinLead,
+      notetakerInvitada: acc.notetakerInvitada + r.notetakerInvitada,
       conError: acc.conError + (r.error ? 1 : 0),
     }),
-    { creadas: 0, actualizadas: 0, canceladas: 0, sinLead: 0, conError: 0 }
+    { creadas: 0, actualizadas: 0, canceladas: 0, sinLead: 0, notetakerInvitada: 0, conError: 0 }
   )
 
   await logCronRun('sync-agendas', {

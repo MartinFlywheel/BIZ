@@ -1,6 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parsearEventoCalendly, type EventoCalendly } from './calendly-event'
-import { listarCambios, credencialesConfiguradas, type EventoGoogle } from './google-calendar'
+import {
+  listarCambios,
+  invitarAEvento,
+  credencialesConfiguradas,
+  type EventoGoogle,
+} from './google-calendar'
 
 /**
  * Trae las reservas de Calendly al CRM leyendo Google Calendar.
@@ -27,7 +32,24 @@ export interface ResumenSync {
   ignoradas: number
   /** Agendas creadas sin lead asociado: son las que el setter debe triar. */
   sinLead: number
+  /** Eventos a los que se agregó la notetaker como invitada. */
+  notetakerInvitada: number
   error: string | null
+}
+
+/** Lo que el sync necesita saber del cliente para procesar sus eventos. */
+interface ContextoCliente {
+  clientId: string
+  calendarId: string
+  /** Correo de la notetaker, o null si el cliente no la tiene configurada. */
+  notetakerEmail: string | null
+  /**
+   * Si las columnas de la 051 existen. Cuando esa migración todavía no se
+   * corrió, el sync sigue trayendo agendas y solo se salta la parte de la
+   * notetaker: el módulo ya está en producción y no puede dejar de funcionar
+   * esperando una migración.
+   */
+  notetakerDisponible: boolean
 }
 
 /** Cómo se encontró el lead. Queda guardado para poder auditar los cruces. */
@@ -119,6 +141,55 @@ async function buscarLead(
   return { leadId: null, metodo: null }
 }
 
+interface FilaCliente {
+  id: string
+  name: string | null
+  google_calendar_id: string | null
+  google_calendar_sync_token: string | null
+  notetaker_email: string | null
+}
+
+interface AgendaExistente {
+  id: string
+  comentarios: string | null
+  notetaker_invitada_at: string | null
+}
+
+/**
+ * La agenda ya guardada para este evento, si existe.
+ *
+ * Va en dos consultas literales y no en una con las columnas armadas en una
+ * variable porque el cliente tipado de Supabase deduce el tipo del texto del
+ * select: un select dinámico compila a un tipo de error, no a la fila.
+ */
+async function buscarAgendaExistente(
+  supabase: Supabase,
+  ctx: ContextoCliente,
+  eventId: string
+): Promise<AgendaExistente | null> {
+  if (ctx.notetakerDisponible) {
+    const { data, error } = await supabase
+      .from('agenda_records')
+      .select('id, comentarios, notetaker_invitada_at')
+      .eq('client_id', ctx.clientId)
+      .eq('google_event_id', eventId)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }
+
+  const { data, error } = await supabase
+    .from('agenda_records')
+    .select('id, comentarios')
+    .eq('client_id', ctx.clientId)
+    .eq('google_event_id', eventId)
+    .maybeSingle()
+  if (error) throw error
+  // Sin la 051 la columna no existe; se reporta como "no invitada", que es lo
+  // correcto: tampoco se va a invitar a nadie.
+  return data ? { ...data, notetaker_invitada_at: null } : null
+}
+
 /**
  * Un evento del calendario → una fila de agenda.
  *
@@ -128,18 +199,12 @@ async function buscarLead(
  */
 async function procesarEvento(
   supabase: Supabase,
-  clientId: string,
+  ctx: ContextoCliente,
   evento: EventoGoogle,
   resumen: ResumenSync
 ): Promise<void> {
-  const { data: existente, error: errorLectura } = await supabase
-    .from('agenda_records')
-    .select('id, lead_id, estado, comentarios')
-    .eq('client_id', clientId)
-    .eq('google_event_id', evento.id)
-    .maybeSingle()
-
-  if (errorLectura) throw errorLectura
+  const { clientId } = ctx
+  const existente = await buscarAgendaExistente(supabase, ctx, evento.id)
 
   if (evento.status === 'cancelled') {
     if (!existente) {
@@ -184,13 +249,20 @@ async function procesarEvento(
       })
       .eq('id', existente.id)
     if (error) throw error
+
+    // Una agenda que ya existía puede no tener la notetaker: se creó antes de
+    // que el cliente la configurara, o el intento anterior falló.
+    if (!existente.notetaker_invitada_at) {
+      await invitarNotetaker(supabase, ctx, evento, existente.id, resumen)
+    }
+
     resumen.actualizadas++
     return
   }
 
   const { leadId, metodo } = await buscarLead(supabase, clientId, datos)
 
-  const { error } = await supabase.from('agenda_records').insert({
+  const { data: creada, error } = await supabase.from('agenda_records').insert({
     client_id: clientId,
     lead_id: leadId,
     google_event_id: evento.id,
@@ -205,12 +277,53 @@ async function procesarEvento(
     respuestas_formulario: datos.respuestas,
     match_metodo: metodo,
     estado: 'Pendiente',
-  })
+  }).select('id').single()
 
   if (error) throw error
 
   resumen.creadas++
   if (!leadId) resumen.sinLead++
+
+  await invitarNotetaker(supabase, ctx, evento, creada.id, resumen)
+}
+
+/**
+ * Agrega a la notetaker como invitada del evento, si el cliente la configuró.
+ *
+ * Esto es lo que elimina el trabajo manual del director de ventas: la notetaker
+ * queda invitada y Fathom entra sola a la llamada porque la ve en su calendario.
+ *
+ * Nunca lanza. Que no se pueda invitar es molesto —esa llamada no queda
+ * grabada— pero la agenda ya está creada y perderla por esto sería peor. El
+ * fallo se anota en el resumen del cron y se reintenta en la vuelta siguiente,
+ * porque notetaker_invitada_at sigue en NULL.
+ */
+async function invitarNotetaker(
+  supabase: Supabase,
+  ctx: ContextoCliente,
+  evento: EventoGoogle,
+  agendaId: string,
+  resumen: ResumenSync
+): Promise<void> {
+  if (!ctx.notetakerEmail || !ctx.notetakerDisponible) return
+
+  try {
+    const { agregado } = await invitarAEvento(ctx.calendarId, evento.id, ctx.notetakerEmail)
+
+    // Se marca aunque ya estuviera invitada: el objetivo es que esté, no
+    // haberla agregado nosotros. Si no, se reintentaría en cada vuelta.
+    await supabase
+      .from('agenda_records')
+      .update({ notetaker_invitada_at: new Date().toISOString() })
+      .eq('id', agendaId)
+
+    if (agregado) resumen.notetakerInvitada++
+  } catch (e) {
+    const error = e as { message?: string }
+    console.error(
+      `[agenda-sync] no se pudo invitar a la notetaker al evento ${evento.id}: ${error.message ?? String(e)}`
+    )
+  }
 }
 
 /**
@@ -224,7 +337,9 @@ export async function sincronizarCliente(
   clientId: string,
   nombreCliente: string,
   calendarId: string,
-  syncToken: string | null
+  syncToken: string | null,
+  notetakerEmail: string | null = null,
+  notetakerDisponible = false
 ): Promise<ResumenSync> {
   const supabase = createAdminClient()
   const resumen: ResumenSync = {
@@ -234,8 +349,10 @@ export async function sincronizarCliente(
     canceladas: 0,
     ignoradas: 0,
     sinLead: 0,
+    notetakerInvitada: 0,
     error: null,
   }
+  const ctx: ContextoCliente = { clientId, calendarId, notetakerEmail, notetakerDisponible }
 
   try {
     let resultado = await listarCambios(calendarId, syncToken)
@@ -247,7 +364,7 @@ export async function sincronizarCliente(
     }
 
     for (const evento of resultado.eventos) {
-      await procesarEvento(supabase, clientId, evento, resumen)
+      await procesarEvento(supabase, ctx, evento, resumen)
     }
 
     if (resultado.syncToken) {
@@ -288,27 +405,49 @@ export async function sincronizarAgendas(): Promise<{
   }
 
   const supabase = createAdminClient()
-  const { data: clientes, error } = await supabase
+
+  const conNotetaker = await supabase
     .from('clients')
-    .select('id, name, google_calendar_id, google_calendar_sync_token')
+    .select('id, name, google_calendar_id, google_calendar_sync_token, notetaker_email')
     .not('google_calendar_id', 'is', null)
 
-  if (error) {
-    return {
-      ok: false,
-      motivo: esErrorDeMigracion(error) ? FALTA_MIGRACION : error.message,
-      resultados: [],
+  let notetakerDisponible = true
+  let clientes: FilaCliente[]
+
+  if (esErrorDeMigracion(conNotetaker.error)) {
+    // La 051 agrega notetaker_email. Si todavía no se corrió, se sigue trayendo
+    // agendas sin esa parte: el módulo ya está en producción y no puede dejar
+    // de funcionar esperando una migración.
+    notetakerDisponible = false
+    const sinNotetaker = await supabase
+      .from('clients')
+      .select('id, name, google_calendar_id, google_calendar_sync_token')
+      .not('google_calendar_id', 'is', null)
+
+    if (sinNotetaker.error) {
+      return {
+        ok: false,
+        motivo: esErrorDeMigracion(sinNotetaker.error) ? FALTA_MIGRACION : sinNotetaker.error.message,
+        resultados: [],
+      }
     }
+    clientes = (sinNotetaker.data ?? []).map((c) => ({ ...c, notetaker_email: null }))
+  } else if (conNotetaker.error) {
+    return { ok: false, motivo: conNotetaker.error.message, resultados: [] }
+  } else {
+    clientes = conNotetaker.data ?? []
   }
 
   const resultados: ResumenSync[] = []
-  for (const c of clientes ?? []) {
+  for (const c of clientes) {
     resultados.push(
       await sincronizarCliente(
-        c.id as string,
-        (c.name as string) ?? 'sin nombre',
+        c.id,
+        c.name ?? 'sin nombre',
         c.google_calendar_id as string,
-        (c.google_calendar_sync_token as string | null) ?? null
+        c.google_calendar_sync_token,
+        c.notetaker_email,
+        notetakerDisponible
       )
     )
   }
