@@ -53,9 +53,12 @@ CREATE TABLE IF NOT EXISTS system_tasks (
 
 -- Una agenda no puede generar dos triajes. El barrido corre cada 15 minutos y
 -- sin esto crearia uno nuevo en cada vuelta.
+--
+-- Sin WHERE a proposito: un indice parcial no sirve para resolver el ON CONFLICT
+-- del upsert (ver 054). Los NULL igual se consideran distintos entre si en un
+-- indice unico, asi que varias filas sin agenda_record_id siguen siendo validas.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_system_tasks_agenda
-  ON system_tasks(agenda_record_id, tipo)
-  WHERE agenda_record_id IS NOT NULL;
+  ON system_tasks(agenda_record_id, tipo);
 
 -- La consulta que hace el popup: lo pendiente y ya visible, de un cliente.
 CREATE INDEX IF NOT EXISTS idx_system_tasks_pendientes
