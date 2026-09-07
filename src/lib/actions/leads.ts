@@ -595,3 +595,54 @@ export async function snoozeLeadAction(id: string) {
   revalidatePath('/leads')
   revalidatePath('/dashboard')
 }
+
+/** Un lead reducido a lo mínimo para mostrarlo en un selector. */
+export interface LeadBusqueda {
+  id: string
+  full_name: string | null
+  ig_username: string | null
+}
+
+/**
+ * Busca leads de un cliente por nombre o usuario de Instagram.
+ *
+ * Existe para el selector de la agenda, donde el setter asocia a mano el lead
+ * que el cruce automatico no encontro. No se reusa getLeadOptions porque esa
+ * trae TODOS los leads del cliente: con los ~10 mil de un cliente grande, un
+ * desplegable asi es inusable y manda megas al navegador en cada apertura.
+ *
+ * Se acota a 20 resultados: si el setter no encontro lo que buscaba entre 20,
+ * el problema es la busqueda y no la cantidad de resultados.
+ */
+export async function buscarLeads(clientId: string, texto: string): Promise<LeadBusqueda[]> {
+  const q = texto.trim()
+  if (q.length < 2) return []
+
+  const supabase = await createClient()
+  // El % se escapa porque en ilike es un comodin: sin esto, escribir "%" en la
+  // caja de busqueda devolveria leads al azar en vez de nada.
+  const patron = `%${q.replace(/[%_]/g, '\$&')}%`
+
+  const { data, error } = await supabase
+    .from('leads')
+    .select('id, full_name, ig_username')
+    .eq('client_id', clientId)
+    .or(`full_name.ilike.${patron},ig_username.ilike.${patron}`)
+    .limit(20)
+
+  if (error) throw error
+  return data ?? []
+}
+
+/** Un lead por id, para mostrar cual esta asociado hoy a una agenda. */
+export async function getLeadBasico(leadId: string): Promise<LeadBusqueda | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('leads')
+    .select('id, full_name, ig_username')
+    .eq('id', leadId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}

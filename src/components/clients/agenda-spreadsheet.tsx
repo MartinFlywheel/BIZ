@@ -6,6 +6,7 @@ import {
   getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord, getAgendaPeople,
   type AgendaRecord, type AgendaRecordFields,
 } from '@/lib/actions/agenda-records'
+import { buscarLeads, getLeadBasico, type LeadBusqueda } from '@/lib/actions/leads'
 import { LEAD_AVATARS } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/ui/modal'
@@ -148,6 +149,134 @@ function Field({ label, children, full }: { label: string; children: React.React
  * No se renderiza nada si la agenda no tiene ninguno de los dos, que es el caso
  * de todas las cargadas a mano.
  */
+/**
+ * Asocia a mano el lead de una agenda.
+ *
+ * Es el único trabajo manual que el diseño le deja al setter: el sync cruza el
+ * lead solo cuando puede (por Instagram, correo o nombre), y cuando no puede
+ * —o cuando el nombre coincide con dos leads y se niega a adivinar— la agenda
+ * queda sin asociar y alguien tiene que resolverlo acá.
+ *
+ * Busca contra el servidor en vez de traer la lista completa porque un cliente
+ * grande tiene decenas de miles de leads.
+ */
+function LeadPicker({
+  clientId,
+  leadId,
+  onPick,
+}: {
+  clientId: string
+  leadId: string | null
+  onPick: (id: string | null) => void
+}) {
+  const [actual, setActual] = useState<LeadBusqueda | null>(null)
+  const [texto, setTexto] = useState('')
+  const [resultados, setResultados] = useState<LeadBusqueda[]>([])
+  const [buscando, setBuscando] = useState(false)
+
+  const q = texto.trim()
+  const buscandoAlgo = q.length >= 2
+
+  // El lead que ya está asociado, para mostrarlo por nombre y no por uuid.
+  useEffect(() => {
+    if (!leadId) return
+    let vigente = true
+    getLeadBasico(leadId)
+      .then(l => { if (vigente) setActual(l) })
+      .catch(() => { /* se queda mostrando "Cargando"; no vale tumbar el modal */ })
+    return () => { vigente = false }
+  }, [leadId])
+
+  // Se espera a que deje de escribir: una consulta por tecla sobre una tabla de
+  // decenas de miles de filas no tiene sentido.
+  useEffect(() => {
+    if (q.length < 2) return
+    let vigente = true
+    const t = setTimeout(async () => {
+      if (!vigente) return
+      setBuscando(true)
+      try {
+        const r = await buscarLeads(clientId, q)
+        if (vigente) setResultados(r)
+      } catch {
+        if (vigente) setResultados([])
+      } finally {
+        if (vigente) setBuscando(false)
+      }
+    }, 300)
+    return () => { vigente = false; clearTimeout(t) }
+  }, [q, clientId])
+
+  // Los resultados se derivan en vez de limpiarse desde el efecto: borrar la
+  // caja de búsqueda debe ocultarlos al instante, sin esperar un render extra.
+  const visibles = buscandoAlgo ? resultados : []
+  const asociado = leadId && actual?.id === leadId ? actual : null
+
+  function elegir(lead: LeadBusqueda) {
+    setActual(lead)
+    setTexto('')
+    setResultados([])
+    onPick(lead.id)
+  }
+
+  const etiqueta = (l: LeadBusqueda) =>
+    l.full_name || (l.ig_username ? `@${l.ig_username}` : 'Lead sin nombre')
+
+  return (
+    <Field label="Lead asociado" full>
+      {leadId && !asociado ? (
+        <div className="flex h-[34px] items-center rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm text-zinc-600">
+          Cargando lead...
+        </div>
+      ) : asociado ? (
+        <div className="flex items-center gap-2">
+          <div className="flex h-[34px] flex-1 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm">
+            <span className="text-zinc-100">{etiqueta(asociado)}</span>
+            {asociado.ig_username && asociado.full_name && (
+              <span className="text-xs text-zinc-500">@{asociado.ig_username}</span>
+            )}
+          </div>
+          <button
+            onClick={() => onPick(null)}
+            className="shrink-0 rounded-lg border border-zinc-800 px-2 text-xs text-zinc-500 transition-colors hover:text-red-400"
+          >
+            Quitar
+          </button>
+        </div>
+      ) : (
+        <div className="relative">
+          <input
+            className={inputCls}
+            value={texto}
+            placeholder="Busca por nombre o @usuario de Instagram"
+            onChange={e => setTexto(e.target.value)}
+          />
+          {buscandoAlgo && (
+            <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950 shadow-xl">
+              {buscando && <p className="px-3 py-2 text-xs text-zinc-600">Buscando...</p>}
+              {!buscando && visibles.length === 0 && (
+                <p className="px-3 py-2 text-xs text-zinc-600">Ningún lead coincide</p>
+              )}
+              {visibles.map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => elegir(l)}
+                  className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm text-zinc-200 transition-colors hover:bg-zinc-900"
+                >
+                  <span>{etiqueta(l)}</span>
+                  {l.ig_username && l.full_name && (
+                    <span className="text-xs text-zinc-500">@{l.ig_username}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Field>
+  )
+}
+
 function DatosDelSync({ record }: { record: AgendaRecord }) {
   const respuestas = Object.entries(record.respuestas_formulario ?? {})
   const resumen = record.fathom_resumen
@@ -283,6 +412,11 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
       </div>
       <div className="grid grid-cols-2 gap-x-5 gap-y-3 max-h-[72vh] overflow-y-auto pr-2">
         <SectionHead>Fuente y Contacto</SectionHead>
+        <LeadPicker
+          clientId={local.client_id}
+          leadId={local.lead_id}
+          onPick={id => set('lead_id', id)}
+        />
         <Field label="Fecha 1er contacto">
           <input type="date" className={inputCls + ' [color-scheme:dark]'} value={local.fecha_1er_contacto ?? ''}
             onChange={e => set('fecha_1er_contacto', e.target.value || null)} />
