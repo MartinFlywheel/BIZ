@@ -18,8 +18,11 @@ export const runtime = 'nodejs'
  * crea agendas ni guarda el syncToken, así que se puede llamar las veces que
  * haga falta mientras se configura.
  *
- * Uso: /api/debug/calendar-check?clientId=<uuid>
+ * Uso: /api/debug/calendar-check?clientId=<uuid>&dias=30
  * Sin clientId, revisa todos los clientes que tengan calendario configurado.
+ * `dias` es cuánto mirar hacia atrás (1 por defecto, máximo 365): sirve para
+ * distinguir "el calendario está vacío" de "Calendly escribe en otro
+ * calendario", que desde fuera se ven igual.
  */
 export async function GET(request: Request) {
   if (!credencialesConfiguradas()) {
@@ -31,7 +34,11 @@ export async function GET(request: Request) {
     })
   }
 
-  const clientIdPedido = new URL(request.url).searchParams.get('clientId')
+  const params = new URL(request.url).searchParams
+  const clientIdPedido = params.get('clientId')
+  // Se acota a 365 para no pedirle a Google que pagine años de historia por un
+  // parámetro escrito de más en la barra de direcciones.
+  const dias = Math.min(Math.max(Number(params.get('dias')) || 1, 1), 365)
   const supabase = createAdminClient()
 
   let query = supabase.from('clients').select('id, name, google_calendar_id, google_calendar_synced_at')
@@ -66,7 +73,7 @@ export async function GET(request: Request) {
 
   for (const c of configurados) {
     try {
-      const { eventos } = await listarCambios(c.google_calendar_id as string, null, 1)
+      const { eventos } = await listarCambios(c.google_calendar_id as string, null, dias)
 
       // Los eventos de Calendly se reconocen por el enlace de cancelación que
       // Calendly escribe en la descripción. Si hay eventos pero ninguno es de
@@ -81,9 +88,18 @@ export async function GET(request: Request) {
         clientId: c.id,
         calendario: c.google_calendar_id,
         acceso: 'ok',
+        diasRevisados: dias,
         eventosLeidos: eventos.length,
         eventosDeCalendly: deCalendly.length,
         ultimaSincronizacion: c.google_calendar_synced_at ?? 'nunca',
+        // Los títulos de todo lo que hay, no solo lo de Calendly: si el
+        // calendario tiene eventos pero ninguno es una reserva, entonces
+        // Calendly escribe en otro calendario y este es el equivocado.
+        titulos: eventos.slice(0, 15).map((e) => ({
+          titulo: e.summary ?? '(sin título)',
+          cuando: e.start?.dateTime ?? e.start?.date ?? null,
+          estado: e.status,
+        })),
         // Una muestra para confirmar a ojo que el parser está sacando bien los
         // datos antes de que esto empiece a crear agendas de verdad.
         muestra: deCalendly.slice(0, 3).map((x) => ({
