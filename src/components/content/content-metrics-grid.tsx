@@ -11,7 +11,7 @@ import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
 import { syncClientContent } from '@/lib/actions/instagram'
 import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown, Eye, Rocket, ThumbsUp, TrendingDown } from 'lucide-react'
+import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown, Eye, Rocket, ThumbsUp, TrendingDown, Reply, LogOut } from 'lucide-react'
 import type { ContentPiece, Interaction } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
@@ -265,6 +265,11 @@ function StoryDayCard({
                 views: acc.views + (p.views || 0),
                 likes: acc.likes + (p.likes || 0),
                 comments: acc.comments + (p.comments || 0),
+                // story_replies es la columna propia (056); `comments` es
+                // donde vivían las respuestas antes y sigue siendo el
+                // respaldo si la migración todavía no se aplicó.
+                replies: acc.replies + (p.story_replies ?? p.comments ?? 0),
+                exits: acc.exits + (p.story_exits ?? 0),
                 shares: acc.shares + (p.shares || 0),
                 saves: acc.saves + (p.saves || 0),
                 agendas: acc.agendas + (rev?.agendas || 0),
@@ -273,7 +278,7 @@ function StoryDayCard({
                 revenue: acc.revenue + (rev?.revenue || 0),
             }
         },
-        { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, agendas: 0, shows: 0, cierres: 0, revenue: 0 }
+        { views: 0, likes: 0, comments: 0, replies: 0, exits: 0, shares: 0, saves: 0, agendas: 0, shows: 0, cierres: 0, revenue: 0 }
     )
     const cover = pieces.find((p) => p.ig_thumbnail_url)?.ig_thumbnail_url
 
@@ -308,12 +313,18 @@ function StoryDayCard({
             </button>
 
             <div className="p-2.5 space-y-1.5 flex flex-col flex-1">
-                {totals.views > 0 && (
+                {/* El total de views se muestra siempre, incluso en cero: la
+                    historia expira a las 24h y ocultar el número dejaba la
+                    tarjeta muda, sin distinguir "todavía no se midió" de
+                    "nadie la vio". */}
+                <div className="flex items-baseline gap-1.5">
                     <p className="font-mono text-lg font-bold text-zinc-100 leading-none">{formatNumber(totals.views)}</p>
-                )}
+                    <span className="text-[10px] uppercase tracking-wider text-zinc-600">views</span>
+                </div>
                 <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-500">
+                    <span className="flex items-center gap-0.5" title="Respuestas por DM"><Reply className="h-3 w-3" />{formatNumber(totals.replies)}</span>
+                    {totals.exits > 0 && <span className="flex items-center gap-0.5" title="Salidas"><LogOut className="h-3 w-3" />{formatNumber(totals.exits)}</span>}
                     {totals.likes > 0 && <span className="flex items-center gap-0.5"><Heart className="h-3 w-3" />{formatNumber(totals.likes)}</span>}
-                    {totals.comments > 0 && <span className="flex items-center gap-0.5"><MessageCircle className="h-3 w-3" />{formatNumber(totals.comments)}</span>}
                     {totals.shares > 0 && <span className="flex items-center gap-0.5"><Share2 className="h-3 w-3" />{formatNumber(totals.shares)}</span>}
                     {totals.saves > 0 && <span className="flex items-center gap-0.5"><Bookmark className="h-3 w-3" />{formatNumber(totals.saves)}</span>}
                 </div>
@@ -356,10 +367,20 @@ function StoryDayCard({
                                         {hasMetrics && <CheckCircle2 className="absolute -top-0.5 -right-0.5 h-3 w-3 text-emerald-400 drop-shadow" />}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-[11px] font-mono text-zinc-200 truncate">{formatNumber(p.views)} vistas</p>
-                                        {chats && chats.chats > 0 && (
-                                            <p className="text-[10px] font-mono text-violet-400/80">{formatNumber(chats.chats)} chats</p>
-                                        )}
+                                        <p className="text-[11px] font-mono text-zinc-200 truncate">
+                                            {formatNumber(p.views)} vistas
+                                            <span className="text-zinc-500"> · {formatNumber(p.story_replies ?? p.comments ?? 0)} resp.</span>
+                                        </p>
+                                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                                            {chats && chats.chats > 0 && (
+                                                <span className="text-violet-400/80">{formatNumber(chats.chats)} chats</span>
+                                            )}
+                                            {/* Sin medición: expiró antes de que el
+                                                sync alcanzara a fotografiarla. */}
+                                            {p.views === 0 && p.story_expires_at && new Date(p.story_expires_at) < new Date() && (
+                                                <span className="text-amber-500/80">expiró sin medir</span>
+                                            )}
+                                        </div>
                                     </div>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); onEditPiece(p) }}

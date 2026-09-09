@@ -199,6 +199,13 @@ export interface ContentPiece {
   avg_watch_time_seconds: number | null
   total_interactions: number
   story_expires_at: string | null
+  // Solo para content_type = 'story'. Opcionales a propósito: hasta que se
+  // aplique 056-metricas-historias.sql las columnas no existen y el select
+  // simplemente no las trae.
+  story_replies?: number | null
+  story_taps_forward?: number | null
+  story_taps_back?: number | null
+  story_exits?: number | null
   metrics_source: MetricsSource
   metrics_updated_at: string | null
   created_at: string

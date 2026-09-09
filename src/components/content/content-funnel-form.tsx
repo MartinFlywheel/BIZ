@@ -7,7 +7,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { formatNumber, formatPercent } from '@/lib/utils'
-import { Eye, Users, Zap, Heart, MessageCircle, Share2, Bookmark, Clock, Filter } from 'lucide-react'
+import { Eye, Users, Zap, Heart, MessageCircle, Share2, Bookmark, Clock, Filter, CornerUpRight, CornerUpLeft, LogOut, Reply } from 'lucide-react'
 import type { ContentPiece } from '@/lib/types'
 
 export interface ContentMetric {
@@ -110,6 +110,47 @@ function EngagementBreakdown({ likes, comments, shares, saves }: { likes: number
 
     if (!hasData) {
         return <p className="text-[11px] text-zinc-600 py-2">Sin datos de engagement todavía</p>
+    }
+
+    return (
+        <div className="space-y-2">
+            {rows.map((r) => (
+                <RankedBar
+                    key={r.key}
+                    icon={r.icon}
+                    label={r.label}
+                    value={r.value}
+                    valueLabel={formatNumber(r.value)}
+                    maxValue={maxValue}
+                    color={r.color}
+                />
+            ))}
+        </div>
+    )
+}
+
+// ── Story breakdown ───────────────────────────────────────────────────
+// Una historia no tiene likes ni guardados: lo que Instagram mide es como se
+// sale de ella. Taps adelante = se la saltaron, taps atras = la volvieron a
+// ver, salidas = cerraron las historias ahi. Reusa la misma paleta
+// categorica validada del desglose de engagement.
+
+function StoryBreakdown({ piece }: { piece: ContentPiece }) {
+    const rows = [
+        { key: 'replies', icon: Reply, label: 'Respuestas', value: piece.story_replies ?? piece.comments, color: ENGAGEMENT_COLORS.comments },
+        { key: 'taps_forward', icon: CornerUpRight, label: 'Taps adelante', value: piece.story_taps_forward, color: ENGAGEMENT_COLORS.likes },
+        { key: 'taps_back', icon: CornerUpLeft, label: 'Taps atrás', value: piece.story_taps_back, color: ENGAGEMENT_COLORS.shares },
+        { key: 'exits', icon: LogOut, label: 'Salidas', value: piece.story_exits, color: ENGAGEMENT_COLORS.saves },
+    ].flatMap((r) => (r.value == null ? [] : [{ ...r, value: r.value }]))
+
+    const maxValue = Math.max(...rows.map((r) => r.value), 1)
+
+    if (rows.every((r) => r.value === 0)) {
+        return (
+            <p className="text-[11px] text-zinc-600 py-2">
+                Instagram todavía no entregó el detalle de esta historia.
+            </p>
+        )
     }
 
     return (
@@ -287,6 +328,7 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
         .join(' · ')
 
     const totalInteractions = contentPiece.total_interactions || (contentPiece.likes + contentPiece.comments + contentPiece.shares + contentPiece.saves)
+    const isStory = contentPiece.content_type === 'story'
 
     return (
         <Dialog
@@ -306,11 +348,18 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                         <HeroStat icon={Eye} label="Views" value={formatNumber(contentPiece.views)} />
                         <HeroStat icon={Users} label="Alcance" value={formatNumber(contentPiece.reach)} />
                         <HeroStat icon={Zap} label="Interacciones" value={formatNumber(totalInteractions)} />
-                        <HeroStat
-                            icon={Clock}
-                            label="Retención (avg.)"
-                            value={contentPiece.avg_watch_time_seconds != null ? `${contentPiece.avg_watch_time_seconds}s` : '—'}
-                        />
+                        {isStory ? (
+                            // Instagram no reporta tiempo de visualización en
+                            // historias; las respuestas por DM son el número que
+                            // sí importa y el que había que buscar a mano.
+                            <HeroStat icon={Reply} label="Respuestas" value={formatNumber(contentPiece.story_replies ?? contentPiece.comments)} />
+                        ) : (
+                            <HeroStat
+                                icon={Clock}
+                                label="Retención (avg.)"
+                                value={contentPiece.avg_watch_time_seconds != null ? `${contentPiece.avg_watch_time_seconds}s` : '—'}
+                            />
+                        )}
                     </div>
                     {contentPiece.metrics_source === 'meta_api' && contentPiece.metrics_updated_at && (
                         <p className="mt-2 text-[10px] text-zinc-600">
@@ -330,26 +379,37 @@ export function ContentFunnelForm({ contentPiece, existingMetric, chatStats, sib
                     )}
                 </div>
 
-                {/* Engagement + Retention, side by side */}
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {/* Engagement + Retention, side by side. En historias se
+                    reemplazan por el desglose propio: likes y guardados no
+                    existen ahí, y la retención nunca llega. */}
+                {isStory ? (
                     <div>
                         <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                            Engagement
+                            Detalle de la historia
                         </p>
-                        <EngagementBreakdown
-                            likes={contentPiece.likes}
-                            comments={contentPiece.comments}
-                            shares={contentPiece.shares}
-                            saves={contentPiece.saves}
-                        />
+                        <StoryBreakdown piece={contentPiece} />
                     </div>
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
-                            Retención vs. otras piezas
-                        </p>
-                        <RetentionComparison contentPiece={contentPiece} siblingPieces={siblingPieces ?? []} />
+                ) : (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                                Engagement
+                            </p>
+                            <EngagementBreakdown
+                                likes={contentPiece.likes}
+                                comments={contentPiece.comments}
+                                shares={contentPiece.shares}
+                                saves={contentPiece.saves}
+                            />
+                        </div>
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-3">
+                                Retención vs. otras piezas
+                            </p>
+                            <RetentionComparison contentPiece={contentPiece} siblingPieces={siblingPieces ?? []} />
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Funnel chart */}
                 <div>

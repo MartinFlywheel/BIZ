@@ -69,6 +69,10 @@ export async function GET(request: Request) {
 
   const supabase = createAdminClient()
 
+  // Se apaga en la primera escritura que rebote por columna inexistente, para
+  // no reintentar el mismo fallo una vez por historia.
+  let storyColumnsMissing = false
+
   const { data: clients } = await supabase
     .from('clients')
     .select('id, ig_account_id, ig_handle')
@@ -96,6 +100,7 @@ export async function GET(request: Request) {
       const storiesData = await storiesRes.json()
       let processed = 0
       let insightErrors = 0
+      let writeErrors = 0
 
       for (const story of storiesData.data || []) {
         const { insights, error } = await fetchStoryInsights(story.id, token)
@@ -113,34 +118,59 @@ export async function GET(request: Request) {
         const fields = {
           views: insights.views,
           reach: insights.reach,
-          comments: insights.replies, // no dedicated "replies" column — closest existing fit
+          // Se mantiene igual a story_replies: los agregados que alimentan
+          // los widgets de engagement siguen leyendo `comments` para todos
+          // los tipos de contenido.
+          comments: insights.replies,
           total_interactions: insights.total_interactions,
           story_expires_at: expiresAt.toISOString(),
           metrics_source: 'meta_api' as const,
           metrics_updated_at: new Date().toISOString(),
         }
 
-        if (existing) {
-          await supabase
-            .from('content_pieces')
-            .update({ ...fields, updated_at: new Date().toISOString() })
-            .eq('id', existing.id)
-        } else {
-          await supabase.from('content_pieces').insert({
-            client_id: client.id,
-            content_type: 'story',
-            ig_media_id: story.id,
-            ig_permalink: story.permalink || null,
-            ig_thumbnail_url: story.media_url || null,
-            published_at: story.timestamp || new Date().toISOString(),
-            ...fields,
-          })
+        // Las agrega 056-metricas-historias.sql. Mientras esa migración no
+        // se aplique las columnas no existen, así que la escritura se
+        // reintenta sin ellas (Postgres 42703) en vez de fallar entera —
+        // el mismo patrón de degradación que usa getClientTabCounts.
+        const storyFields = storyColumnsMissing ? {} : {
+          story_replies: insights.replies,
+          story_taps_forward: insights.taps_forward,
+          story_taps_back: insights.taps_back,
+          story_exits: insights.exits,
+        }
+
+        const write = async (extra: Record<string, unknown>) =>
+          existing
+            ? supabase
+                .from('content_pieces')
+                .update({ ...fields, ...extra, updated_at: new Date().toISOString() })
+                .eq('id', existing.id)
+            : supabase.from('content_pieces').insert({
+                client_id: client.id,
+                content_type: 'story',
+                ig_media_id: story.id,
+                ig_permalink: story.permalink || null,
+                ig_thumbnail_url: story.media_url || null,
+                published_at: story.timestamp || new Date().toISOString(),
+                ...fields,
+                ...extra,
+              })
+
+        let { error: writeError } = await write(storyFields)
+        if (writeError?.code === '42703') {
+          storyColumnsMissing = true
+          console.warn('[sync-instagram-stories] faltan las columnas story_*: aplica 056-metricas-historias.sql. Se guardan solo las métricas antiguas.')
+          ;({ error: writeError } = await write({}))
+        }
+        if (writeError) {
+          console.error(`[sync-instagram-stories] no se pudo guardar la historia ${story.id}: ${writeError.message}`)
+          writeErrors++
         }
 
         processed++
       }
 
-      results.push({ client: client.ig_handle, status: 'success', processed, insightErrors })
+      results.push({ client: client.ig_handle, status: 'success', processed, insightErrors, writeErrors })
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown'
       results.push({ client: client.ig_handle, status: 'error', error: msg })
@@ -154,6 +184,8 @@ export async function GET(request: Request) {
     fallidos: fallidos.length,
     historias: results.reduce((n, r) => n + (r.processed ?? 0), 0),
     erroresDeInsights: results.reduce((n, r) => n + (r.insightErrors ?? 0), 0),
+    erroresDeEscritura: results.reduce((n, r) => n + (r.writeErrors ?? 0), 0),
+    columnasDeHistoriaFaltantes: storyColumnsMissing,
     errores: fallidos.map((r) => ({ cliente: r.client, error: r.error })),
   })
 
