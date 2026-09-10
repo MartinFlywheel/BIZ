@@ -18,6 +18,7 @@ import {
   SEMAFORO_LABEL,
   enlaceWhatsapp,
   ordenIngreso,
+  type AperturaResearch,
   type LeadResearch,
   type LeadResearchDetalle,
   type Semaforo,
@@ -366,6 +367,7 @@ type FiltroSeguimiento = 'todos' | SeguimientoLead
 
 export function LeadMagnetTab({ clientId }: { clientId: string }) {
   const [leads, setLeads] = useState<LeadResearch[]>([])
+  const [aperturas, setAperturas] = useState<AperturaResearch[]>([])
   const [vinculando, setVinculando] = useState<LeadResearch | null>(null)
   const [configurado, setConfigurado] = useState(true)
   const [cargando, setCargando] = useState(true)
@@ -378,9 +380,11 @@ export function LeadMagnetTab({ clientId }: { clientId: string }) {
     if (!r.configurado) {
       setConfigurado(false)
       setLeads([])
+      setAperturas([])
     } else {
       setConfigurado(true)
       setLeads(r.leads)
+      setAperturas(r.aperturas)
     }
   }, [])
 
@@ -680,6 +684,56 @@ export function LeadMagnetTab({ clientId }: { clientId: string }) {
 
       {!cargando && leads.length > 0 && visibles.length === 0 && (
         <p className="py-6 text-center text-sm text-zinc-500">Nada coincide con los filtros.</p>
+      )}
+
+      {aperturas.length > 0 && (
+        <section className="space-y-2 pt-4">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">Empezaron y no terminaron</h3>
+            <p className="text-xs text-zinc-500">
+              Abrieron el formulario desde el enlace y lo dejaron a medias. Si vuelven a abrir el enlace, continúan donde iban.
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-zinc-800">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-xs uppercase tracking-wide text-zinc-500">
+                  <th className="px-3 py-2.5 font-medium">Instagram</th>
+                  <th className="px-3 py-2.5 font-medium">Llegó hasta</th>
+                  <th className="px-3 py-2.5 font-medium">Primera respuesta</th>
+                  <th className="px-3 py-2.5 font-medium">Última actividad</th>
+                  <th className="px-3 py-2.5 font-medium">Lead en CRM</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aperturas.map((a) => (
+                  <tr key={a.id} className="border-b border-zinc-800/60 align-top last:border-0 hover:bg-zinc-900/50">
+                    <td className="px-3 py-3 whitespace-nowrap text-zinc-200">
+                      {a.ig_username ? `@${a.ig_username}` : <span className="text-zinc-600">sin usuario</span>}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-zinc-300">
+                      pregunta {Math.min(a.paso + 1, 17)} de 17
+                    </td>
+                    <td className="px-3 py-3 max-w-[380px] text-zinc-400 leading-relaxed">
+                      {a.primera_respuesta ? a.primera_respuesta.slice(0, 180) : <span className="text-zinc-600">—</span>}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap text-xs text-zinc-500">{formatDateCompact(a.actualizado)}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {a.lead ? (
+                        <Link href={`/clients/${clientId}/chat/${a.lead.id}`} className="inline-flex items-center gap-1 text-zinc-100 hover:underline">
+                          {a.lead.full_name || `@${a.lead.ig_username}`}
+                          <ExternalLink className="h-3 w-3 text-zinc-500" />
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-zinc-500">{a.ig_username ? 'Se crea al recargar' : 'Sin usuario, no se puede'}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {abierto && <DiagnosticoModal id={abierto} onClose={() => setAbierto(null)} />}

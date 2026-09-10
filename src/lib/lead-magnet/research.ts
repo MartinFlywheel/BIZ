@@ -111,6 +111,19 @@ export interface LeadResearch {
   vinculo: 'manual' | 'instagram' | 'telefono' | null
 }
 
+/** Quien empezó el formulario y no lo terminó. */
+export interface AperturaResearch {
+  id: string
+  creado: string
+  actualizado: string
+  ig_username: string | null
+  /** Última pregunta alcanzada, 0 a 16. */
+  paso: number
+  /** Primera respuesta escrita, para que el equipo sepa de qué va. */
+  primera_respuesta: string | null
+  lead: { id: string; full_name: string | null; ig_username: string | null } | null
+}
+
 export interface PlanLead {
   genero?: 'f' | 'm' | 'n'
   patron: PatronLead
