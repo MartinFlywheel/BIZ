@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getClient, getClientOptions } from '@/lib/actions/clients'
 import { getClientTabCounts } from '@/lib/actions/client-tab-counts'
 import { ClientDetail } from '@/components/clients/client-detail'
+import { clienteTieneLeadMagnet } from '@/lib/lead-magnet/research'
 import { notFound } from 'next/navigation'
 
 // Server Actions invoked from this page's client components (CrmTabLazy's
@@ -120,6 +121,7 @@ export default async function ClientDetailPage({
         isAdmin={isAdmin}
         isSetter={isSetter}
         currentUserId={authUser?.id}
+        hasLeadMagnet={clienteTieneLeadMagnet(client)}
       />
     </Suspense>
   )

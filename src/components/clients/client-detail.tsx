@@ -16,6 +16,7 @@ import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
 import { ContentPipelineBoard } from './content-pipeline-board'
 import { CrmTabLazy } from './crm-tab'
 import { ProductTab } from './product-tab'
+import { LeadMagnetTab } from './lead-magnet-tab'
 import { Pencil, Trash2, Megaphone } from 'lucide-react'
 import Link from 'next/link'
 import type { Client } from '@/lib/types'
@@ -35,6 +36,9 @@ interface Props {
   // pipeline, calls, competitors) is agency/strategy info they don't need.
   isSetter?: boolean
   currentUserId?: string
+  // Solo el cliente de Carol Soto Coloma tiene el research del lead magnet
+  // (respuestas del formulario de su landing, en la base Neon).
+  hasLeadMagnet?: boolean
 }
 
 const statusBadge: Record<string, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'default' }> = {
@@ -45,7 +49,7 @@ const statusBadge: Record<string, { label: string; variant: 'success' | 'warning
   churned: { label: 'Churned', variant: 'danger' },
 }
 
-export function ClientDetail({ client, allClients = [], contentPiecesCount, leadsCount, callsCount, competitorsCount, readOnly = false, isAdmin = false, isSetter = false, currentUserId }: Props) {
+export function ClientDetail({ client, allClients = [], contentPiecesCount, leadsCount, callsCount, competitorsCount, readOnly = false, isAdmin = false, isSetter = false, currentUserId, hasLeadMagnet = false }: Props) {
   const [editing, setEditing] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -76,6 +80,7 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
     { id: 'calls', label: 'Llamadas', count: callsCount },
     { id: 'competencia', label: 'Competencia', count: competitorsCount },
     { id: 'producto', label: 'Producto' },
+    ...(hasLeadMagnet ? [{ id: 'research', label: 'Research lead magnet' }] : []),
   ]
 
   // Every tab here lazy-fetches its own data on mount. Tabs used to fully
@@ -180,6 +185,12 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
             {visitedTabs.has('producto') && (
               <div hidden={activeTab !== 'producto'}>
                 <ProductTab clientId={client.id} />
+              </div>
+            )}
+
+            {hasLeadMagnet && visitedTabs.has('research') && (
+              <div hidden={activeTab !== 'research'}>
+                <LeadMagnetTab clientId={client.id} />
               </div>
             )}
           </>
