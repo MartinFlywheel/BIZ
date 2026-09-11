@@ -6,7 +6,7 @@ import { updateLeadStageAction } from '@/lib/actions/leads'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { formatRelativeTime } from '@/lib/utils'
-import type { LeadStage } from '@/lib/types'
+import { LEAD_STAGES, type LeadStage } from '@/lib/types'
 
 interface LeadWithRelations {
   id: string
@@ -23,15 +23,14 @@ interface LeadWithRelations {
   users: { full_name: string } | null
 }
 
-const stages: { id: LeadStage; label: string; color: string }[] = [
-  { id: 'new', label: 'Nuevo', color: 'text-zinc-400' },
-  { id: 'contacted', label: 'Contactado', color: 'text-blue-400' },
-  { id: 'agenda_set', label: 'Agendado', color: 'text-amber-400' },
-  { id: 'showed_up', label: 'Asistió', color: 'text-emerald-400' },
-  { id: 'no_show', label: 'No Show', color: 'text-red-400' },
-  { id: 'closed_won', label: 'Cerrado', color: 'text-emerald-300' },
-  { id: 'closed_lost', label: 'Perdido', color: 'text-red-300' },
-]
+// Mismas etapas que la pestaña CRM del cliente. Antes este tablero tenía
+// solo las siete del vocabulario original y no mostraba ningún lead en
+// nuevo_contacto, conversando, etc. (ver migración 063).
+const stages: { id: LeadStage; label: string; color: string }[] = LEAD_STAGES.map((s) => ({
+  id: s.id as LeadStage,
+  label: s.label,
+  color: s.color,
+}))
 
 export function LeadsPipeline({ leads, filterClient }: { leads: LeadWithRelations[]; filterClient: string }) {
   const router = useRouter()
@@ -47,11 +46,11 @@ export function LeadsPipeline({ leads, filterClient }: { leads: LeadWithRelation
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-4 lg:grid-cols-7">
+    <div className="flex gap-4 overflow-x-auto pb-4">
       {stages.map((stage) => {
         const stageLeads = filtered.filter((l) => l.stage === stage.id)
         return (
-          <div key={stage.id} className="space-y-3">
+          <div key={stage.id} className="w-56 shrink-0 space-y-3">
             <div className="flex items-center justify-between px-1">
               <h3 className={`text-xs font-medium uppercase tracking-wider ${stage.color}`}>
                 {stage.label}

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { exigirTokenManyChat } from '@/lib/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -114,7 +115,40 @@ export interface InteractionParams {
 // time, instead of separate rows that would double-count "chats abiertos".
 // Returns the id of the interaction row that was written to, so the caller
 // can link it back onto the lead (leads.interaction_id).
-export async function upsertInteraction(supabase: AdminClient, params: InteractionParams): Promise<string> {
+/**
+ * Suma 1 a chats_nuevos de la pieza. Usa la función atómica de la migración
+ * 064; si todavía no existe, cae al leer-y-escribir de antes.
+ */
+export async function incrementarChatsNuevos(supabase: AdminClient, contentId: string, clientId: string): Promise<void> {
+  const { error } = await supabase.rpc('incrementar_chats_nuevos', { p_content_id: contentId, p_client_id: clientId })
+  if (!error) return
+  const funcionAusente = error.code === '42883' || error.code === 'PGRST202'
+  if (!funcionAusente) {
+    console.error('[ManyChat] incrementar_chats_nuevos falló:', error.message)
+    return
+  }
+  const { data: metric } = await supabase
+    .from('content_metrics')
+    .select('id, chats_nuevos')
+    .eq('content_id', contentId)
+    .maybeSingle()
+  if (metric) {
+    await supabase
+      .from('content_metrics')
+      .update({ chats_nuevos: (metric.chats_nuevos || 0) + 1, updated_at: new Date().toISOString() })
+      .eq('id', metric.id)
+  } else {
+    await supabase.from('content_metrics').insert({ content_id: contentId, client_id: clientId, chats_nuevos: 1 })
+  }
+}
+
+export interface ResultadoUpsertInteraction {
+  id: string
+  /** true si se insertó una interacción nueva; false si se promovió una existente. */
+  nueva: boolean
+}
+
+export async function upsertInteraction(supabase: AdminClient, params: InteractionParams): Promise<ResultadoUpsertInteraction> {
   const now = new Date().toISOString()
 
   if (params.classification !== 'chat_abierto' && params.igUsername) {
@@ -148,7 +182,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
           updated_at: now,
         })
         .eq('id', existing.id)
-      return existing.id
+      return { id: existing.id, nueva: false }
     }
   }
 
@@ -173,7 +207,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
     .single()
 
   if (insertError || !inserted) throw insertError || new Error('Failed to insert interaction')
-  return inserted.id
+  return { id: inserted.id, nueva: true }
 }
 
 // Picks whichever active setter on the client's team is furthest below
@@ -255,6 +289,14 @@ export async function handlePieceWebhook(
 ): Promise<NextResponse> {
   const supabase = createAdminClient()
 
+  // Con MANYCHAT_WEBHOOK_TOKEN configurado, solo entran las llamadas que
+  // traen el token. Sin configurar, se deja pasar todo (como antes) para no
+  // cortar los flujos mientras se actualizan las URL en ManyChat.
+  const noAutorizado = exigirTokenManyChat(request)
+  if (noAutorizado) return noAutorizado
+
+  let webhookLogId: string | null = null
+
   try {
     const payload = await request.json()
 
@@ -318,13 +360,15 @@ export async function handlePieceWebhook(
       })
     }
 
-    // Log
-    await supabase.from('webhook_logs').insert({
+    // Log. Se guarda el id para marcar exactamente esta fila al terminar,
+    // no "la última de esta pieza", que con llamadas simultáneas era otra.
+    const { data: logRow } = await supabase.from('webhook_logs').insert({
       source: 'manychat',
       event_type: `piece:${pieceId}`,
       payload: { ...payload, pieceId },
       processed: false,
-    })
+    }).select('id').single()
+    webhookLogId = logRow?.id ?? null
 
     // Upsert lead
     const { data: existingLead } = await supabase
@@ -418,7 +462,7 @@ export async function handlePieceWebhook(
       }
     }
 
-    const interactionId = await upsertInteraction(supabase, {
+    const { id: interactionId, nueva: interaccionNueva } = await upsertInteraction(supabase, {
       clientId,
       contentId,
       igUsername,
@@ -434,39 +478,17 @@ export async function handlePieceWebhook(
     // card — kept current on every call, not just the first.
     await supabase.from('leads').update({ interaction_id: interactionId }).eq('id', leadId)
 
-    // Increment chats on content_metrics
-    if (contentId) {
-      const { data: metric } = await supabase
-        .from('content_metrics')
-        .select('id, chats_nuevos')
-        .eq('content_id', contentId)
-        .maybeSingle()
-
-      if (metric) {
-        await supabase
-          .from('content_metrics')
-          .update({
-            chats_nuevos: (metric.chats_nuevos || 0) + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', metric.id)
-      } else {
-        await supabase.from('content_metrics').insert({
-          content_id: contentId,
-          client_id: clientId,
-          chats_nuevos: 1,
-        })
-      }
+    // Chats nuevos cuenta personas, no llamadas: solo suma cuando la
+    // interacción es nueva. Una persona que pasa por chat-abierto, después
+    // por conversación y después por lead-calificado promueve la misma fila
+    // y cuenta una vez.
+    if (contentId && interaccionNueva) {
+      await incrementarChatsNuevos(supabase, contentId, clientId)
     }
 
-    // Mark log processed
-    await supabase
-      .from('webhook_logs')
-      .update({ processed: true })
-      .eq('source', 'manychat')
-      .eq('event_type', `piece:${pieceId}`)
-      .order('received_at', { ascending: false })
-      .limit(1)
+    if (webhookLogId) {
+      await supabase.from('webhook_logs').update({ processed: true }).eq('id', webhookLogId)
+    }
 
     return NextResponse.json({
       received: true,

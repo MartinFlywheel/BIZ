@@ -80,9 +80,12 @@ export async function POST(request: Request) {
           .from('sales_calls')
           .update({ outcome: 'cancelled' })
           .eq('fathom_recording_id', calendlyEventUri),
+        // Cancelar no es no-show: marcarla así bajaba el show rate, que es
+        // justo lo que la migración 055 quiso evitar. Se anota la
+        // cancelación y el estado queda como estaba.
         supabase
           .from('agenda_records')
-          .update({ estado: 'No Show' })
+          .update({ cancelada_at: new Date().toISOString() })
           .eq('link_reporte', calendlyEventUri),
       ])
       await markLog(supabase, webhookLogId, true)
@@ -162,17 +165,17 @@ export async function POST(request: Request) {
       console.log(`[Calendly] No lead match for: ${inviteeName} (${inviteeEmail}). Client: ${clientId || 'unknown'}`)
     }
 
-    // ── Update lead stage to agenda_set ──
+    // ── Mover el lead a agendado, sin retroceder a quien ya cerró ──
     if (leadId) {
       await supabase
         .from('leads')
         .update({
-          stage: 'agenda_set',
+          stage: 'agendado',
           agenda_at: scheduledAt,
           updated_at: new Date().toISOString(),
         })
         .eq('id', leadId)
-        .in('stage', ['new', 'contacted'])
+        .not('stage', 'in', '(agendado,cierre,cliente,closed_won,no_calificado,closed_lost)')
     }
 
     // ── Create or update agenda_record ──
@@ -226,7 +229,10 @@ export async function POST(request: Request) {
           ai_summary: eventName ? `Calendly: ${eventName}` : null,
         })
         .eq('id', existingCall.id)
-    } else {
+    } else if (leadId) {
+      // sales_calls.lead_id es NOT NULL: sin lead el insert fallaba en
+      // silencio. La agenda ya quedó creada arriba; la llamada se registra
+      // cuando el triaje asocie el lead.
       await supabase.from('sales_calls').insert({
         lead_id: leadId,
         scheduled_at: scheduledAt,

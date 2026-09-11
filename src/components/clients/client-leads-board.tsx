@@ -357,14 +357,14 @@ function LeadCard({ lead, agencyUsers }: { lead: Lead; agencyUsers: AgencyUser[]
             )}
 
             {/* Close value if won */}
-            {lead.stage === 'closed_won' && lead.close_value && (
+            {(lead.stage === 'closed_won' || lead.stage === 'cierre' || lead.stage === 'cliente') && lead.close_value && (
                 <p className="text-xs font-mono text-emerald-400">
                     ${lead.close_value.toLocaleString()}
                 </p>
             )}
 
             {/* Lost reason */}
-            {lead.stage === 'closed_lost' && lead.lost_reason && (
+            {(lead.stage === 'closed_lost' || lead.stage === 'no_calificado') && lead.lost_reason && (
                 <p className="text-[11px] text-zinc-600 italic truncate">{lead.lost_reason}</p>
             )}
         </div>
@@ -617,7 +617,7 @@ export function ClientLeadsBoard({ leads, agencyUsers, contentPieces, clientId, 
     }, [filtered])
 
     const totalRevenue = leads
-        .filter((l) => l.stage === 'closed_won' && l.close_value)
+        .filter((l) => (l.stage === 'closed_won' || l.stage === 'cierre' || l.stage === 'cliente') && l.close_value)
         .reduce((sum, l) => sum + (l.close_value || 0), 0)
 
     return (

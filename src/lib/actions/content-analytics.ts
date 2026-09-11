@@ -75,7 +75,7 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     .from('leads')
     .select('id, first_touch_content_id, close_value')
     .eq('client_id', clientId)
-    .eq('stage', 'closed_won')
+    .in('stage', ['closed_won', 'cierre', 'cliente'])
     .not('first_touch_content_id', 'is', null)
     .not('close_value', 'is', null)
 

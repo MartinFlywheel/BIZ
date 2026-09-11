@@ -223,7 +223,8 @@ export async function crearLeadYAsociar(
       ig_username: ig,
       full_name: nombre,
       email,
-      stage: 'agenda_set',
+      stage: 'agendado',
+      agenda_at: new Date().toISOString(),
       assigned_to: await pickBalancedSetter(admin, clientId),
     })
     .select('id')

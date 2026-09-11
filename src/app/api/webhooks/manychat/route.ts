@@ -1,13 +1,18 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveClassification, upsertInteraction, pickBalancedSetter } from '@/lib/manychat'
+import { resolveClassification, upsertInteraction, pickBalancedSetter, incrementarChatsNuevos } from '@/lib/manychat'
+import { exigirTokenManyChat } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
+  const noAutorizado = exigirTokenManyChat(request)
+  if (noAutorizado) return noAutorizado
+
   const supabase = createAdminClient()
   let webhookLogId: string | null = null
+  let interaccionNueva = false
 
   try {
     const payload = await request.json()
@@ -154,7 +159,7 @@ export async function POST(request: Request) {
           full_name: fullName,
           phone,
           email,
-          stage: 'new',
+          stage: 'nuevo_contacto',
           content_id: contentId,
           first_touch_content_id: contentId,
           first_touch_at: new Date().toISOString(),
@@ -176,7 +181,7 @@ export async function POST(request: Request) {
     const classification = resolveClassification(payload)
 
     try {
-      const interactionId = await upsertInteraction(supabase, {
+      const { id: interactionId, nueva } = await upsertInteraction(supabase, {
         clientId,
         contentId,
         igUsername,
@@ -194,6 +199,7 @@ export async function POST(request: Request) {
       // handlePieceWebhook) has done both since it was built. Same rules
       // here: conversación real or lead_calificado claims a setter,
       // load-balanced by weight, never overwriting a manual assignment.
+      interaccionNueva = nueva
       await supabase.from('leads').update({ interaction_id: interactionId }).eq('id', leadId)
 
       if ((classification === 'conversacion_real' || classification === 'lead_calificado') && !existingLead?.assigned_to) {
@@ -207,28 +213,9 @@ export async function POST(request: Request) {
     }
 
     // ── Step 6: Update content_metrics chats count ────────────────
-    if (contentId) {
-      const { data: existingMetric } = await supabase
-        .from('content_metrics')
-        .select('id, chats_nuevos')
-        .eq('content_id', contentId)
-        .maybeSingle()
-
-      if (existingMetric) {
-        await supabase
-          .from('content_metrics')
-          .update({
-            chats_nuevos: (existingMetric.chats_nuevos || 0) + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingMetric.id)
-      } else {
-        await supabase.from('content_metrics').insert({
-          content_id: contentId,
-          client_id: clientId,
-          chats_nuevos: 1,
-        })
-      }
+    // Solo cuando la interacción es nueva: cuenta personas, no llamadas.
+    if (contentId && interaccionNueva) {
+      await incrementarChatsNuevos(supabase, contentId, clientId)
     }
 
     // ── Step 7: Mark webhook log as processed ────────────────────

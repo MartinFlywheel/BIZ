@@ -21,6 +21,27 @@ export function exigirCronSecret(request: Request): NextResponse | null {
   return null
 }
 
+/**
+ * Protege los webhooks de ManyChat con un token compartido
+ * (MANYCHAT_WEBHOOK_TOKEN). Se acepta en la URL (?token=...) porque el nodo
+ * "External Request" de ManyChat es más fácil de editar ahí, o en la
+ * cabecera X-Webhook-Token.
+ *
+ * Si la variable no está configurada, deja pasar: primero se agrega el
+ * token a las URL en ManyChat y recién después se configura la variable en
+ * Vercel. Al revés cortaría los flujos.
+ */
+export function exigirTokenManyChat(request: Request): NextResponse | null {
+  const esperado = process.env.MANYCHAT_WEBHOOK_TOKEN
+  if (!esperado) return null
+  const url = new URL(request.url)
+  const recibido = url.searchParams.get('token') ?? request.headers.get('x-webhook-token') ?? ''
+  if (recibido !== esperado) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+  return null
+}
+
 export interface AgenteAutenticado {
   clientId: string
   keyId: string

@@ -173,6 +173,42 @@ async function buscarLead(
   return { leadId: null, metodo: null }
 }
 
+/**
+ * Una reserva nueva mueve el lead a "agendado" y fija agenda_at, que es lo
+ * que alimentan las métricas por etapa. Antes la agenda se creaba pero el
+ * lead seguía en "calendly_enviado" hasta que alguien lo movía a mano.
+ *
+ * No retrocede a quien ya cerró o fue descartado, y respeta a los clientes
+ * con etapas propias que no tengan "agendado". Nunca lanza: la agenda vale
+ * más que la etapa.
+ */
+async function moverLeadAAgendado(supabase: Supabase, clientId: string, leadId: string, inicio: string | null) {
+  try {
+    const [{ data: lead }, { data: cliente }] = await Promise.all([
+      supabase.from('leads').select('stage').eq('id', leadId).maybeSingle(),
+      supabase.from('clients').select('pipeline_stages').eq('id', clientId).maybeSingle(),
+    ])
+    if (!lead) return
+    const noRetroceder = new Set(['agendado', 'agenda_set', 'cierre', 'cliente', 'closed_won', 'no_calificado', 'closed_lost'])
+    if (noRetroceder.has(lead.stage)) return
+    const etapas = (cliente?.pipeline_stages ?? null) as { id: string }[] | null
+    if (etapas && etapas.length > 0 && !etapas.some((e) => e.id === 'agendado')) return
+
+    await supabase
+      .from('leads')
+      .update({
+        stage: 'agendado',
+        agenda_at: inicio ?? new Date().toISOString(),
+        next_follow_up_date: null,
+        follow_up_count: 0,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', leadId)
+  } catch (e) {
+    console.error('[agenda-sync] no se pudo mover el lead a agendado:', e)
+  }
+}
+
 interface FilaCliente {
   id: string
   name: string | null
@@ -317,6 +353,7 @@ async function procesarEvento(
   }
 
   const { leadId, metodo } = await buscarLead(supabase, clientId, datos)
+  if (leadId) await moverLeadAAgendado(supabase, clientId, leadId, inicio)
 
   const { data: creada, error } = await supabase.from('agenda_records').insert({
     client_id: clientId,

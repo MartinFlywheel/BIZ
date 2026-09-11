@@ -78,7 +78,7 @@ export async function promoteToLeadAction(interactionId: string, formData: FormD
     full_name: (formData.get('full_name') as string) || interaction.prospect_name,
     phone: (formData.get('phone') as string) || null,
     email: (formData.get('email') as string) || null,
-    stage: 'new',
+    stage: 'nuevo_contacto',
     assigned_to: assignedTo,
     first_touch_content_id: interaction.content_id,
     first_touch_at: interaction.bot_triggered_at,

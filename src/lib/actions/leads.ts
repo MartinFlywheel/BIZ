@@ -156,7 +156,7 @@ export async function updateLeadStageAction(id: string, stage: string, agendaDat
 
   const isAgendaStage = stage === 'agendado' || stage === 'agenda_set'
   if (isAgendaStage) updates.agenda_at = new Date().toISOString()
-  if (stage === 'cliente' || stage === 'closed_won') updates.closed_at = new Date().toISOString()
+  if (stage === 'cliente' || stage === 'closed_won' || stage === 'cierre') updates.closed_at = new Date().toISOString()
 
   const { data: lead, error } = await supabase
     .from('leads')
@@ -545,11 +545,11 @@ export async function snoozeLeadAction(id: string) {
   if (nextCount > 2) {
     // Ya intentó 2 veces, a la tercera muere (3er click en perdido)
     // O si el máximo es 2, después de 2 intentos ya pasa a lost
-    stageAtTime = 'closed_lost'
+    stageAtTime = 'no_calificado'
     const { error } = await supabase
       .from('leads')
       .update({
-        stage: 'closed_lost',
+        stage: 'no_calificado',
         updated_at: new Date().toISOString(),
         next_follow_up_date: null,
       })
