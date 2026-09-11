@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { BrandMark } from '@/components/brand-mark'
 import {
   LayoutDashboard,
   Users,
@@ -114,9 +115,7 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
           collapsed && 'sm:justify-center sm:px-0'
         )}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#8B0D1A] to-[#b01021] shadow-[0_0_14px_rgba(139,13,26,0.5)]">
-          <span className="text-sm font-bold text-white">B</span>
-        </div>
+        <BrandMark className="h-9 w-9 rounded-lg border border-white/[0.08]" />
         {!collapsed && <span className="text-lg font-bold tracking-tight text-white">BIZ</span>}
       </Link>
 

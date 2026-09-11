@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { BrandMark } from '@/components/brand-mark'
 import { ROLES_SESION_PERSISTENTE, type UserRole } from '@/lib/types'
 
 export default function LoginPage() {
@@ -89,9 +90,7 @@ export default function LoginPage() {
     <div className="flex h-screen items-center justify-center bg-zinc-950">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white">
-            <span className="text-xl font-bold text-zinc-900">B</span>
-          </div>
+          <BrandMark className="mx-auto h-12 w-12 rounded-xl border border-white/[0.08]" />
           <h1 className="mt-4 text-2xl font-semibold text-zinc-50">BIZ</h1>
           <p className="mt-1 text-sm text-zinc-400">
             Inicia sesión para acceder al CRM
