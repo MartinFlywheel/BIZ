@@ -1,8 +1,14 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { OVERRIDABLE_FIELDS } from '@/lib/metrics-types'
-import { fetchAllRows } from '@/lib/supabase/paginate'
+import {
+  OVERRIDABLE_FIELDS,
+  ESTADOS_ASISTIO,
+  ESTADOS_CON_DESENLACE,
+  ESTADO_CERRADO,
+  ESTADO_NO_CALIFICADO,
+} from '@/lib/metrics-types'
+import { fetchAllRows, fetchAllByIds } from '@/lib/supabase/paginate'
 
 // Live funnel metrics — no manual entry. Sourced from the systems that already
 // write these events in real time: content_pieces (Meta sync), interactions
@@ -118,11 +124,13 @@ async function interactionCountsByDay(
   )
 
   const ids = Array.from(new Set(rows.map((r) => r.content_id).filter((id): id is string => !!id)))
-  let typeById: Record<string, string> = {}
-  if (ids.length > 0) {
-    const { data: pieces } = await supabase.from('content_pieces').select('id, content_type').in('id', ids)
-    typeById = Object.fromEntries((pieces || []).map((p) => [p.id as string, p.content_type as string]))
-  }
+  const pieces = await fetchAllByIds<{ id: string; content_type: string }>(
+    ids,
+    (chunk) => supabase.from('content_pieces').select('id, content_type').in('id', chunk)
+  )
+  const typeById: Record<string, string> = Object.fromEntries(
+    pieces.map((p) => [p.id, p.content_type])
+  )
 
   // Se agrupa acá para que el resto de la función vea siempre la misma forma.
   const acc = new Map<string, InteractionDayCount>()
@@ -189,27 +197,31 @@ export async function getLiveMetricsBuckets(
       new Set(agendas.map((a) => a.lead_id).filter((id): id is string => !!id))
     )
     if (leadIds.length > 0) {
-      const { data: leadsData } = await supabase
-        .from('leads')
-        .select('id, first_touch_content_id')
-        .in('id', leadIds)
+      // fetchAllByIds y no un .in() suelto: un cliente con mas de 1000 agendas
+      // en el rango manda mas de 1000 ids y PostgREST devuelve solo las
+      // primeras 1000, sin error. Las agendas cuyo lead quedaba fuera perdian
+      // su tipo de contenido y desaparecian de la vista filtrada por
+      // reel/historia.
+      const leadsData = await fetchAllByIds<{ id: string; first_touch_content_id: string | null }>(
+        leadIds,
+        (chunk) => supabase.from('leads').select('id, first_touch_content_id').in('id', chunk)
+      )
 
       const touchContentIds = Array.from(
-        new Set((leadsData || []).map((l) => l.first_touch_content_id).filter((id): id is string => !!id))
+        new Set(leadsData.map((l) => l.first_touch_content_id).filter((id): id is string => !!id))
       )
-      let touchTypeById: Record<string, string> = {}
-      if (touchContentIds.length > 0) {
-        const { data: touchPieces } = await supabase
-          .from('content_pieces')
-          .select('id, content_type')
-          .in('id', touchContentIds)
-        touchTypeById = Object.fromEntries((touchPieces || []).map((p) => [p.id, p.content_type as string]))
-      }
+      const touchPieces = await fetchAllByIds<{ id: string; content_type: string }>(
+        touchContentIds,
+        (chunk) => supabase.from('content_pieces').select('id, content_type').in('id', chunk)
+      )
+      const touchTypeById: Record<string, string> = Object.fromEntries(
+        touchPieces.map((p) => [p.id, p.content_type])
+      )
 
       agendaContentTypeByLeadId = Object.fromEntries(
-        (leadsData || [])
+        leadsData
           .filter((l) => l.first_touch_content_id)
-          .map((l) => [l.id as string, touchTypeById[l.first_touch_content_id as string]])
+          .map((l) => [l.id, touchTypeById[l.first_touch_content_id as string]])
       )
     }
   }
@@ -259,10 +271,10 @@ export async function getLiveMetricsBuckets(
     const r = result[b.key]
     const estado = a.estado as string | null
     r.agendas += 1
-    if (estado && ['Show', 'No Show', 'No Cerrado', 'Cerrado', 'No Calificado'].includes(estado)) r.llamadas += 1
-    if (estado && ['Show', 'No Cerrado', 'Cerrado'].includes(estado)) r.shows += 1
-    if (estado === 'No Calificado') r.llamadas_no_calificadas += 1
-    if (estado === 'Cerrado') {
+    if (estado && (ESTADOS_CON_DESENLACE as readonly string[]).includes(estado)) r.llamadas += 1
+    if (estado && (ESTADOS_ASISTIO as readonly string[]).includes(estado)) r.shows += 1
+    if (estado === ESTADO_NO_CALIFICADO) r.llamadas_no_calificadas += 1
+    if (estado === ESTADO_CERRADO) {
       r.cierres += 1
       r.facturacion += Number(a.monto_facturacion) || 0
       r.cash_collected += Number(a.monto_upfront) || 0

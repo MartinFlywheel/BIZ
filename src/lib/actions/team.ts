@@ -5,6 +5,10 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import type { Responsibility } from '@/lib/types'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import {
+  ESTADOS_CON_DESENLACE,
+  ESTADOS_ASISTIO as ESTADOS_ASISTIO_LISTA,
+} from '@/lib/metrics-types'
 
 export async function getTeamAssignments(clientId: string) {
   const supabase = await createClient()
@@ -100,9 +104,9 @@ export interface TeamMemberStats {
 // denominador del show rate como si fueran ausencias, así que hundían a quien
 // tuviera agendas recién puestas y favorecían a quien sólo tenía historial
 // viejo ya resuelto.
-const ESTADOS_RESUELTOS = new Set(['Show', 'No Show', 'No Cerrado', 'Cerrado'])
+const ESTADOS_RESUELTOS = new Set<string>(ESTADOS_CON_DESENLACE)
 // El lead se presentó. 'No Cerrado' y 'Cerrado' implican que la llamada pasó.
-const ESTADOS_ASISTIO = new Set(['Show', 'No Cerrado', 'Cerrado'])
+const ESTADOS_ASISTIO = new Set<string>(ESTADOS_ASISTIO_LISTA)
 
 // agenda_records.setter y .closer son texto libre, escrito a mano. Sin
 // normalizar, un "magui" o un "Magui  Del Pazo" con doble espacio no le sumaba
@@ -112,7 +116,7 @@ function normalizarNombre(value: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
-    .replace(/s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 

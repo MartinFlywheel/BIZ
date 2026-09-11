@@ -81,3 +81,32 @@ export async function fetchAllRowsByCursor<T extends { id: string }>(
 
   return allRows
 }
+
+// Un `.in('id', ids)` tambien esta sujeto al tope de 1000 filas: pedir 2500
+// ids devuelve 1000 y las otras 1500 desaparecen sin error, igual que un
+// select sin paginar. Y una lista de ids muy larga en la URL (PostgREST
+// consulta por GET) puede pasarse del limite de largo de la URL antes de eso.
+//
+// Esto parte los ids en tandas y las pide en paralelo. CHUNK esta bien por
+// debajo del tope de 1000 a proposito: deja margen para que una tanda nunca
+// devuelva exactamente el maximo y quede la duda de si se trunco.
+const ID_CHUNK = 500
+
+export async function fetchAllByIds<T>(
+  ids: string[],
+  queryFn: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  if (ids.length === 0) return []
+
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += ID_CHUNK) chunks.push(ids.slice(i, i + ID_CHUNK))
+
+  const results = await Promise.all(chunks.map((chunk) => queryFn(chunk)))
+
+  const rows: T[] = []
+  for (const { data, error } of results) {
+    if (error) throw error
+    if (data) rows.push(...data)
+  }
+  return rows
+}

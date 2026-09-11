@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCronRun } from '@/lib/cron-log'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import {
+  ESTADOS_ASISTIO,
+  ESTADOS_CON_DESENLACE,
+  ESTADO_CERRADO,
+} from '@/lib/metrics-types'
 
 // Cron endpoint — must run at request time, never cached.
 export const dynamic = 'force-dynamic'
@@ -32,34 +37,65 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact', head: true })
       .eq('client_id', client.id)
 
+    // 'conversacion_real' O 'lead_calificado': la clasificacion se promueve en
+    // el mismo registro a medida que el lead avanza, asi que un lead que llego
+    // a calificado ya no lleva el valor 'conversacion_real' aunque obviamente
+    // tuvo una conversacion real. Misma definicion que getDashboardMetrics.
     const { count: realConvos } = await supabaseAdmin
       .from('interactions')
       .select('*', { count: 'exact', head: true })
       .eq('client_id', client.id)
-      .eq('classification', 'conversacion_real')
+      .in('classification', ['conversacion_real', 'lead_calificado'])
 
-    const leads = await fetchAllRows((from, to) =>
-      supabaseAdmin.from('leads').select('stage').eq('client_id', client.id).range(from, to)
+    // Las agendas salen de agenda_records.estado, la misma fuente que usan
+    // getDashboardMetrics y calculateFunnel.
+    //
+    // Antes esto filtraba leads.stage contra 'agenda_set'/'showed_up'/
+    // 'closed_won'/'closed_lost', valores de la taxonomia inglesa que ya no
+    // existe (LEAD_STAGES hoy es 'agendado'/'cierre'/etc, en espanol).
+    // Ninguna ruta del codigo escribe ya 'showed_up' ni 'closed_won' — el
+    // webhook de Calendly pone 'agenda_set' y el resto usa los valores en
+    // espanol — asi que showUps y cierres daban 0 salvo por filas historicas.
+    // Con eso, este cron marcaba tasa_show_up y tasa_cierre como criticas para
+    // todos los clientes, todos los dias, y notificaba a los responsables de
+    // cada area por un deficit que nunca existio.
+    const agendaRecords = await fetchAllRows<{ estado: string | null }>((from, to) =>
+      supabaseAdmin
+        .from('agenda_records')
+        .select('estado')
+        .eq('client_id', client.id)
+        .range(from, to)
     )
 
-    const agendas = leads.filter((l) =>
-      ['agenda_set', 'showed_up', 'closed_won', 'closed_lost'].includes(l.stage)
+    const llamadas = agendaRecords.filter(
+      (a) => a.estado && (ESTADOS_CON_DESENLACE as readonly string[]).includes(a.estado)
     ).length
-    const showUps = leads.filter((l) =>
-      ['showed_up', 'closed_won'].includes(l.stage)
+    const showUps = agendaRecords.filter(
+      (a) => a.estado && (ESTADOS_ASISTIO as readonly string[]).includes(a.estado)
     ).length
-    const cierres = leads.filter((l) => l.stage === 'closed_won').length
+    const cierres = agendaRecords.filter((a) => a.estado === ESTADO_CERRADO).length
 
-    const metrics: Record<string, number> = {
-      tasa_respuesta: (totalChats || 0) > 0 ? ((realConvos || 0) / (totalChats || 1)) * 100 : 0,
-      tasa_show_up: agendas > 0 ? (showUps / agendas) * 100 : 0,
-      tasa_cierre: showUps > 0 ? (cierres / showUps) * 100 : 0,
+    // null = esa etapa no tiene denominador todavia, no es un 0% real. Un
+    // cliente recien creado, o uno sin llamadas en el periodo, no tiene un
+    // deficit de show-up: no tiene datos. Antes ese 0 se comparaba igual
+    // contra el benchmark y disparaba una alerta critica.
+    const metrics: Record<string, number | null> = {
+      tasa_respuesta: (totalChats || 0) > 0 ? ((realConvos || 0) / (totalChats || 1)) * 100 : null,
+      tasa_show_up: llamadas > 0 ? (showUps / llamadas) * 100 : null,
+      tasa_cierre: showUps > 0 ? (cierres / showUps) * 100 : null,
     }
 
+    // Ordenado igual que getBenchmarkAlerts: los benchmarks propios del
+    // cliente primero y los globales (client_id null) al final, para que el
+    // dedup por metric_key de abajo se quede con el especifico. Sin el
+    // .order(), cual de los dos ganaba dependia del orden en que Postgres
+    // devolviera las filas, asi que un benchmark configurado a medida para un
+    // cliente se ignoraba a veces sin aviso.
     const { data: benchmarks } = await supabaseAdmin
       .from('benchmarks')
       .select('*')
       .or(`client_id.eq.${client.id},client_id.is.null`)
+      .order('client_id', { ascending: false, nullsFirst: false })
 
     if (!benchmarks) continue
 
@@ -69,7 +105,7 @@ export async function GET(request: Request) {
       seen.add(b.metric_key)
 
       const current = metrics[b.metric_key]
-      if (current === undefined) continue
+      if (current === undefined || current === null) continue
 
       const isFailing = b.comparison === 'gte' ? current < b.threshold_value : current > b.threshold_value
 

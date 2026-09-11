@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
 import { getEffectiveMetricsForRange } from './live-metrics'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import { ESTADOS_ASISTIO, ESTADOS_CON_DESENLACE, ESTADO_CERRADO } from '@/lib/metrics-types'
 
 export async function getDashboardMetrics(
   clientId: string,
@@ -80,15 +81,17 @@ export async function getDashboardMetrics(
   const conversaciones_reales = convRealRes.count || 0
 
   const agendas = agendaRecords.length
-  // "Llamadas" = agendas whose call already happened (excludes 'Pendiente'
-  // bookings that haven't had the chance to show yet).
+  // "Llamadas" = agendas cuya llamada ya tuvo desenlace. Excluye 'Pendiente' y
+  // 'Reagendado' (todavia no ocurrieron) y 'No Calificado' (se descarto antes
+  // de la llamada). Este ultimo entraba al denominador y hundia el show-up
+  // reportado; ahora usa la misma definicion que la tabla de Equipo.
   const llamadas = agendaRecords.filter((a) =>
-    a.estado && ['Show', 'No Show', 'No Cerrado', 'Cerrado', 'No Calificado'].includes(a.estado)
+    a.estado && (ESTADOS_CON_DESENLACE as readonly string[]).includes(a.estado)
   ).length
   const show_ups = agendaRecords.filter((a) =>
-    a.estado && ['Show', 'No Cerrado', 'Cerrado'].includes(a.estado)
+    a.estado && (ESTADOS_ASISTIO as readonly string[]).includes(a.estado)
   ).length
-  const cierresRows = agendaRecords.filter((a) => a.estado === 'Cerrado')
+  const cierresRows = agendaRecords.filter((a) => a.estado === ESTADO_CERRADO)
   const cierres = cierresRows.length
   const facturacion = cierresRows.reduce((sum, a) => sum + (Number(a.monto_facturacion) || 0), 0)
   const cash_collected = cierresRows.reduce((sum, a) => sum + (Number(a.monto_upfront) || 0), 0)
@@ -108,6 +111,7 @@ export async function getDashboardMetrics(
     chats_abiertos,
     conversaciones_reales,
     agendas,
+    llamadas,
     show_ups,
     cierres,
     facturacion,
@@ -284,8 +288,21 @@ export async function getBenchmarkAlerts(
       tasa_cierre: metrics.tasa_cierre,
     }
 
+    // Sin denominador no hay nada que diagnosticar. getDashboardMetrics
+    // devuelve 0 cuando nadie llego a esa etapa todavia (0 llamadas => 0% de
+    // show-up), y comparar ese 0 contra el benchmark marcaba como "critico" a
+    // cualquier cliente recien creado o sin actividad en el periodo. Es la
+    // misma distincion que ya hacen calculateFunnel (denominator === 0 =>
+    // 'healthy') y la tabla de Equipo (null => "—" en vez de 0.00%).
+    const denominadorPorMetrica: Record<string, number> = {
+      tasa_respuesta: metrics.chats_abiertos,
+      tasa_show_up: metrics.llamadas,
+      tasa_cierre: metrics.show_ups,
+    }
+
     const current = metricMap[b.metric_key]
     if (current === undefined) continue
+    if ((denominadorPorMetrica[b.metric_key] ?? 0) <= 0) continue
 
     const is_failing =
       b.comparison === 'gte' ? current < b.threshold_value : current > b.threshold_value

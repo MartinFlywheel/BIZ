@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { fetchAllRows } from '@/lib/supabase/paginate'
+import { fetchAllRows, fetchAllByIds } from '@/lib/supabase/paginate'
 
 export interface ContentAnalytics {
   engagement: {
@@ -110,28 +110,43 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
     allPieces.filter((p) => p.keyword_trigger).map((p) => [p.keyword_trigger as string, p.id])
   )
 
-  const { data: allAgendas } = await supabase
-    .from('agenda_records')
-    .select('lead_id, de_donde_vino, estado, monto_facturacion, monto_upfront')
-    .eq('client_id', clientId)
+  // Paginado: esto es el historico completo de agendas del cliente, sin filtro
+  // de fecha que lo acote. Sin .range() PostgREST corta en 1000 filas y no
+  // avisa, asi que en cuanto un cliente pasaba las 1000 agendas la atribucion
+  // por contenido dejaba de contar el resto en silencio.
+  const allAgendas = await fetchAllRows<{
+    lead_id: string | null
+    de_donde_vino: string | null
+    estado: string | null
+    monto_facturacion: number | null
+    monto_upfront: number | null
+  }>((from, to) =>
+    supabase
+      .from('agenda_records')
+      .select('lead_id, de_donde_vino, estado, monto_facturacion, monto_upfront')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
 
-  if (allAgendas && allAgendas.length > 0) {
+  if (allAgendas.length > 0) {
     const leadIds = Array.from(
       new Set(allAgendas.map((a) => a.lead_id).filter((id): id is string => !!id))
     )
-    const { data: leadsForAgendas } = leadIds.length > 0
-      ? await supabase.from('leads').select('id, first_touch_content_id').in('id', leadIds)
-      : { data: [] }
+    // Mismo tope de 1000 filas sobre un .in() con muchos ids — ver fetchAllByIds.
+    const leadsForAgendas = await fetchAllByIds<{ id: string; first_touch_content_id: string | null }>(
+      leadIds,
+      (chunk) => supabase.from('leads').select('id, first_touch_content_id').in('id', chunk)
+    )
     const contentIdByLeadId = Object.fromEntries(
-      (leadsForAgendas || [])
+      leadsForAgendas
         .filter((l) => l.first_touch_content_id)
         .map((l) => [l.id, l.first_touch_content_id as string])
     )
 
     for (const a of allAgendas) {
-      const leadId = a.lead_id as string | null
+      const leadId = a.lead_id
       const cid = (leadId && contentIdByLeadId[leadId])
-        || keywordTriggerToContentId[normalizeCta(a.de_donde_vino as string | null) ?? '']
+        || keywordTriggerToContentId[normalizeCta(a.de_donde_vino) ?? '']
       if (!cid) continue
 
       agendasByContent[cid] = (agendasByContent[cid] || 0) + 1
@@ -155,12 +170,21 @@ export async function getContentAnalytics(clientId: string): Promise<ContentAnal
   // Manual overrides from content_metrics replace the automatically-computed
   // totals for that content piece (per the form's "sobrescribir" promise),
   // rather than adding on top of them.
-  const { data: metrics } = await supabase
-    .from('content_metrics')
-    .select('content_id, cash_collected, cierres, agendas, shows')
-    .eq('client_id', clientId)
+  const metrics = await fetchAllRows<{
+    content_id: string
+    cash_collected: number | null
+    cierres: number | null
+    agendas: number | null
+    shows: number | null
+  }>((from, to) =>
+    supabase
+      .from('content_metrics')
+      .select('content_id, cash_collected, cierres, agendas, shows')
+      .eq('client_id', clientId)
+      .range(from, to)
+  )
 
-  for (const m of metrics || []) {
+  for (const m of metrics) {
     if (m.agendas && m.agendas > 0) {
       agendasByContent[m.content_id] = m.agendas
     }

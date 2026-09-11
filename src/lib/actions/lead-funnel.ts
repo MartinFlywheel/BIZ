@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { fetchAllRows } from '@/lib/supabase/paginate'
+import { fetchAllRows, fetchAllByIds } from '@/lib/supabase/paginate'
 
 // =====================================================
 // Funnel computed from leads — single source of truth
@@ -111,12 +111,22 @@ export async function getClientLeadFunnel(clientId: string): Promise<ClientFunne
 
   if (contentMap.size > 0) {
     const contentIds = Array.from(contentMap.keys())
-    const { data: contentPieces } = await supabase
-      .from('content_pieces')
-      .select('id, caption, keyword_trigger, content_type')
-      .in('id', contentIds)
+    // Por tandas: un .in() con mas de 1000 ids devuelve solo las primeras 1000
+    // y descarta el resto sin error, igual que el .select() sin paginar que se
+    // arreglo arriba. Un cliente con anos de publicaciones diarias llega ahi.
+    const contentPieces = await fetchAllByIds<{
+      id: string
+      caption: string | null
+      keyword_trigger: string | null
+      content_type: string
+    }>(contentIds, (chunk) =>
+      supabase
+        .from('content_pieces')
+        .select('id, caption, keyword_trigger, content_type')
+        .in('id', chunk)
+    )
 
-    for (const cp of contentPieces || []) {
+    for (const cp of contentPieces) {
       const group = contentMap.get(cp.id)
       if (!group) continue
 
