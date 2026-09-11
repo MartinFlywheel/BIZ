@@ -36,9 +36,19 @@ normaliza a E.164. Sin código de país se asume Chile. En la ruta GET, el
 
 ## Rutas
 
-### `GET /api/agent/v1/leads?phone=%2B56912345678`
+Cada llave acepta hasta 120 llamadas por minuto. Pasado el límite responde
+`429` hasta que pase el minuto.
 
-Busca a la persona. Siempre responde `200`:
+### `POST /api/agent/v1/leads/search`
+
+```json
+{ "phone": "+56912345678" }
+```
+
+Busca a la persona. Es la forma recomendada, porque el teléfono va en el
+cuerpo y no queda en los registros de acceso. También existe
+`GET /api/agent/v1/leads?phone=%2B56912345678` con la misma respuesta.
+Siempre responde `200`:
 
 ```json
 { "found": false, "telefono": "+56912345678" }
@@ -62,15 +72,28 @@ Busca a la persona. Siempre responde `200`:
 }
 ```
 
-El agente nunca recibe notas internas, correo ni valor de cierre.
+El agente nunca recibe notas internas, correo ni valor de cierre. De la
+persona que atiende (`setter`) solo llega el primer nombre, porque el agente
+puede decírselo al contacto.
 
 ### `POST /api/agent/v1/leads`
 
 Crea o completa a la persona.
 
 ```json
-{ "phone": "+56912345678", "full_name": "Ana Pérez", "ig_username": "@anaperez", "email": "ana@x.cl", "source": "whatsapp" }
+{
+  "phone": "+56912345678",
+  "full_name": "Ana Pérez",
+  "ig_username": "@anaperez",
+  "email": "ana@x.cl",
+  "source": "whatsapp",
+  "referral": { "source_id": "120211...", "headline": "Yoga facial", "source_type": "ad" }
+}
 ```
+
+`referral` es opcional: los datos del anuncio que originó el contacto, tal
+como los entrega WhatsApp. Se guarda al crear la persona o si no tenía uno.
+Requiere la migración 065; sin ella el lead se crea igual, sin ese dato.
 
 - Si existe por teléfono, o por Instagram, completa los datos que falten.
   Nunca pisa un dato existente con otro.
@@ -92,7 +115,12 @@ Llamarla dos veces no duplica nada. Responde `404` si la persona no existe.
 
 ### `POST /api/agent/v1/leads/stage`
 
-Cambia la etapa. Solo acepta las etapas del cliente, por id o por nombre.
+Cambia la etapa. Solo acepta las etapas del cliente que el agente tiene
+permitido poner, por id o por nombre: `nuevo_contacto`, `seguimiento`,
+`conversando`, `micro_vsl_enviado`, `vsl_chat`, `pitcheado`,
+`calendly_enviado`, `seguimiento_1`, `seguimiento_2`, `propuesta_enviada` y
+`no_calificado`. Quedan fuera `agendado`, que la pone sola la lectura de
+Calendly, y `cierre`, que decide el closer.
 
 ```json
 { "phone": "+56912345678", "stage": "calendly_enviado" }

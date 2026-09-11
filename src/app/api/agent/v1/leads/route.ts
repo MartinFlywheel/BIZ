@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server'
 import {
-  conAgente, respuestaError, telefonoDelCuerpo, texto, limpiarInstagram,
+  conAgente, respuestaError, telefonoDelCuerpo, texto, limpiarInstagram, referralDelCuerpo,
   buscarLeadPorTelefono, buscarLeadPorInstagram, leerLead, etapasDelCliente, resumenLead,
+  type AdminClient,
 } from '@/lib/agent-api'
+
+const COLUMNA_INEXISTENTE = '42703'
+
+/**
+ * Guarda el anuncio de origen solo si la columna existe (migración 065) y
+ * el lead no tenía uno: el primer anuncio es el que atrae, no el último.
+ * Nunca lanza; si la migración falta, el lead queda igual sin ese dato.
+ */
+async function guardarReferral(supabase: AdminClient, leadId: string, referral: Record<string, unknown> | null) {
+  if (!referral) return
+  const { error } = await supabase
+    .from('leads')
+    .update({ referral })
+    .eq('id', leadId)
+    .is('referral', null)
+  if (error && error.code !== COLUMNA_INEXISTENTE) throw error
+}
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -22,7 +40,7 @@ export async function GET(request: Request) {
 }
 
 // POST /api/agent/v1/leads
-// { phone, full_name?, ig_username?, email?, source? }
+// { phone, full_name?, ig_username?, email?, source?, referral? }
 // Crea a la persona si no existe, o completa sus datos si ya está. Nunca
 // pisa un dato existente con uno vacío. Devuelve created: true|false.
 export async function POST(request: Request) {
@@ -34,6 +52,7 @@ export async function POST(request: Request) {
     const instagram = limpiarInstagram(texto(body, 'ig_username', 'instagram', 'username'))
     const email = texto(body, 'email', 'correo')?.toLowerCase() ?? null
     const origen = (texto(body, 'source', 'origen') ?? 'agente').replace(/[^a-z0-9_-]/gi, '').slice(0, 40) || 'agente'
+    const referral = referralDelCuerpo(body)
 
     // Primero por teléfono. Si no está, por Instagram: puede ser un lead que
     // entró por ManyChat sin teléfono y ahora lo escribe por WhatsApp.
@@ -51,6 +70,7 @@ export async function POST(request: Request) {
         if (error) throw error
         lead = (await leerLead(supabase, lead.id)) ?? lead
       }
+      await guardarReferral(supabase, lead.id, referral)
       return NextResponse.json({ created: false, lead: await resumenLead(supabase, lead) })
     }
 
@@ -82,6 +102,8 @@ export async function POST(request: Request) {
       }
       throw error
     }
+
+    await guardarReferral(supabase, nuevo.id, referral)
 
     const creado = await leerLead(supabase, nuevo.id)
     if (!creado) throw new Error('El lead se creó pero no se pudo volver a leer')

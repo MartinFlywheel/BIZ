@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import {
   conAgente, respuestaError, telefonoDelCuerpo, texto,
-  buscarLeadPorTelefono, leerLead, etapasDelCliente, resolverEtapa, resumenLead,
+  buscarLeadPorTelefono, leerLead, etapasDelCliente, etapasPermitidasAlAgente, resolverEtapa, resumenLead,
 } from '@/lib/agent-api'
 
 export const dynamic = 'force-dynamic'
@@ -11,9 +11,11 @@ export const runtime = 'nodejs'
 // { phone, stage }
 //
 // Cambia la etapa del pipeline. Solo acepta las etapas configuradas para
-// ese cliente (o las del CRM si no tiene propias), por id o por nombre
-// visible. Cualquier otra responde 422 con la lista válida, para que el
-// agente no siga sembrando etapas que ningún tablero muestra.
+// ese cliente (o las del CRM si no tiene propias) y que el agente tenga
+// permitido poner: quedan fuera "agendado", que la pone sola la lectura de
+// Calendly junto con la fila de agenda, y "cierre", que decide el closer.
+// Se acepta por id o por nombre visible. Cualquier otra responde 422 con la
+// lista válida.
 export async function POST(request: Request) {
   return conAgente(request, 'etapa', async ({ supabase, agente, body }) => {
     const { e164 } = telefonoDelCuerpo(body)
@@ -22,10 +24,10 @@ export async function POST(request: Request) {
     const valor = texto(body, 'stage', 'etapa')
     if (!valor) return respuestaError('Falta la etapa', 400)
 
-    const etapas = await etapasDelCliente(supabase, agente.clientId)
+    const etapas = etapasPermitidasAlAgente(await etapasDelCliente(supabase, agente.clientId))
     const etapa = resolverEtapa(etapas, valor)
     if (!etapa) {
-      return respuestaError('Etapa no válida para este cliente', 422, {
+      return respuestaError('Etapa no válida o no permitida para el agente', 422, {
         etapas_validas: etapas.map((e) => ({ id: e.id, nombre: e.label })),
       })
     }
@@ -41,9 +43,6 @@ export async function POST(request: Request) {
       next_follow_up_date: null,
       follow_up_count: 0,
     }
-    if (etapa.id === 'agendado' || etapa.id === 'agenda_set') cambios.agenda_at = ahora
-    if (etapa.id === 'cliente' || etapa.id === 'closed_won') cambios.closed_at = ahora
-
     const { error } = await supabase.from('leads').update(cambios).eq('id', lead.id)
     if (error) throw error
 

@@ -64,6 +64,33 @@ export async function registrarLlamada(
   }
 }
 
+// ── Límite de llamadas por llave ─────────────────────────────────────────────
+
+/** Llamadas por minuto que acepta una misma llave antes de responder 429. */
+const LIMITE_POR_MINUTO = 120
+
+/**
+ * Frena el abuso si una llave se filtra. Se cuenta sobre webhook_logs, que
+ * ya guarda cada llamada con su key_id, así que no hace falta otra tabla.
+ * Si el conteo falla (tabla vieja, columna ausente), se deja pasar: el
+ * límite es una red de seguridad, no puede tumbar la API.
+ */
+async function excedeLimite(supabase: AdminClient, keyId: string): Promise<boolean> {
+  try {
+    const desde = new Date(Date.now() - 60_000).toISOString()
+    const { count, error } = await supabase
+      .from('webhook_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('source', 'agent')
+      .eq('payload->>key_id', keyId)
+      .gte('received_at', desde)
+    if (error) return false
+    return (count ?? 0) >= LIMITE_POR_MINUTO
+  } catch {
+    return false
+  }
+}
+
 // ── Envoltorio común de cada ruta ────────────────────────────────────────────
 
 interface Contexto {
@@ -85,6 +112,11 @@ export async function conAgente(
   const supabase = createAdminClient()
   const auth = await autenticarAgente(supabase, request)
   if (auth.error) return auth.error
+
+  if (await excedeLimite(supabase, auth.agente.keyId)) {
+    await registrarLlamada(supabase, accion, auth.agente, null, 'Límite de llamadas por minuto excedido')
+    return respuestaError('Demasiadas llamadas. Espera un minuto.', 429)
+  }
 
   let body: Record<string, unknown> = {}
   if (request.method === 'GET') {
@@ -189,10 +221,40 @@ export async function etapasDelCliente(supabase: AdminClient, clientId: string):
   return etapas && etapas.length > 0 ? etapas : LEAD_STAGES
 }
 
+/**
+ * Etapas que el agente puede poner. Quedan fuera las que tienen efectos
+ * que el agente no puede completar: "agendado" la pone sola la lectura de
+ * Calendly (y crea la fila de agenda), y "cierre" la decide el closer
+ * después de la llamada.
+ */
+const ETAPAS_AGENTE = new Set([
+  'nuevo_contacto', 'seguimiento', 'conversando', 'micro_vsl_enviado', 'vsl_chat',
+  'pitcheado', 'calendly_enviado', 'seguimiento_1', 'seguimiento_2',
+  'propuesta_enviada', 'no_calificado',
+])
+
+export function etapasPermitidasAlAgente(etapas: PipelineStageConfig[]): PipelineStageConfig[] {
+  return etapas.filter((e) => ETAPAS_AGENTE.has(e.id))
+}
+
 /** Acepta el id exacto o el nombre visible de la etapa, sin distinguir mayúsculas. */
 export function resolverEtapa(etapas: PipelineStageConfig[], valor: string): PipelineStageConfig | null {
   const v = valor.trim().toLowerCase()
   return etapas.find((e) => e.id.toLowerCase() === v) ?? etapas.find((e) => e.label.toLowerCase() === v) ?? null
+}
+
+/** Solo el primer nombre: el agente puede decírselo al contacto y no conviene exponer el apellido. */
+export function primerNombre(nombre: string | null | undefined): string | null {
+  if (!nombre) return null
+  return nombre.trim().split(/\s+/)[0] || null
+}
+
+/** El objeto referral del anuncio, si vino. Acepta objeto o texto. */
+export function referralDelCuerpo(body: Record<string, unknown>): Record<string, unknown> | null {
+  const r = body.referral ?? body.anuncio
+  if (r && typeof r === 'object' && !Array.isArray(r)) return r as Record<string, unknown>
+  if (typeof r === 'string' && r.trim()) return { texto: r.trim() }
+  return null
 }
 
 /** Acepta la etiqueta tal cual o sin distinguir mayúsculas; devuelve la forma canónica. */
@@ -220,7 +282,7 @@ export async function resumenLead(supabase: AdminClient, lead: LeadFila): Promis
   const [etapas, setter, agenda] = await Promise.all([
     etapasDelCliente(supabase, lead.client_id),
     lead.assigned_to
-      ? supabase.from('users').select('full_name').eq('id', lead.assigned_to).maybeSingle().then((r) => r.data?.full_name ?? null)
+      ? supabase.from('users').select('full_name').eq('id', lead.assigned_to).maybeSingle().then((r) => primerNombre(r.data?.full_name))
       : Promise.resolve(null),
     proximaAgenda(supabase, lead.id),
   ])
