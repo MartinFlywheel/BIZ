@@ -1,35 +1,39 @@
--- 063 · Unificar las etapas del pipeline
---
--- Problema: convivían dos vocabularios de etapa. El tablero actual usa
--- nuevo_contacto, conversando, agendado, cierre, no_calificado, etc. (los 13
--- de LEAD_STAGES), pero varias vías seguían escribiendo el vocabulario
--- inglés original: el webhook antiguo de ManyChat y "Promover a lead" dejaban
--- 'new', el triaje 'agenda_set', el tercer "Perdido" 'closed_lost'. Esos
--- leads no aparecían en la pestaña CRM, no se limpiaban con
--- prune-stale-leads y no contaban en las métricas por etapa.
---
--- Solución: traducir los leads existentes al vocabulario actual y cambiar
--- las cuatro vías en el código (mismo commit). Equivalencias:
---
---   new         → nuevo_contacto
---   contacted   → conversando
---   agenda_set  → agendado
---   showed_up   → agendado   (si asistió queda en la agenda, no en la etapa)
---   no_show     → agendado   (ídem: el resultado vive en agenda_records)
---   closed_won  → cierre
---   closed_lost → no_calificado
---
--- Reversible: la etapa anterior queda en stage_antes_de_063. Si un cliente
--- tiene etapas propias (clients.pipeline_stages) que no incluyen la etapa de
--- destino, ese lead no se toca, porque lo mandaríamos a una etapa que su
--- tablero tampoco muestra.
---
--- Además, el trigger que calcula days_to_close solo conocía closed_won y
--- closed_lost; ahora también cierra con cierre y no_calificado.
+/*
+  063 · Unificar las etapas del pipeline
+
+  Problema: convivían dos vocabularios de etapa. El tablero actual usa
+  nuevo_contacto, conversando, agendado, cierre, no_calificado, etc. (los 13
+  de LEAD_STAGES), pero varias vías seguían escribiendo el vocabulario
+  inglés original: el webhook antiguo de ManyChat y "Promover a lead" dejaban
+  'new', el triaje 'agenda_set', el tercer "Perdido" 'closed_lost'. Esos
+  leads no aparecían en la pestaña CRM, no se limpiaban con
+  prune-stale-leads y no contaban en las métricas por etapa.
+
+  Solución: traducir los leads existentes al vocabulario actual y cambiar
+  las cuatro vías en el código (mismo commit). Equivalencias:
+
+  new         → nuevo_contacto
+  contacted   → conversando
+  agenda_set  → agendado
+  showed_up   → agendado   (si asistió queda en la agenda, no en la etapa)
+  no_show     → agendado   (ídem: el resultado vive en agenda_records)
+  closed_won  → cierre
+  closed_lost → no_calificado
+
+  Reversible: la etapa anterior queda en stage_antes_de_063. Si un cliente
+  tiene etapas propias (clients.pipeline_stages) que no incluyen la etapa de
+  destino, ese lead no se toca, porque lo mandaríamos a una etapa que su
+  tablero tampoco muestra.
+
+  Además, el trigger que calcula days_to_close solo conocía closed_won y
+  closed_lost; ahora también cierra con cierre y no_calificado.
+*/
 
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS stage_antes_de_063 TEXT;
 
--- Cuántos leads hay en cada etapa antigua, para saber qué se va a mover.
+/*
+  Cuántos leads hay en cada etapa antigua, para saber qué se va a mover.
+*/
 SELECT stage, count(*) AS leads
 FROM leads
 WHERE stage IN ('new', 'contacted', 'agenda_set', 'showed_up', 'no_show', 'closed_won', 'closed_lost')
@@ -56,8 +60,8 @@ WITH destino AS (
 UPDATE leads l
 SET stage = d.nueva,
     stage_antes_de_063 = d.anterior,
-    -- Un lead que llega a agendado debe tener fecha de agenda; si no la
-    -- tenía, se usa la última actualización como aproximación.
+    /* Un lead que llega a agendado debe tener fecha de agenda; si no la
+       tenía, se usa la última actualización como aproximación. */
     agenda_at = CASE WHEN d.nueva = 'agendado' THEN COALESCE(l.agenda_at, l.updated_at) ELSE l.agenda_at END,
     updated_at = now()
 FROM destino d
@@ -69,7 +73,9 @@ WHERE d.id = l.id
     OR d.pipeline_stages @> jsonb_build_array(jsonb_build_object('id', d.nueva))
   );
 
--- Trigger de cierre: reconoce también las etapas actuales.
+/*
+  Trigger de cierre: reconoce también las etapas actuales.
+*/
 CREATE OR REPLACE FUNCTION calculate_days_to_close()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -87,9 +93,11 @@ BEGIN
 END;
 $$;
 
--- Cuántos quedaron sin mover (clientes con etapas propias que no tienen la
--- etapa de destino). Si esta consulta devuelve filas, hay que revisarlos a
--- mano en la pestaña CRM del cliente.
+/*
+  Cuántos quedaron sin mover (clientes con etapas propias que no tienen la
+  etapa de destino). Si esta consulta devuelve filas, hay que revisarlos a
+  mano en la pestaña CRM del cliente.
+*/
 SELECT c.name AS cliente, l.stage, count(*) AS leads
 FROM leads l
 JOIN clients c ON c.id = l.client_id
