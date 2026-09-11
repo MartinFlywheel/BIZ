@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarReuniones, correosExternos, credencialesConfiguradas } from '@/lib/services/fathom'
+import { exigirCronSecret } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -25,6 +26,10 @@ export const runtime = 'nodejs'
 const COLUMNA_INEXISTENTE = '42703'
 
 export async function GET(request: Request) {
+  // Ruta interna de diagnóstico: solo con la contraseña de los crons.
+  const noAutorizado = exigirCronSecret(request)
+  if (noAutorizado) return noAutorizado
+
   if (!credencialesConfiguradas()) {
     return NextResponse.json({
       ok: false,

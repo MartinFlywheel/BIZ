@@ -1,3 +1,4 @@
+import { normalizarTelefono } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parsearEventoCalendly, type EventoCalendly } from './calendly-event'
 import {
@@ -67,7 +68,7 @@ interface ContextoCliente {
 }
 
 /** Cómo se encontró el lead. Queda guardado para poder auditar los cruces. */
-type MatchMetodo = 'instagram' | 'email' | 'nombre' | null
+type MatchMetodo = 'instagram' | 'telefono' | 'email' | 'nombre' | null
 
 /**
  * Los datos de la reserva, juntando la descripción con el resto del evento.
@@ -107,10 +108,12 @@ function esErrorDeMigracion(error: { code?: string } | null | undefined): boolea
 /**
  * Busca a qué lead corresponde la reserva.
  *
- * En orden de confianza: Instagram (lo escribió la persona y es único), correo
- * (exacto, pero mucha gente reserva con uno distinto al que dio antes) y nombre
- * (aproximado, el más propenso a equivocarse). El método usado queda guardado
- * para poder revisar después cuáles se cruzaron por nombre, que son las dudosas.
+ * En orden de confianza: Instagram (lo escribió la persona y es único),
+ * teléfono (normalizado a E.164 por la migración 059; es lo que el agente
+ * prellena en el enlace de Calendly), correo (exacto, pero mucha gente reserva
+ * con uno distinto al que dio antes) y nombre (aproximado, el más propenso a
+ * equivocarse). El método usado queda guardado para poder revisar después
+ * cuáles se cruzaron por nombre, que son las dudosas.
  */
 async function buscarLead(
   supabase: Supabase,
@@ -126,6 +129,21 @@ async function buscarLead(
       .limit(1)
       .maybeSingle()
     if (data) return { leadId: data.id, metodo: 'instagram' }
+  }
+
+  const telefono = normalizarTelefono(datos.telefono)
+  if (telefono) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('phone_e164', telefono)
+      .limit(1)
+      .maybeSingle()
+    if (data) return { leadId: data.id, metodo: 'telefono' }
+    // Sin la migración 059 no existe phone_e164: se sigue con el correo, como
+    // antes, en vez de tumbar el sync completo.
+    if (error && !esErrorDeMigracion(error)) throw error
   }
 
   if (datos.email) {

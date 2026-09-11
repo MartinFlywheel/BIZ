@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listarCambios, credencialesConfiguradas } from '@/lib/services/google-calendar'
 import { datosDeLaReserva } from '@/lib/services/agenda-sync'
+import { exigirCronSecret } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -25,6 +26,10 @@ export const runtime = 'nodejs'
  * calendario", que desde fuera se ven igual.
  */
 export async function GET(request: Request) {
+  // Ruta interna de diagnóstico: solo con la contraseña de los crons.
+  const noAutorizado = exigirCronSecret(request)
+  if (noAutorizado) return noAutorizado
+
   if (!credencialesConfiguradas()) {
     return NextResponse.json({
       ok: false,

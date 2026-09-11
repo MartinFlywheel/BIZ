@@ -39,6 +39,12 @@ export async function GET(request: Request) {
         .select('id, ig_username')
         .eq('client_id', client.id)
         .eq('stage', 'nuevo_contacto')
+        // Los leads creados por la API del agente no tienen interacciones
+        // de ManyChat ni usuario de Instagram, así que esta limpieza los
+        // tomaría por basura y los borraría la primera noche. Se excluyen.
+        // El `is.null` es necesario: un NOT LIKE sobre NULL no es verdadero
+        // y dejaría de limpiar los leads sin origen registrado.
+        .or('first_touch_type.is.null,first_touch_type.not.like.agent:%')
         .order('id', { ascending: true })
         .limit(limit)
       if (cursor) query = query.gt('id', cursor)

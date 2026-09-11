@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { exigirCronSecret } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,10 @@ function normalizeCta(raw: string | null): string | null {
 }
 
 export async function GET(request: Request) {
+  // Ruta interna de diagnóstico: solo con la contraseña de los crons.
+  const noAutorizado = exigirCronSecret(request)
+  if (noAutorizado) return noAutorizado
+
   const supabase = createAdminClient()
   const url = new URL(request.url)
   const clientName = url.searchParams.get('client')

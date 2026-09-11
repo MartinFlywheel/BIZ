@@ -1,8 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { exigirCronSecret } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  // Ruta interna de diagnóstico: solo con la contraseña de los crons.
+  const noAutorizado = exigirCronSecret(request)
+  if (noAutorizado) return noAutorizado
+
   const token = process.env.META_SYSTEM_USER_TOKEN
   const { searchParams } = request.nextUrl
   const igAccountId = searchParams.get('ig_account_id')
