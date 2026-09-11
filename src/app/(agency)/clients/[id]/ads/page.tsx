@@ -4,6 +4,8 @@ import { unstable_noStore } from 'next/cache'
 import { ArrowLeft, Megaphone, AlertTriangle } from 'lucide-react'
 import { getClient } from '@/lib/actions/clients'
 import { getClientAdsData, type AdCampaign } from '@/lib/actions/ads'
+import { getAtribucionAnuncios } from '@/lib/actions/ad-attribution'
+import { AdAttributionTable } from '@/components/clients/ad-attribution-table'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { formatNumber, formatPercent } from '@/lib/utils'
 
@@ -82,7 +84,15 @@ export default async function ClientAdsPage({
   const client = await getClient(id).catch(() => null)
   if (!client) notFound()
 
-  const ads = await getClientAdsData(id)
+  const [ads, atribucion] = await Promise.all([
+    getClientAdsData(id),
+    // Nunca tumba la página: si la atribución falla, la pestaña sigue
+    // mostrando el gasto y las campañas.
+    getAtribucionAnuncios(id).catch((e): Awaited<ReturnType<typeof getAtribucionAnuncios>> => {
+      console.error('[ads] atribución falló:', e)
+      return { status: 'sin_datos' }
+    }),
+  ])
 
   return (
     <div className="space-y-6">
@@ -134,6 +144,16 @@ export default async function ClientAdsPage({
           <div className="space-y-3">
             <h2 className="text-sm font-medium text-white/90">Campañas</h2>
             <CampaignsTable campaigns={ads.data.campaigns} currency={ads.data.currency} />
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-sm font-medium text-white/90">De qué anuncio vienen las personas</h2>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                Personas que escribieron desde un anuncio de WhatsApp, según lo que registró el agente. Gasto de los últimos 30 días.
+              </p>
+            </div>
+            <AdAttributionTable atribucion={atribucion} currency={ads.data.currency} />
           </div>
         </div>
       )}
