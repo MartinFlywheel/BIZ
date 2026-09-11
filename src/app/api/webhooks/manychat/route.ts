@@ -65,6 +65,9 @@ export async function POST(request: Request) {
       ''
     ).trim()
 
+    // ID de Instagram del suscriptor (ig_id en ManyChat); antes no se guardaba.
+    const igUserId = (payload.ig_id || payload.ig_user_id || payload.custom_fields?.ig_id || '').toString().trim() || null
+
     const phone = payload.phone || payload.custom_fields?.phone || null
     const email = payload.email || payload.custom_fields?.email || null
     const customFields = payload.custom_fields || {}
@@ -187,6 +190,7 @@ export async function POST(request: Request) {
         igUsername,
         fullName,
         subscriberId,
+        igUserId,
         keywordUsed: payloadId || null,
         classification,
         customFields,

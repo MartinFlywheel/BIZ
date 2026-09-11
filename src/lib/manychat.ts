@@ -103,6 +103,9 @@ export interface InteractionParams {
   igUsername: string
   fullName: string | null
   subscriberId: string
+  // ID de Instagram del suscriptor (ig_id en ManyChat). Es el identificador
+  // estable de la persona; el @usuario cambia y el subscriber_id es de ManyChat.
+  igUserId?: string | null
   keywordUsed: string | null
   classification: Classification
   customFields?: Record<string, unknown>
@@ -179,6 +182,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
           prospect_responded_at: now,
           qualified_at: (params.classification === 'conversacion_real' || params.classification === 'lead_calificado') ? now : null,
           prequalification_data: mergedFields,
+          ...(params.igUserId ? { ig_user_id: params.igUserId } : {}),
           updated_at: now,
         })
         .eq('id', existing.id)
@@ -196,6 +200,7 @@ export async function upsertInteraction(supabase: AdminClient, params: Interacti
       classification: params.classification,
       source: 'manychat',
       manychat_subscriber_id: params.subscriberId,
+      ig_user_id: params.igUserId || null,
       keyword_used: params.keywordUsed,
       bot_triggered_at: now,
       prospect_responded_at: params.classification !== 'chat_abierto' ? now : null,
@@ -324,6 +329,11 @@ export async function handlePieceWebhook(
       payload.id ||
       ''
     ).toString()
+
+    // ig_id es el ID de Instagram del suscriptor que ManyChat manda en
+    // "Full Contact Data". Antes se descartaba (está en RESERVED_PAYLOAD_KEYS)
+    // y la columna interactions.ig_user_id quedaba siempre vacía.
+    const igUserId = (payload.ig_id || payload.ig_user_id || '').toString().trim() || null
 
     // Whatever ManyChat's flow has collected so far (nivel, zona, edad,
     // ocupación, etc.) — passed through as-is into prequalification_data,
@@ -468,6 +478,7 @@ export async function handlePieceWebhook(
       igUsername,
       fullName,
       subscriberId,
+      igUserId,
       keywordUsed: pieceId,
       classification,
       customFields,
