@@ -15,6 +15,9 @@ const PREGUNTAS: Array<{ clave: string; rotulo: string }> = [
   { clave: 'zonas', rotulo: 'Zonas' },
   { clave: 'ocupacion', rotulo: 'Rutina' },
   { clave: 'probado', rotulo: 'Ya probó' },
+  { clave: 'ingresos', rotulo: 'Ingresos al mes' },
+  // La pregunta anterior. Se sigue aceptando para no perder lo que llegue de
+  // una pestaña que quedó abierta con la versión vieja de la landing.
   { clave: 'inversion', rotulo: 'Puede invertir' },
   { clave: 'diagnostico', rotulo: 'Diagnóstico' },
 ]
@@ -121,7 +124,7 @@ async function guardarQuiz(supabase: AdminClient, leadId: string, respuestas: Re
 
 // POST /api/agent/v1/leads/quiz
 // { phone, quiz: { zonas: [...], ocupacion: [...], probado: [...],
-//                  inversion: [...], diagnostico: "..." } }
+//                  ingresos: [...], diagnostico: "..." } }
 //
 // Guarda lo que la persona respondió en la precalificación de la landing.
 // El detalle queda en la columna `quiz` y el resumen legible en `notes`, que
