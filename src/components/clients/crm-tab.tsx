@@ -78,6 +78,20 @@ const SOURCE_LABEL: Record<string, string> = {
   whatsapp: 'WhatsApp', youtube: 'YouTube', formulario: 'Formulario', manual: 'Manual',
 }
 
+// Los leads que entran por la API del agente guardan el origen con el prefijo
+// "agent:" (ver api/agent/v1/leads: ese prefijo es lo que los protege de la
+// limpieza nocturna de leads viejos). Hay que sacarlo antes de buscar la
+// etiqueta, o la columna muestra "agent:whatsapp" en crudo.
+function etiquetaFuente(valor: string): string {
+  const sinPrefijo = valor.replace(/^agent:/, '')
+  return SOURCE_LABEL[sinPrefijo] ?? SOURCE_LABEL[valor] ?? valor
+}
+
+// Orígenes que se muestran como chip en vez de texto gris. Hoy solo la landing
+// de anuncios (soyauroraancestral), para reconocer de un vistazo quién llegó
+// por ahí y entra al triaje manual.
+const FUENTES_DESTACADAS = new Set(['agent:whatsapp'])
+
 const ROL_BADGE: Record<string, { label: string; color: string }> = {
   closer: { label: 'Closer', color: 'bg-emerald-950/50 text-emerald-400 border border-emerald-900/40' },
   setter: { label: 'Setter', color: 'bg-blue-950/50 text-blue-400 border border-blue-900/40' },
@@ -419,7 +433,7 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
               {local.first_touch_type && (
                 <div>
                   <span className="text-zinc-500 block mb-0.5 text-[10px] uppercase tracking-wider">Fuente/Source</span>
-                  <span>{SOURCE_LABEL[local.first_touch_type] ?? local.first_touch_type}</span>
+                  <span>{etiquetaFuente(local.first_touch_type)}</span>
                 </div>
               )}
               <div>
@@ -731,7 +745,11 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
           l.full_name?.toLowerCase().includes(s) ||
           l.ig_username?.toLowerCase().includes(s) ||
           l.email?.toLowerCase().includes(s) ||
-          l.phone?.includes(s)
+          l.phone?.includes(s) ||
+          // Buscar por origen: escribir "whatsapp" deja a la vista los que
+          // llegaron por la landing de anuncios, que es por donde parte el
+          // triaje manual.
+          (l.first_touch_type ? etiquetaFuente(l.first_touch_type).toLowerCase().includes(s) : false)
         if (!matchesSearch) return false
       }
       if (stageFilter.size > 0 && !stageFilter.has(l.stage)) return false
@@ -964,9 +982,8 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                 paginated.map((lead, idx) => {
                   const cp = lead.content_id ? contentMap.get(lead.content_id) : null
                   const setterName = lead.assigned_to ? userMap.get(lead.assigned_to) : null
-                  const source = lead.first_touch_type
-                    ? (SOURCE_LABEL[lead.first_touch_type] ?? lead.first_touch_type)
-                    : '—'
+                  const source = lead.first_touch_type ? etiquetaFuente(lead.first_touch_type) : '—'
+                  const fuenteDestacada = !!lead.first_touch_type && FUENTES_DESTACADAS.has(lead.first_touch_type)
 
                   return (
                     <tr
@@ -1030,7 +1047,15 @@ function LeadsSheet({ leads: initialLeads, agencyUsers, contentPieces, interacti
                       <td className="px-2 py-2.5" onClick={e => e.stopPropagation()}>
                         <StageSelect lead={lead} stages={stages} />
                       </td>
-                      <td className="px-2 py-2.5 text-xs text-zinc-400 whitespace-nowrap">{source}</td>
+                      <td className="px-2 py-2.5 text-xs text-zinc-400 whitespace-nowrap">
+                        {fuenteDestacada ? (
+                          <span className="text-[11px] font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-900/50 rounded px-1.5 py-0.5">
+                            {source}
+                          </span>
+                        ) : (
+                          source
+                        )}
+                      </td>
                       <td className="px-2 py-2.5 text-xs text-zinc-400 whitespace-nowrap">
                         {setterName || <span className="text-zinc-700">—</span>}
                       </td>
