@@ -83,8 +83,36 @@ function notasConAnalisis(notasActuales: string | null, bloque: string): string 
   return resto ? `${bloque}\n\n${resto}` : bloque
 }
 
+/**
+ * Cuánto tiempo puede rehacerse el análisis. Pasado esto queda fijo.
+ *
+ * La landing solo autoriza a guardar a quien envió el formulario con ese
+ * teléfono, pero enviar el formulario no prueba que el teléfono sea suyo.
+ * Sin este plazo, alguien podría poner el número de una clienta antigua y
+ * reescribirle el análisis que el setter ya usó para calificarla.
+ */
+const VENTANA_REHACER_MS = 6 * 60 * 60 * 1000
+
+/**
+ * true si el lead ya tiene un análisis guardado hace más de la ventana.
+ * Si la migración 069 no se corrió no hay cómo saberlo y se deja pasar: es
+ * el mismo comportamiento que había antes de esta regla.
+ */
+async function analisisYaFijo(supabase: AdminClient, leadId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('leads').select('quiz').eq('id', leadId).maybeSingle()
+  if (error) {
+    if (error.code === COLUMNA_INEXISTENTE) return false
+    throw error
+  }
+  const guardadoEn = (data as { quiz: { guardado_en?: string } | null } | null)?.quiz?.guardado_en
+  if (!guardadoEn) return false
+  const cuando = Date.parse(guardadoEn)
+  return Number.isFinite(cuando) && Date.now() - cuando > VENTANA_REHACER_MS
+}
+
 /** Escribe la columna `quiz` solo si la migración 069 ya se corrió. */
-async function guardarQuiz(supabase: AdminClient, leadId: string, quiz: Record<string, string[]>) {
+async function guardarQuiz(supabase: AdminClient, leadId: string, respuestas: Record<string, string[]>) {
+  const quiz = { ...respuestas, guardado_en: new Date().toISOString() }
   const { error } = await supabase.from('leads').update({ quiz }).eq('id', leadId)
   if (!error) return true
   if (error.code === COLUMNA_INEXISTENTE) return false
@@ -115,6 +143,10 @@ export async function POST(request: Request) {
 
     const lead = await buscarLeadPorTelefono(supabase, agente.clientId, e164)
     if (!lead) return respuestaError('No existe un lead con ese teléfono. Créalo primero con POST /api/agent/v1/leads', 404)
+
+    if (await analisisYaFijo(supabase, lead.id)) {
+      return respuestaError('Este lead ya tiene un análisis guardado y ya no se puede reemplazar', 409)
+    }
 
     const guardado = await guardarQuiz(supabase, lead.id, quiz)
 
