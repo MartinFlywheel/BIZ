@@ -138,7 +138,15 @@ export function FichaTriajeModal({
                     )}
                     <button
                       disabled={setterAvisado}
-                      onClick={async () => { await pedirAsociacionAlSetter(agendaId); setSetterAvisado(true) }}
+                      onClick={async () => {
+                        try {
+                          const r = await pedirAsociacionAlSetter(agendaId)
+                          if (r.ok) setSetterAvisado(true)
+                          else setError(r.error ?? 'No se pudo avisar al setter')
+                        } catch {
+                          setError('No se pudo avisar al setter')
+                        }
+                      }}
                       className="rounded-md border border-amber-900/50 px-2 py-1 text-[11px] text-amber-200 hover:bg-amber-950/40 disabled:opacity-60"
                     >
                       {setterAvisado ? 'Setter avisado' : 'Avisar al setter'}

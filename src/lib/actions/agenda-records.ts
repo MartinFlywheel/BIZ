@@ -138,6 +138,20 @@ export async function updateAgendaRecord(id: string, fields: AgendaRecordFields)
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+
+  // Asociar el lead desde la planilla también resuelve la tarea del setter. Si
+  // no, solo la cerraba el barrido, que mira las agendas de los últimos días,
+  // y en una agenda más vieja quedaba pendiente para siempre.
+  if (fields.lead_id) {
+    const { error: errorTarea } = await supabase
+      .from('system_tasks')
+      .update({ estado: 'hecha', completada_at: new Date().toISOString() })
+      .eq('agenda_record_id', id)
+      .eq('tipo', 'asociar_lead')
+      .eq('estado', 'pendiente')
+    // Sin la 053 no hay tabla de tareas: la asociación ya quedó guardada igual.
+    if (errorTarea && errorTarea.code !== '42P01') console.error(`[agenda] no se cerró la tarea de ${id}: ${errorTarea.message}`)
+  }
 }
 
 export async function deleteAgendaRecord(id: string): Promise<void> {

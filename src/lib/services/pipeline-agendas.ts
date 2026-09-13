@@ -35,8 +35,13 @@ const HORA = 3_600_000
 export function vencimientoTriaje(agendadoAt: string, horaLlamada: string | null): string {
   const porAgendado = new Date(agendadoAt).getTime() + 24 * HORA
   if (!horaLlamada) return new Date(porAgendado).toISOString()
-  const porLlamada = new Date(horaLlamada).getTime() - 2 * HORA
-  return new Date(Math.min(porAgendado, porLlamada)).toISOString()
+  const llamada = new Date(horaLlamada).getTime()
+  const porLlamada = llamada - 2 * HORA
+  const plazo = Math.min(porAgendado, porLlamada)
+  // Reservada con menos de 2 h de anticipación: el plazo caería antes de que
+  // la agenda existiera y la tarea nacería vencida. Se le da hasta la llamada.
+  if (plazo <= new Date(agendadoAt).getTime()) return new Date(llamada).toISOString()
+  return new Date(plazo).toISOString()
 }
 
 /** Minutos de postergación que se ofrecen, según cuánto falta para vencer. */

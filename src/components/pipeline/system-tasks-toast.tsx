@@ -90,6 +90,17 @@ export function SystemTasksToast() {
 
   const tarea = tareas[0]
 
+  // Si la tarea de arriba cambió (se cerró en otra pestaña, llegó una más
+  // urgente), lo que estaba abierto era de la anterior: posponer o reasignar
+  // desde ahí actuaría sobre la tarea equivocada.
+  const [tareaVista, setTareaVista] = useState<string | undefined>(undefined)
+  if (tareaVista !== tarea?.id) {
+    setTareaVista(tarea?.id)
+    setVerPosponer(false)
+    setResponsables(null)
+    setAviso(null)
+  }
+
   const despues = useCallback(() => {
     setVerPosponer(false)
     setResponsables(null)
@@ -128,19 +139,31 @@ export function SystemTasksToast() {
   const { titulo, boton } = TITULOS[tarea.tipo]
   const Icono = tarea.tipo === 'reporte_llamada' ? FileText : tarea.tipo === 'asociar_lead' ? UserSearch : Bell
 
-  async function posponer(minutos: number) {
+  async function posponer(etiqueta: string) {
     setTrabajando(true)
     try {
-      const r = await posponerTarea(tarea.id, minutos)
+      const r = await posponerTarea(tarea.id, etiqueta)
       if (!r.ok) { setAviso(r.error ?? 'No se pudo posponer'); void cargar(); return }
+      // Se saca en el acto: esperar la recarga dejaba el aviso visible un rato
+      // y parecía que posponer no había hecho nada.
+      setTareas((prev) => prev.filter((t) => t.id !== tarea.id))
       despues()
+    } catch {
+      setAviso('No se pudo posponer. Revisa tu sesión e inténtalo de nuevo.')
     } finally {
       setTrabajando(false)
     }
   }
 
   async function abrirReasignar() {
-    setResponsables(await getResponsables(tarea.clientId))
+    setAviso(null)
+    try {
+      const lista = await getResponsables(tarea.clientId)
+      if (lista.length === 0) setAviso('No hay a quién reasignar en este cliente.')
+      else setResponsables(lista)
+    } catch {
+      setAviso('No se pudo cargar la lista. Revisa tu sesión e inténtalo de nuevo.')
+    }
   }
 
   async function reasignar(userId: string) {
@@ -148,7 +171,10 @@ export function SystemTasksToast() {
     try {
       const r = await reasignarTarea(tarea.id, userId)
       if (!r.ok) { setAviso(r.error ?? 'No se pudo reasignar'); return }
+      if (userId !== tarea.asignadoA) setTareas((prev) => prev.filter((t) => t.id !== tarea.id))
       despues()
+    } catch {
+      setAviso('No se pudo reasignar. Revisa tu sesión e inténtalo de nuevo.')
     } finally {
       setTrabajando(false)
     }
@@ -232,7 +258,7 @@ export function SystemTasksToast() {
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {tarea.opcionesPosponer.map((o) => (
-                  <button key={o.etiqueta} disabled={trabajando} onClick={() => void posponer(o.minutos)}
+                  <button key={o.etiqueta} disabled={trabajando} onClick={() => void posponer(o.etiqueta)}
                     className="rounded-lg border border-white/[0.11] bg-white/[0.03] px-2.5 py-1 font-mono text-[11px] text-zinc-400 hover:border-rose-800/60 hover:bg-rose-950/30 hover:text-zinc-100 disabled:opacity-50">
                     <Clock className="mr-1 inline h-3 w-3" />{o.etiqueta}
                   </button>

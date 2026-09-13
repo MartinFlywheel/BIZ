@@ -112,8 +112,12 @@ function mapearTarea(t: FilaTarea, ahora: number): TareaSistema {
  *
  * Suena solo para el responsable (ver 039): lo asignado a esta persona y, si es
  * admin, lo que no tiene dueño. Un setter ve además las asociaciones sin dueño
- * de su cliente. Lo vencido aparece aunque se haya pospuesto: vencido no se
- * puede posponer.
+ * de su cliente.
+ *
+ * Solo cuenta visible_desde. Antes lo vencido se mostraba aunque se hubiera
+ * pospuesto, y un reporte que nació vencido no se iba nunca del popup: el botón
+ * posponía en la base pero el aviso seguía ahí. Un triaje vencido igual no se
+ * puede posponer (no se le ofrece la opción), así que esa regla sobraba.
  */
 export async function getMisTareas(): Promise<TareaSistema[]> {
   let perfil: Perfil
@@ -127,11 +131,22 @@ export async function getMisTareas(): Promise<TareaSistema[]> {
   const ahora = Date.now()
   const ahoraIso = new Date(ahora).toISOString()
 
+  // El filtro por dueño va en la consulta y no después: con el límite aplicado
+  // antes, cincuenta tareas de otras personas bastaban para que las propias no
+  // aparecieran nunca.
+  const esAdmin = perfil.role === 'admin'
+  const dueno = esAdmin
+    ? `asignado_a.eq.${perfil.id},asignado_a.is.null`
+    : perfil.role === 'setter' && perfil.clientId
+      ? `asignado_a.eq.${perfil.id},and(asignado_a.is.null,tipo.eq.asociar_lead,client_id.eq.${perfil.clientId})`
+      : `asignado_a.eq.${perfil.id}`
+
   const { data, error } = await supabase
     .from('system_tasks')
     .select(SELECT_TAREA)
     .eq('estado', 'pendiente')
-    .or(`visible_desde.lte."${ahoraIso}",vence_at.lte."${ahoraIso}"`)
+    .lte('visible_desde', ahoraIso)
+    .or(dueno)
     .order('vence_at', { ascending: true, nullsFirst: false })
     .limit(50)
 
@@ -140,15 +155,7 @@ export async function getMisTareas(): Promise<TareaSistema[]> {
     return []
   }
 
-  const esAdmin = perfil.role === 'admin'
-  return ((data ?? []) as unknown as FilaTarea[])
-    .filter((t) => {
-      if (t.asignado_a === perfil.id) return true
-      if (t.asignado_a) return false
-      if (esAdmin) return true
-      return t.tipo === 'asociar_lead' && perfil.role === 'setter' && t.client_id === perfil.clientId
-    })
-    .map((t) => mapearTarea(t, ahora))
+  return ((data ?? []) as unknown as FilaTarea[]).map((t) => mapearTarea(t, ahora))
 }
 
 /**
@@ -214,7 +221,7 @@ export async function getTareasDeAgendas(
  * No se toca vence_at: si posponer corriera el vencimiento se podría postergar
  * para siempre sin quedar nunca atrasado. A la tercera postergación, escala.
  */
-export async function posponerTarea(taskId: string, minutos: number): Promise<{ ok: boolean; error?: string }> {
+export async function posponerTarea(taskId: string, etiqueta: string): Promise<{ ok: boolean; error?: string }> {
   await perfilDeAgencia()
   const supabase = await createClient()
 
@@ -225,12 +232,17 @@ export async function posponerTarea(taskId: string, minutos: number): Promise<{ 
     .maybeSingle()
   if (error || !tarea) return { ok: false, error: 'No se encontró la tarea' }
 
+  // Se valida por la etiqueta y los minutos se recalculan aquí: "Mañana 9:00"
+  // da minutos distintos en el navegador y en el servidor aunque sea el mismo
+  // momento, y comparar minutos rechazaba la postergación.
   const permitidas = tarea.tipo === 'reporte_llamada'
-    ? [60]
-    : opcionesPosponer(tarea.vence_at as string | null).map((o) => o.minutos)
-  if (!permitidas.includes(minutos)) {
+    ? [{ etiqueta: '1 hora', minutos: 60 }]
+    : opcionesPosponer(tarea.vence_at as string | null)
+  const opcion = permitidas.find((o) => o.etiqueta === etiqueta)
+  if (!opcion) {
     return { ok: false, error: permitidas.length === 0 ? 'La tarea venció: ya no se puede posponer.' : 'Esa postergación ya no está disponible.' }
   }
+  const minutos = opcion.minutos
 
   const veces = ((tarea.pospuesta_veces as number) ?? 0) + 1
   const { error: errorUpdate } = await supabase
@@ -265,13 +277,15 @@ export interface Responsable {
 export async function getResponsables(clientId: string): Promise<Responsable[]> {
   await perfilDeAgencia()
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('users')
-    .select('id, full_name, role, client_id')
-    .eq('user_type', 'agency')
-    .eq('is_active', true)
+  const [{ data }, { data: asignados }] = await Promise.all([
+    supabase.from('users').select('id, full_name, role, client_id').eq('user_type', 'agency').eq('is_active', true),
+    // La dirección de ventas y los closers se asignan por team_assignments y
+    // pueden no tener client_id: sin esto no aparecían para reasignarles.
+    supabase.from('team_assignments').select('user_id').eq('client_id', clientId),
+  ])
+  const delEquipo = new Set((asignados ?? []).map((a) => a.user_id as string))
   return (data ?? [])
-    .filter((u) => u.role === 'admin' || u.client_id === clientId)
+    .filter((u) => u.role === 'admin' || u.client_id === clientId || delEquipo.has(u.id as string))
     .map((u) => ({ id: u.id as string, nombre: (u.full_name as string) ?? 'Sin nombre', rol: u.role as string }))
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
@@ -460,6 +474,11 @@ export async function guardarFichaTriaje(agendaId: string, ficha: FichaTriaje): 
   // El triaje termina cuando el closer lo leyó, no cuando se guarda.
   const admin = createAdminClient()
   const closer = await closerDeLaAgenda(admin, agenda.client_id, agenda.closer)
+  // Si quien hace el triaje es también quien toma la llamada (hoy pasa con la
+  // dirección de ventas), ya la leyó al escribirla.
+  if (closer === yo.id) {
+    await supabase.from('agenda_records').update({ triaje_leido_at: ahora }).eq('id', agendaId)
+  }
   if (closer && closer !== yo.id) {
     const cuando = agenda.hora_agenda
       ? new Date(agenda.hora_agenda).toLocaleString('es-CL', {
@@ -478,17 +497,31 @@ export async function guardarFichaTriaje(agendaId: string, ficha: FichaTriaje): 
   return { ok: true }
 }
 
-/** El closer abrió la ficha. Quien la escribió no cuenta como lector. */
+/**
+ * El closer abrió la ficha.
+ *
+ * Solo cuenta el closer de esa agenda: si la marcara cualquiera que abre el
+ * detalle (otro admin, un setter), "leída" dejaría de significar que quien
+ * toma la llamada la vio.
+ */
 export async function marcarFichaLeida(agendaId: string): Promise<void> {
   const yo = await perfilDeAgencia()
   const supabase = await createClient()
+  const { data: agenda } = await supabase
+    .from('agenda_records')
+    .select('client_id, closer, triaje, triaje_leido_at')
+    .eq('id', agendaId)
+    .maybeSingle()
+  if (!agenda?.triaje || agenda.triaje_leido_at) return
+
+  const closer = await closerDeLaAgenda(createAdminClient(), agenda.client_id, agenda.closer)
+  if (closer !== yo.id) return
+
   await supabase
     .from('agenda_records')
     .update({ triaje_leido_at: new Date().toISOString() })
     .eq('id', agendaId)
-    .not('triaje', 'is', null)
     .is('triaje_leido_at', null)
-    .neq('triaje_por', yo.id)
 }
 
 // ── Asociar el lead ──────────────────────────────────────────────────────────
@@ -672,7 +705,11 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
       ...(ig && !a.link_perfil ? { link_perfil: `https://instagram.com/${ig}` } : {}),
     })
     .eq('id', agendaId)
-  if (errorUpdate) return { ok: false, error: errorUpdate.message }
+  if (errorUpdate) {
+    // Sin esto el lead quedaba huérfano y reintentar creaba otro igual.
+    await admin.from('leads').delete().eq('id', lead.id)
+    return { ok: false, error: errorUpdate.message }
+  }
 
   await cerrarAsociacion(agendaId, yo.id)
   revalidatePath('/clients')
@@ -684,7 +721,7 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
  * Desde la ficha: pincharle al setter para que asocie el lead. El triaje no se
  * frena por esto, pero el setter se entera.
  */
-export async function pedirAsociacionAlSetter(agendaId: string): Promise<{ ok: boolean }> {
+export async function pedirAsociacionAlSetter(agendaId: string): Promise<{ ok: boolean; error?: string }> {
   await perfilDeAgencia()
   const supabase = await createClient()
   const admin = createAdminClient()
@@ -707,6 +744,10 @@ export async function pedirAsociacionAlSetter(agendaId: string): Promise<{ ok: b
       .eq('is_active', true)
     destinos.push(...(setters ?? []).map((s) => s.id as string))
     destino = destinos[0] ?? null
+  }
+
+  if (destinos.length === 0) {
+    return { ok: false, error: 'Este cliente no tiene setters activos con cuenta en el CRM.' }
   }
 
   await notificar(admin, destinos, {

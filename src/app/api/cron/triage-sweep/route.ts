@@ -102,8 +102,13 @@ export async function GET(request: Request) {
     direccion.set(clientId, con070 ? await direccionDeVentas(supabase, clientId) : null)
   }
 
+  // Una llamada que ya ocurrió no necesita triaje ni que alguien asocie el lead
+  // desde el popup: crear la tarea solo produciría un aviso vencido sin salida.
+  const ahoraMs = Date.now()
+  const porVenir = vivas.filter((a) => !a.hora_agenda || new Date(a.hora_agenda).getTime() > ahoraMs)
+
   // ── 1. Triajes ──────────────────────────────────────────────────────────
-  const triajes = vivas.map((a) => ({
+  const triajes = porVenir.map((a) => ({
     client_id: a.client_id,
     agenda_record_id: a.id,
     tipo: 'triaje_agenda',
@@ -121,7 +126,7 @@ export async function GET(request: Request) {
 
   if (con070) {
     // ── 2. Asociar lead: solo las que el cruce automático no resolvió ─────
-    const sinLead = vivas.filter((a) => !a.lead_id)
+    const sinLead = porVenir.filter((a) => !a.lead_id)
     const asociaciones = []
     for (const a of sinLead) {
       asociaciones.push({
@@ -160,22 +165,39 @@ export async function GET(request: Request) {
       await cerrar(canceladas, tipo, 'descartada')
     }
 
-    // ── 4. Reportes: borrador y tarea de aprobación ───────────────────────
+    // Triajes y asociaciones cuya llamada ya pasó, sin ventana de días: si no,
+    // un triaje que nadie hizo quedaba pendiente para siempre, vencido y sin
+    // opción de posponer, tapando el popup. Quedan como descartadas sin
+    // completada_at, así que siguen contando como "no se hizo a tiempo".
+    const { data: pasadas } = await supabase
+      .from('system_tasks')
+      .select('id, agenda_records!inner(hora_agenda)')
+      .in('tipo', ['triaje_agenda', 'asociar_lead'])
+      .eq('estado', 'pendiente')
+      .lt('agenda_records.hora_agenda', ahora)
+      .limit(200)
+    const idsPasadas = (pasadas ?? []).map((t) => t.id as string)
+    if (idsPasadas.length > 0) {
+      const { data } = await supabase
+        .from('system_tasks')
+        .update({ estado: 'descartada' })
+        .in('id', idsPasadas)
+        .select('id')
+      resumen.cerradas += data?.length ?? 0
+    }
+
+    // ── 4. Reportes: tarea de aprobación y borrador ───────────────────────
     // Sin ventana de días: una grabación puede llegar una semana después de
-    // agendada, y el reporte igual hay que aprobarlo.
+    // agendada, y el reporte igual hay que aprobarlo. Las tareas van primero:
+    // redactar llama a un modelo y es lo lento, así que si la función se queda
+    // sin tiempo, al menos las tareas ya existen.
     const { data: conGrabacion } = await supabase
       .from('agenda_records')
-      .select('id, client_id, hora_agenda, reporte_estado, objecion, situacion_actual, dolores, preguntas_no_resueltas')
+      .select('id, client_id, hora_agenda, reporte_estado')
       .not('fathom_resumen', 'is', null)
       .or('reporte_estado.is.null,reporte_estado.eq.borrador')
-      .limit(30)
-
-    for (const a of conGrabacion ?? []) {
-      const vacio = !a.objecion && !a.situacion_actual && !a.dolores && !a.preguntas_no_resueltas
-      if (a.reporte_estado === null || vacio) {
-        if (await completarBorradorDeAgenda(supabase, a.id as string)) resumen.borradores++
-      }
-    }
+      .order('hora_agenda', { ascending: false, nullsFirst: false })
+      .limit(50)
 
     const reportes = []
     for (const a of conGrabacion ?? []) {
@@ -185,10 +207,11 @@ export async function GET(request: Request) {
         client_id: clientId,
         agenda_record_id: a.id as string,
         tipo: 'reporte_llamada',
-        // Un reporte se aprueba mientras la llamada está fresca: 24 h desde que
-        // terminó, o desde ahora si la hora no se conoce.
+        // 24 h para aprobarlo, desde la llamada o desde ahora, lo que sea más
+        // tarde: una grabación que llega días después no puede nacer vencida
+        // (fue lo que dejó el reporte de Daniela pegado al popup).
         vence_at: new Date(
-          (a.hora_agenda ? new Date(a.hora_agenda as string).getTime() : Date.now()) + 24 * 3_600_000
+          Math.max(a.hora_agenda ? new Date(a.hora_agenda as string).getTime() : 0, Date.now()) + 24 * 3_600_000
         ).toISOString(),
         asignado_a: direccion.get(clientId) ?? null,
       })
@@ -199,6 +222,14 @@ export async function GET(request: Request) {
         .upsert(reportes, { onConflict: 'agenda_record_id,tipo', ignoreDuplicates: true })
         .select('id')
       resumen.reportesCreados = data?.length ?? 0
+    }
+
+    // Solo lo que nunca se redactó, y de a pocas por vuelta. completarBorrador
+    // deja la agenda en "borrador" aunque el resumen no diera nada, así que no
+    // se reintenta la misma cada 15 minutos.
+    const sinRedactar = (conGrabacion ?? []).filter((a) => a.reporte_estado === null).slice(0, 5)
+    for (const a of sinRedactar) {
+      if (await completarBorradorDeAgenda(supabase, a.id as string)) resumen.borradores++
     }
 
     // ── 5. Escalar ────────────────────────────────────────────────────────
