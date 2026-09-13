@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { unstable_noStore } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getSessionProfile } from '@/lib/supabase/session'
 import { getClient, getClientOptions } from '@/lib/actions/clients'
 import { getClientTabCounts } from '@/lib/actions/client-tab-counts'
 import { ClientDetail } from '@/components/clients/client-detail'
@@ -61,13 +61,18 @@ export default async function ClientDetailPage({
   const { id } = await params
   unstable_noStore()
 
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  const { data: viewer } = authUser
-    ? await supabase.from('users').select('role').eq('id', authUser.id).single()
-    : { data: null }
-  const isAdmin = viewer?.role === 'admin'
-  const isSetter = viewer?.role === 'setter'
+  // El perfil lo comparte con el layout (mismo render), y los adornos se
+  // disparan ya: antes todo iba en fila y cada paso esperaba al anterior.
+  const viewerPromise = getSessionProfile().catch(() => null)
+  const accesoriosPromise = Promise.all([
+    accesorio(() => getClientOptions(), [], 'getClientOptions', id),
+    accesorio(
+      () => getClientTabCounts(id),
+      { contentPieces: 0, leads: 0, calls: 0, competitors: 0 },
+      'getClientTabCounts',
+      id
+    ),
+  ])
 
   // El cliente es lo único imprescindible: sin él no hay nada que mostrar. Se
   // pide solo y primero, para que su fallo no se confunda con el de un adorno.
@@ -99,15 +104,9 @@ export default async function ClientDetailPage({
   // consulta (supabase/047) en vez de cuatro conexiones separadas: en el plan
   // free el pool es chico y esta página compite con la pestaña abierta, el
   // panel de tareas y el tablero de contenido.
-  const [allClients, counts] = await Promise.all([
-    accesorio(() => getClientOptions(), [], 'getClientOptions', id),
-    accesorio(
-      () => getClientTabCounts(id),
-      { contentPieces: 0, leads: 0, calls: 0, competitors: 0 },
-      'getClientTabCounts',
-      id
-    ),
-  ])
+  const [viewer, [allClients, counts]] = await Promise.all([viewerPromise, accesoriosPromise])
+  const isAdmin = viewer?.role === 'admin'
+  const isSetter = viewer?.role === 'setter'
 
   return (
     <Suspense fallback={null}>
@@ -120,7 +119,7 @@ export default async function ClientDetailPage({
         competitorsCount={counts.competitors}
         isAdmin={isAdmin}
         isSetter={isSetter}
-        currentUserId={authUser?.id}
+        currentUserId={viewer?.id}
         hasLeadMagnet={clienteTieneLeadMagnet(client)}
       />
     </Suspense>

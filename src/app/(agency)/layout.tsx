@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getSessionProfile, getSessionUser } from '@/lib/supabase/session'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { PageTransition } from '@/components/page-transition'
@@ -9,16 +9,11 @@ export default async function AgencyLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getSessionUser()
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('full_name, user_type, role, client_id')
-    .eq('id', user.id)
-    .single()
+  const profile = await getSessionProfile()
 
   if (!profile || profile.user_type === 'client') {
     redirect('/portal/dashboard')

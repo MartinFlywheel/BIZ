@@ -7,21 +7,16 @@ import { formatDate } from '@/lib/utils'
 export default async function SettingsPage() {
   const supabase = await createClient()
 
-  const { data: integrations } = await supabase
-    .from('integrations')
-    .select('*')
-    .order('platform')
-
-  const { data: benchmarks } = await supabase
-    .from('benchmarks')
-    .select('*, clients(name)')
-    .order('metric_key')
-
-  const { data: syncLogs } = await supabase
-    .from('sync_logs')
-    .select('*, integrations(platform, clients(ig_handle))')
-    .order('started_at', { ascending: false })
-    .limit(20)
+  // Las tres consultas son independientes: en paralelo, no en fila.
+  const [{ data: integrations }, { data: benchmarks }, { data: syncLogs }] = await Promise.all([
+    supabase.from('integrations').select('*').order('platform'),
+    supabase.from('benchmarks').select('*, clients(name)').order('metric_key'),
+    supabase
+      .from('sync_logs')
+      .select('*, integrations(platform, clients(ig_handle))')
+      .order('started_at', { ascending: false })
+      .limit(20),
+  ])
 
   const metricLabels: Record<string, string> = {
     tasa_respuesta: 'Tasa de Respuesta',
