@@ -50,9 +50,21 @@ export interface AgendaRecord {
   /** Resumen en markdown que genera Fathom. */
   fathom_resumen?: string | null
   fathom_recording_id?: string | null
+  google_event_id?: string | null
+  cancelada_at?: string | null
+  // ── Pipeline de Agendas (migración 070) ───────────────────────────────────
+  /** Ficha de triaje que la dirección de ventas le deja al closer. */
+  triaje?: import('@/lib/pipeline-tipos').FichaTriaje | null
+  triaje_at?: string | null
+  triaje_leido_at?: string | null
+  /** NULL = sin grabación | borrador | aprobado. */
+  reporte_estado?: string | null
 }
 
-export type AgendaRecordFields = Partial<Omit<AgendaRecord, 'id' | 'client_id' | 'created_at' | 'updated_at'>>
+export type AgendaRecordFields = Partial<Omit<
+  AgendaRecord,
+  'id' | 'client_id' | 'created_at' | 'updated_at' | 'triaje' | 'triaje_at' | 'triaje_leido_at' | 'reporte_estado'
+>>
 
 export async function getAgendaRecords(clientId: string, year: number, month: number): Promise<AgendaRecord[]> {
   const supabase = await createClient()

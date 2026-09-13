@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { BottomNav } from '@/components/setter-app/bottom-nav'
 import { LogoutButton } from '@/components/setter-app/logout-button'
+import { SystemTasksToast } from '@/components/pipeline/system-tasks-toast'
 
 // Deliberately its own top-level route — (agency) and (portal) both render
 // the desktop Sidebar unconditionally in their layout, and a nested route
@@ -57,6 +58,9 @@ export default async function SetterAppLayout({
         {children}
       </div>
       <BottomNav />
+      {/* Las agendas que el cruce automático no pudo asociar le llegan al
+          setter aquí mismo, sin tener que abrir el CRM de escritorio. */}
+      <SystemTasksToast />
     </div>
   )
 }

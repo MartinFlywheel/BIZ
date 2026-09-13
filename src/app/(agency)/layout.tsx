@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/sidebar'
 import { PageTransition } from '@/components/page-transition'
+import { SystemTasksToast } from '@/components/pipeline/system-tasks-toast'
 
 export default async function AgencyLayout({
   children,
@@ -64,6 +65,10 @@ export default async function AgencyLayout({
           {children}
         </PageTransition>
       </main>
+
+      {/* Triaje, asociar lead y aprobar reporte: el aviso vive en el layout
+          para aparecer en cualquier pantalla, no solo en la ficha del cliente. */}
+      <SystemTasksToast />
     </div>
   )
 }

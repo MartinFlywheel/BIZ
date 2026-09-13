@@ -5,6 +5,7 @@ import {
   credencialesConfiguradas,
   type ReunionFathom,
 } from './fathom'
+import { completarBorradorDeAgenda } from './reporte-llamada'
 
 /**
  * Pega cada grabación de Fathom a la agenda que le corresponde.
@@ -143,8 +144,21 @@ export async function sincronizarFathom(): Promise<{
 
     const pendientes = (agendas ?? []) as AgendaCandidata[]
 
+    // Las grabaciones que ya están pegadas a una agenda. Sin esto se contaban
+    // como "sin agenda" en cada vuelta y el resumen del cron hacía creer que
+    // el cruce estaba roto.
+    const ids = reuniones.map((r) => r.recording_id).filter(Boolean)
+    const { data: enganchadas } = ids.length > 0
+      ? await supabase.from('agenda_records').select('fathom_recording_id').in('fathom_recording_id', ids)
+      : { data: [] }
+    const yaEnganchadas = new Set((enganchadas ?? []).map((a) => a.fathom_recording_id as string))
+
     for (const reunion of reuniones) {
       if (!reunion.recording_id) continue
+      if (yaEnganchadas.has(reunion.recording_id)) {
+        resumen.yaTenian++
+        continue
+      }
 
       const agenda = elegirAgenda(reunion, pendientes)
       if (!agenda) {
@@ -176,6 +190,11 @@ export async function sincronizarFathom(): Promise<{
       // elegir la misma agenda.
       const i = pendientes.indexOf(agenda)
       if (i >= 0) pendientes.splice(i, 1)
+
+      // El reporte llega escrito a medias: el borrador se arma en el acto, y
+      // la tarea de aprobarlo la crea el barrido de triaje. Si falla (o falta
+      // la 070), el barrido lo reintenta.
+      await completarBorradorDeAgenda(supabase, agenda.id)
 
       resumen.enganchadas++
     }

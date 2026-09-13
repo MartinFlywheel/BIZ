@@ -1,11 +1,19 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2 } from 'lucide-react'
+import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2, Check, Clock, Link2, Sparkles, AlertTriangle } from 'lucide-react'
 import {
   getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord, getAgendaPeople,
   type AgendaRecord, type AgendaRecordFields,
 } from '@/lib/actions/agenda-records'
+import { getTareasDeAgendas, marcarFichaLeida } from '@/lib/actions/triage'
+import { CALIFICA_OPCIONES, PRIORIDAD_OPCIONES, TEMPERATURA_OPCIONES, etiquetaDe } from '@/lib/pipeline-tipos'
+import { FichaTriajeModal } from '@/components/pipeline/ficha-triaje-modal'
+import { AsociarLeadModal } from '@/components/pipeline/asociar-lead-modal'
+import { ReporteLlamadaModal } from '@/components/pipeline/reporte-llamada-modal'
+import { EVENTO_REFRESCAR, refrescarTareasSistema } from '@/components/pipeline/system-tasks-toast'
+import { fechaHora, textoVencimiento, tonoVencimiento } from '@/components/pipeline/formato'
+import { PanelMarketingLlamadas } from '@/components/pipeline/panel-marketing-llamadas'
 import { buscarLeads, getLeadBasico, type LeadBusqueda } from '@/lib/actions/leads'
 import { LEAD_AVATARS } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
@@ -332,6 +340,35 @@ function DatosDelSync({ record }: { record: AgendaRecord }) {
   )
 }
 
+/**
+ * La ficha de triaje pegada al detalle de la llamada.
+ *
+ * El triaje no termina cuando la dirección de ventas guarda: termina cuando el
+ * closer la leyó. Abrir el detalle de una agenda con ficha la marca como leída.
+ */
+function FichaEnDetalle({ record }: { record: AgendaRecord }) {
+  const ficha = record.triaje
+  useEffect(() => {
+    if (ficha && !record.triaje_leido_at) void marcarFichaLeida(record.id).catch(() => {})
+  }, [ficha, record.id, record.triaje_leido_at])
+
+  if (!ficha) return null
+  return (
+    <>
+      <SectionHead>Ficha de triaje</SectionHead>
+      <div className="col-span-2 space-y-2 rounded-lg border border-rose-900/40 bg-rose-950/15 p-3 text-sm">
+        <div className="flex flex-wrap gap-2 text-xs text-zinc-300">
+          <span>Califica: <b>{etiquetaDe(CALIFICA_OPCIONES, ficha.califica)}</b></span>
+          <span>· Temperatura: <b>{etiquetaDe(TEMPERATURA_OPCIONES, ficha.temperatura)}</b></span>
+          <span>· Prioridad: <b>{etiquetaDe(PRIORIDAD_OPCIONES, ficha.prioridad)}</b></span>
+        </div>
+        <p className="text-zinc-400"><span className="text-[11px] uppercase tracking-wide text-zinc-600">Objeción previsible · </span>{ficha.objecion_prevista}</p>
+        <p className="whitespace-pre-wrap text-zinc-100"><span className="text-[11px] uppercase tracking-wide text-rose-300/70">Ángulo · </span>{ficha.angulo}</p>
+      </div>
+    </>
+  )
+}
+
 function SectionHead({ children }: { children: React.ReactNode }) {
   return (
     <div className="col-span-2 pt-1">
@@ -411,6 +448,8 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
         </div>
       </div>
       <div className="grid grid-cols-2 gap-x-5 gap-y-3 max-h-[72vh] overflow-y-auto pr-2">
+        <FichaEnDetalle record={local} />
+
         <SectionHead>Fuente y Contacto</SectionHead>
         <LeadPicker
           clientId={local.client_id}
@@ -507,7 +546,34 @@ const cellBase = 'px-0 py-0 h-full w-full flex items-center cursor-text text-inh
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Setter', 'Closer', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
+const HEADERS = ['Agendado', 'Fecha Llamada', 'Anticipación', 'Nombre', 'Avatar', 'CTA', 'Setter', 'Closer', 'Triaje', 'Fathom', 'Reporte', 'Estado', 'Facturación', 'Upfront', 'T. Compra', '']
+
+/** Columnas antes de Facturación: los totales se alinean con esto. */
+const COLUMNAS_ANTES_DE_FACTURACION = HEADERS.indexOf('Facturación')
+
+type ModalPipeline = { tipo: 'triaje' | 'asociar' | 'reporte'; record: AgendaRecord } | null
+
+type TareaPendiente = { tipo: string; venceAt: string | null }
+
+function Pill({ tono, children, onClick, title }: {
+  tono: 'ok' | 'warn' | 'bad' | 'info' | 'violet' | 'mute'
+  children: React.ReactNode
+  onClick?: () => void
+  title?: string
+}) {
+  const colores = {
+    ok: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/25',
+    warn: 'text-amber-400 bg-amber-400/10 border-amber-400/25',
+    bad: 'text-red-400 bg-red-400/10 border-red-400/25',
+    info: 'text-blue-300 bg-blue-400/10 border-blue-400/25',
+    violet: 'text-violet-300 bg-violet-400/10 border-violet-400/25',
+    mute: 'text-zinc-500 bg-white/[0.03] border-white/[0.08]',
+  }[tono]
+  const cls = `inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${colores}`
+  return onClick
+    ? <button type="button" title={title} onClick={onClick} className={`${cls} hover:brightness-125`}>{children}</button>
+    : <span title={title} className={cls}>{children}</span>
+}
 
 interface TeamMember {
   full_name: string
@@ -526,14 +592,38 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [editValue, setEditValue] = useState('')
   const [newRowId, setNewRowId] = useState<string | null>(null)
+  const [tareas, setTareas] = useState<Map<string, TareaPendiente[]>>(new Map())
+  const [ahora, setAhora] = useState<number | null>(null)
+  const [modalPipeline, setModalPipeline] = useState<ModalPipeline>(null)
 
-  async function load() {
-    setLoading(true)
-    try { setRecords(await getAgendaRecords(clientId, year, month)) }
-    finally { setLoading(false) }
+  async function load(silencioso = false) {
+    if (!silencioso) setLoading(true)
+    try {
+      const recs = await getAgendaRecords(clientId, year, month)
+      setRecords(recs)
+      // Las tareas pendientes de estas agendas alimentan la columna Triaje.
+      // Si falla (o falta la 053), la planilla se ve igual que antes.
+      const pendientes = await getTareasDeAgendas(recs.map(r => r.id)).catch(() => [])
+      const mapa = new Map<string, TareaPendiente[]>()
+      for (const t of pendientes) mapa.set(t.agendaId, [...(mapa.get(t.agendaId) ?? []), t])
+      setTareas(mapa)
+      setAhora(Date.now())
+    }
+    finally { if (!silencioso) setLoading(false) }
   }
 
   useEffect(() => { load() }, [clientId, year, month])
+
+  // Si el popup global cierra una tarea, la planilla se entera sin recargar.
+  useEffect(() => {
+    const alRefrescar = () => { void load(true) }
+    window.addEventListener(EVENTO_REFRESCAR, alRefrescar)
+    return () => window.removeEventListener(EVENTO_REFRESCAR, alRefrescar)
+  }, [clientId, year, month])
+
+  function alTerminarPipeline() {
+    refrescarTareasSistema()
+  }
 
   // Los nombres ya usados en la agenda se cargan una vez por cliente, no por
   // mes: si Torcuato solo aparece en marzo, tiene que seguir estando en el
@@ -646,6 +736,12 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   const grandFact    = records.reduce((s, r) => s + (r.monto_facturacion ?? 0), 0)
   const grandUpfront = records.reduce((s, r) => s + (r.monto_upfront ?? 0), 0)
   const grandCierres = records.filter(r => r.estado === 'Cerrado').length
+
+  const totalSinLead = records.filter(r => r.google_event_id && !r.cancelada_at && !r.lead_id).length
+  const triajesUrgentes = ahora === null ? 0 : [...tareas.values()].flat().filter(t =>
+    t.tipo === 'triaje_agenda' && t.venceAt && new Date(t.venceAt).getTime() - ahora < 12 * 3_600_000
+  ).length
+  const reportesPorRevisar = records.filter(r => !r.cancelada_at && r.reporte_estado !== 'aprobado' && (r.reporte_estado === 'borrador' || r.fathom_resumen)).length
 
   // ── Per-row render helper ─────────────────────────────────────────────────
 
@@ -830,6 +926,75 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
       )
     }
 
+    // ── Columnas del pipeline ────────────────────────────────────────────────
+    // Solo las agendas que trajo el calendario tienen triaje, Fathom y reporte
+    // automáticos; las cargadas a mano muestran un guion para no gritar
+    // "vencido" sobre algo que nunca tuvo plazo.
+    const delCalendario = !!r.google_event_id
+    const cancelada = !!r.cancelada_at
+    const sinLead = delCalendario && !cancelada && !r.lead_id
+    const pendientes = tareas.get(r.id) ?? []
+    const tareaTriaje = pendientes.find(t => t.tipo === 'triaje_agenda')
+    const llamadaPasada = r.hora_agenda && ahora !== null ? new Date(r.hora_agenda).getTime() < ahora : false
+
+    function triajeCell() {
+      if (cancelada) return <Pill tono="mute">Cancelada</Pill>
+      if (r.triaje) {
+        return (
+          <Pill tono="ok" onClick={() => setModalPipeline({ tipo: 'triaje', record: r })}
+            title={r.triaje_leido_at ? 'El closer ya la leyó' : 'El closer todavía no la abre'}>
+            <Check className="h-3 w-3" /> Hecho{r.triaje_leido_at ? ' · leída' : ''}
+          </Pill>
+        )
+      }
+      if (tareaTriaje && ahora !== null) {
+        const tono = tonoVencimiento(tareaTriaje.venceAt, ahora)
+        const venceHoy = tareaTriaje.venceAt
+          ? new Date(tareaTriaje.venceAt).getTime() - ahora < 12 * 3_600_000
+          : false
+        return (
+          <Pill tono={tono === 'vencido' || venceHoy ? 'bad' : tono === 'urgente' ? 'warn' : 'mute'}
+            onClick={() => setModalPipeline({ tipo: 'triaje', record: r })}
+            title={textoVencimiento(tareaTriaje.venceAt, ahora)}>
+            <Clock className="h-3 w-3" />
+            {tono === 'vencido' ? 'Vencido' : `Vence ${fechaHora(tareaTriaje.venceAt).replace(/^\S+\s/, '')}`}
+          </Pill>
+        )
+      }
+      if (delCalendario) {
+        return <Pill tono="mute" onClick={() => setModalPipeline({ tipo: 'triaje', record: r })}>Hacer ficha</Pill>
+      }
+      return <span className="text-zinc-700">—</span>
+    }
+
+    function fathomCell() {
+      if (cancelada) return <span className="text-zinc-700">—</span>
+      if (r.fathom_recording_id) {
+        return r.link_reporte
+          ? <a href={r.link_reporte} target="_blank" rel="noopener noreferrer"><Pill tono="violet"><Link2 className="h-3 w-3" /> Grabada</Pill></a>
+          : <Pill tono="violet"><Link2 className="h-3 w-3" /> Grabada</Pill>
+      }
+      if (!delCalendario) return <span className="text-zinc-700">—</span>
+      return llamadaPasada
+        ? <Pill tono="warn" title="Fathom todavía no trae grabación para esta llamada">Sin grabación</Pill>
+        : <Pill tono="mute">Programada</Pill>
+    }
+
+    function reporteCell() {
+      if (cancelada) return <span className="text-zinc-700">—</span>
+      if (r.reporte_estado === 'aprobado') {
+        return <Pill tono="ok" onClick={() => setModalPipeline({ tipo: 'reporte', record: r })}><Check className="h-3 w-3" /> Aprobado</Pill>
+      }
+      if (r.reporte_estado === 'borrador' || r.fathom_resumen) {
+        return (
+          <Pill tono="info" onClick={() => setModalPipeline({ tipo: 'reporte', record: r })}>
+            <Sparkles className="h-3 w-3" /> Revisar
+          </Pill>
+        )
+      }
+      return <span className="text-zinc-700">—</span>
+    }
+
     return (
       <tr
         key={r.id}
@@ -842,8 +1007,17 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
         <td className="px-2 py-1.5 text-xs font-mono text-right text-zinc-600 w-[80px] whitespace-nowrap" title="Días entre agendar y la fecha de la llamada">
           {diasAnticipacion(r.fecha_agendado, r.fecha_agenda)}
         </td>
-        <td className="px-2 py-1.5 text-xs font-medium text-zinc-100 min-w-[130px] max-w-[180px]">
+        <td className="px-2 py-1.5 text-xs font-medium text-zinc-100 min-w-[130px] max-w-[200px]">
           {textCell('nombre_lead', r.nombre_lead, 'Nombre', 'text-sm font-medium text-zinc-100')}
+          {sinLead && (
+            <button
+              type="button"
+              onClick={() => setModalPipeline({ tipo: 'asociar', record: r })}
+              className="mt-0.5 flex items-center gap-1 text-[10px] font-medium text-amber-400 hover:text-amber-300"
+            >
+              <AlertTriangle className="h-3 w-3" /> Sin lead · asociar
+            </button>
+          )}
         </td>
         <td className="px-2 py-1.5 text-xs w-[110px]">{avatarCell()}</td>
         <td className="px-2 py-1.5 text-xs min-w-[100px] max-w-[140px]">
@@ -855,6 +1029,9 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
         <td className="px-2 py-1.5 text-xs w-[110px]">
           {personCell('closer', r.closer, closerOptions)}
         </td>
+        <td className="px-2 py-1.5 text-xs w-[118px]">{triajeCell()}</td>
+        <td className="px-2 py-1.5 text-xs w-[104px]">{fathomCell()}</td>
+        <td className="px-2 py-1.5 text-xs w-[96px]">{reporteCell()}</td>
         <td className="px-2 py-1.5 text-xs w-[120px]">{estadoCell()}</td>
         <td className="px-2 py-1.5 text-xs w-[110px] text-right">{numCell('monto_facturacion', r.monto_facturacion, '—')}</td>
         <td className="px-2 py-1.5 text-xs w-[100px] text-right">{numCell('monto_upfront', r.monto_upfront, '—')}</td>
@@ -886,6 +1063,18 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        {/* Lo que hoy es invisible —el olvido— pasa a ser un aviso a la vista. */}
+        <div className="ml-3 mr-auto flex flex-wrap items-center gap-1.5">
+          {totalSinLead > 0 && (
+            <Pill tono="warn"><AlertTriangle className="h-3 w-3" /> {totalSinLead} sin lead</Pill>
+          )}
+          {triajesUrgentes > 0 && (
+            <Pill tono="bad"><Clock className="h-3 w-3" /> {triajesUrgentes} triaje{triajesUrgentes !== 1 ? 's' : ''} vence{triajesUrgentes !== 1 ? 'n' : ''} hoy o venció</Pill>
+          )}
+          {reportesPorRevisar > 0 && (
+            <Pill tono="info"><Sparkles className="h-3 w-3" /> {reportesPorRevisar} reporte{reportesPorRevisar !== 1 ? 's' : ''} por aprobar</Pill>
+          )}
+        </div>
         <button
           onClick={handleAdd}
           className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
@@ -896,7 +1085,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
 
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[960px] border-collapse">
+          <table className="w-full min-w-[1260px] border-collapse">
             <thead>
               <tr className="border-b border-white/[0.06] bg-white/[0.02]">
                 {HEADERS.map((h, i) => (
@@ -927,7 +1116,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
                     </tr>,
                     ...recs.map(r => renderRow(r)),
                     <tr key={`wtotal-${week}`} className="border-b border-white/[0.06] bg-white/[0.01]">
-                      <td colSpan={9} className="px-3 py-1.5">
+                      <td colSpan={COLUMNAS_ANTES_DE_FACTURACION} className="px-3 py-1.5">
                         <span className="text-[10px] font-semibold text-zinc-600 uppercase tracking-wider">Total semana {week}</span>
                       </td>
                       <td className="px-2 py-1.5 text-xs font-mono font-semibold text-right text-emerald-400 whitespace-nowrap">
@@ -943,7 +1132,7 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
               )}
               {records.length > 0 && (
                 <tr className="border-t border-white/[0.1] bg-white/[0.02]">
-                  <td colSpan={8} className="px-3 py-2">
+                  <td colSpan={COLUMNAS_ANTES_DE_FACTURACION - 1} className="px-3 py-2">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                       Total Mes · {grandCierres} cierre{grandCierres !== 1 ? 's' : ''}
                     </span>
@@ -975,6 +1164,32 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
           onDeleted={handleDeleted}
         />
       )}
+
+      {modalPipeline?.tipo === 'triaje' && (
+        <FichaTriajeModal
+          agendaId={modalPipeline.record.id}
+          onClose={() => setModalPipeline(null)}
+          onGuardada={alTerminarPipeline}
+          onAsociarLead={() => setModalPipeline({ tipo: 'asociar', record: modalPipeline.record })}
+        />
+      )}
+      {modalPipeline?.tipo === 'asociar' && (
+        <AsociarLeadModal
+          agendaId={modalPipeline.record.id}
+          nombreLead={modalPipeline.record.nombre_lead}
+          onClose={() => setModalPipeline(null)}
+          onListo={alTerminarPipeline}
+        />
+      )}
+      {modalPipeline?.tipo === 'reporte' && (
+        <ReporteLlamadaModal
+          agendaId={modalPipeline.record.id}
+          onClose={() => setModalPipeline(null)}
+          onAprobado={alTerminarPipeline}
+        />
+      )}
+
+      <PanelMarketingLlamadas clientId={clientId} />
     </div>
   )
 }

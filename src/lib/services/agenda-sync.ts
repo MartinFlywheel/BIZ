@@ -182,7 +182,7 @@ async function buscarLead(
  * con etapas propias que no tengan "agendado". Nunca lanza: la agenda vale
  * más que la etapa.
  */
-async function moverLeadAAgendado(supabase: Supabase, clientId: string, leadId: string, inicio: string | null) {
+export async function moverLeadAAgendado(supabase: Supabase, clientId: string, leadId: string, inicio: string | null) {
   try {
     const [{ data: lead }, { data: cliente }] = await Promise.all([
       supabase.from('leads').select('stage').eq('id', leadId).maybeSingle(),
