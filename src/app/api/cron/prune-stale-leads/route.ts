@@ -7,6 +7,11 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 const STALE_DAYS = 30
+// Tope por corrida y tamaño de lote. Con ~2.800 ids en un solo `.in()` la URL
+// de PostgREST pasaba de 100 KB, la operación fallaba y el cron registraba 0
+// sin avisar. Sin tope, arreglar eso habría borrado miles de leads de golpe.
+const MAX_BORRADOS_POR_CORRIDA = 300
+const LOTE = 150
 
 // Runs once a day (vercel.json). Borra leads en "nuevo_contacto" que nunca
 // avanzaron de etapa, tocaron como mucho 1 CTA (pieza de contenido) en toda
@@ -14,6 +19,11 @@ const STALE_DAYS = 30
 // nunca dieron señales de interés real más allá del primer click y solo
 // acumulan espacio. Cualquier otra etapa, o haber tocado 2+ piezas
 // distintas, los deja afuera del borrado.
+//
+// Solo se limpian leads que entraron por ManyChat (o sin origen registrado):
+// los de lead magnet, landing o agente entran por otro flujo y se borraban el
+// mismo día en que llegaban. Nunca se toca un lead con agenda, llamada, alumna
+// o seguimiento: esas FK son ON DELETE CASCADE y se llevaban datos de venta.
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -31,6 +41,7 @@ export async function GET(request: Request) {
 
   let totalDeleted = 0
   const perClient: Record<string, number> = {}
+  const errores: string[] = []
 
   for (const client of clients) {
     const leads = await fetchAllRowsByCursor<{ id: string; ig_username: string | null }>((cursor, limit) => {
@@ -44,7 +55,9 @@ export async function GET(request: Request) {
         // tomaría por basura y los borraría la primera noche. Se excluyen.
         // El `is.null` es necesario: un NOT LIKE sobre NULL no es verdadero
         // y dejaría de limpiar los leads sin origen registrado.
-        .or('first_touch_type.is.null,first_touch_type.not.like.agent:%')
+        .or('first_touch_type.is.null,first_touch_type.like.manychat:%')
+        // Un lead recién creado sin interacción todavía no es basura.
+        .lt('created_at', cutoff)
         .order('id', { ascending: true })
         .limit(limit)
       if (cursor) query = query.gt('id', cursor)
@@ -88,13 +101,43 @@ export async function GET(request: Request) {
 
     if (staleIds.length === 0) continue
 
-    const { error } = await supabase.from('leads').delete().in('id', staleIds)
-    if (error) {
-      console.error(`[PruneStaleLeads] delete failed for client ${client.id}:`, error.message)
-      continue
+    // Leads con trabajo encima: se conservan aunque sigan en nuevo_contacto. Si
+    // no se puede confirmar cuáles son, fetchAllRowsByCursor lanza y la corrida
+    // termina sin tocar nada.
+    const protegidos = new Set<string>()
+    for (const tabla of ['agenda_records', 'sales_calls', 'program_students', 'lead_activity_logs'] as const) {
+      const filas = await fetchAllRowsByCursor<{ id: string; lead_id: string | null }>((cursor, limit) => {
+        let query = supabase
+          .from(tabla)
+          .select('id, lead_id')
+          .not('lead_id', 'is', null)
+          .order('id', { ascending: true })
+          .limit(limit)
+        if (cursor) query = query.gt('id', cursor)
+        return query
+      })
+      for (const f of filas) if (f.lead_id) protegidos.add(f.lead_id)
     }
-    totalDeleted += staleIds.length
-    perClient[client.id] = staleIds.length
+
+    const aBorrar = staleIds
+      .filter((id) => !protegidos.has(id))
+      .slice(0, Math.max(0, MAX_BORRADOS_POR_CORRIDA - totalDeleted))
+    if (aBorrar.length === 0) continue
+
+    let borradosCliente = 0
+    for (let i = 0; i < aBorrar.length; i += LOTE) {
+      const lote = aBorrar.slice(i, i + LOTE)
+      const { error } = await supabase.from('leads').delete().in('id', lote)
+      if (error) {
+        console.error(`[PruneStaleLeads] delete failed for client ${client.id}:`, error.message)
+        errores.push(`${client.id}: ${error.message}`)
+        break
+      }
+      borradosCliente += lote.length
+    }
+    totalDeleted += borradosCliente
+    perClient[client.id] = borradosCliente
+    if (totalDeleted >= MAX_BORRADOS_POR_CORRIDA) break
   }
 
   // Pasa por el helper compartido (src/lib/cron-log.ts) igual que el resto de
@@ -105,6 +148,8 @@ export async function GET(request: Request) {
     borrados: totalDeleted,
     clientesRevisados: clients.length,
     porCliente: perClient,
+    tope: MAX_BORRADOS_POR_CORRIDA,
+    ...(errores.length > 0 && { errores }),
   })
 
   return NextResponse.json({ status: 'completed', deleted: totalDeleted, perClient })
