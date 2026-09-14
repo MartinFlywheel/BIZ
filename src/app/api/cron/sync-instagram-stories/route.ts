@@ -1,58 +1,92 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCronRun } from '@/lib/cron-log'
+import { elegirPortada, esPortadaGuardada, esVideo, guardarPortada } from '@/lib/services/portadas'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
-// Stories vanish 24h after posting, and Meta's API only exposes a story
-// while it's still live — there's no historical lookup once it expires,
-// unlike Reels/posts. vercel.json runs this once daily, every crons entry
-// in this project is once-daily (likely a Vercel plan cap on cron
-// frequency — worth confirming if this ever needs to run more often).
-// Since that period matches the story lifespan, each story still lands
-// inside exactly one run, just once, near the end of its life — no
-// mid-life refresh, and no second chance if that one snapshot fails.
-const STORY_METRICS = 'views,reach,replies,taps_forward,taps_back,exits,total_interactions'
+// Las historias desaparecen 24 h después de publicarse y la API de Meta solo
+// las entrega mientras siguen vivas: una vez vencidas no hay forma de pedir
+// sus métricas ni su portada. pg_cron corre esta ruta cada 2 h (056), así que
+// cada historia pasa por unas 11 corridas; en cada una se refrescan las
+// métricas y, si todavía no tiene portada guardada, se intenta guardarla.
+//
+// taps_forward, taps_back y exits ya no existen en la API: pedirlos hacía que
+// Meta rechazara la llamada completa y todas las historias quedaban en 0
+// vistas. Los toques ahora salen de `navigation` con su desglose.
+const STORY_METRICS = 'views,reach,replies,shares,total_interactions'
 
 interface StoryInsights {
   views: number
   reach: number
   replies: number
-  taps_forward: number
-  taps_back: number
-  exits: number
+  shares: number
   total_interactions: number
+  taps_forward: number | null
+  taps_back: number | null
+  exits: number | null
 }
 
-async function fetchStoryInsights(mediaId: string, token: string): Promise<{ insights: StoryInsights; error: string | null }> {
-  const insights: StoryInsights = { views: 0, reach: 0, replies: 0, taps_forward: 0, taps_back: 0, exits: 0, total_interactions: 0 }
+interface MetricaMeta {
+  name: string
+  values?: { value?: number }[]
+  total_value?: { value?: number }
+}
+
+async function fetchStoryInsights(mediaId: string, token: string): Promise<{ insights: StoryInsights | null; error: string | null }> {
   try {
     const res = await fetch(
       `https://graph.facebook.com/${mediaId}/insights?metric=${STORY_METRICS}&access_token=${token}`
     )
-    if (res.ok) {
-      const data = await res.json()
-      for (const metric of data.data || []) {
-        if (metric.name in insights) insights[metric.name as keyof StoryInsights] = metric.values?.[0]?.value || 0
-      }
-      return { insights, error: null }
+    if (!res.ok) {
+      // Meta rechaza la llamada entera si un solo nombre de métrica no es
+      // válido. Se registra el cuerpo para poder diagnosticarlo y se devuelve
+      // null: escribir ceros pisaría datos buenos como si fueran reales.
+      const error = `HTTP ${res.status}: ${(await res.text()).slice(0, 500)}`
+      console.error(`[sync-instagram-stories] insights fetch failed for media ${mediaId}: ${error}`)
+      return { insights: null, error }
     }
-    // Graph API rejects the whole insights call if any one metric name in
-    // STORY_METRICS is invalid/deprecated for this media type or API
-    // version — same failure shape the reels sync hit with "impressions"
-    // (see GENERAL_METRICS comment in sync-instagram/route.ts). Previously
-    // this fell through silently and wrote zeros stamped as a successful
-    // meta_api sync; log the real body so a bad metric name is diagnosable
-    // instead of indistinguishable from "Instagram just has no data yet".
-    const body = await res.text()
-    const error = `HTTP ${res.status}: ${body.slice(0, 500)}`
-    console.error(`[sync-instagram-stories] insights fetch failed for media ${mediaId}: ${error}`)
-    return { insights, error }
+    const data = await res.json()
+    const valores: Record<string, number> = {}
+    for (const metric of (data.data || []) as MetricaMeta[]) {
+      valores[metric.name] = metric.values?.[0]?.value ?? metric.total_value?.value ?? 0
+    }
+    const insights: StoryInsights = {
+      views: valores.views ?? 0,
+      reach: valores.reach ?? 0,
+      replies: valores.replies ?? 0,
+      shares: valores.shares ?? 0,
+      total_interactions: valores.total_interactions ?? 0,
+      taps_forward: null,
+      taps_back: null,
+      exits: null,
+    }
+
+    // Los toques van en una segunda llamada: si falla, las vistas ya están.
+    try {
+      const nav = await fetch(
+        `https://graph.facebook.com/${mediaId}/insights?metric=navigation&breakdown=story_navigation_action_type&access_token=${token}`
+      )
+      if (nav.ok) {
+        const navData = await nav.json()
+        const resultados: { dimension_values?: string[]; value?: number }[] =
+          navData.data?.[0]?.total_value?.breakdowns?.[0]?.results ?? []
+        const valor = (tipo: string) => resultados.find((r) => r.dimension_values?.[0] === tipo)?.value ?? 0
+        insights.taps_forward = valor('tap_forward')
+        insights.taps_back = valor('tap_back')
+        insights.exits = valor('tap_exit')
+      }
+    } catch {
+      // Sin el desglose de toques no se pierde nada más.
+    }
+
+    return { insights, error: null }
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Unknown error'
     console.error(`[sync-instagram-stories] insights fetch threw for media ${mediaId}: ${error}`)
-    return { insights, error }
+    return { insights: null, error }
   }
 }
 
@@ -73,11 +107,17 @@ export async function GET(request: Request) {
   // no reintentar el mismo fallo una vez por historia.
   let storyColumnsMissing = false
 
-  const { data: clients } = await supabase
+  const { data: clients, error: clientsError } = await supabase
     .from('clients')
     .select('id, ig_account_id, ig_handle')
     .eq('status', 'active')
     .not('ig_account_id', 'is', null)
+
+  // Antes el error se ignoraba y quedaba registrado como "sin clientes".
+  if (clientsError) {
+    await logCronRun('sync-instagram-stories', { clientes: 0, error: `no se pudieron leer los clientes: ${clientsError.message}` })
+    return NextResponse.json({ error: clientsError.message }, { status: 500 })
+  }
 
   if (!clients || clients.length === 0) {
     await logCronRun('sync-instagram-stories', { clientes: 0, motivo: 'sin clientes activos con Instagram conectado' })
@@ -85,11 +125,13 @@ export async function GET(request: Request) {
   }
 
   const results = []
+  let portadasGuardadas = 0
+  let portadasFallidas = 0
 
   for (const client of clients) {
     try {
       const storiesRes = await fetch(
-        `https://graph.facebook.com/${client.ig_account_id}/stories?fields=id,media_type,media_url,permalink,timestamp&access_token=${token}`
+        `https://graph.facebook.com/${client.ig_account_id}/stories?fields=id,media_type,media_url,thumbnail_url,permalink,timestamp&access_token=${token}`
       )
 
       if (!storiesRes.ok) {
@@ -110,33 +152,55 @@ export async function GET(request: Request) {
 
         const { data: existing } = await supabase
           .from('content_pieces')
-          .select('id')
+          .select('id, ig_thumbnail_url')
           .eq('ig_media_id', story.id)
           .eq('client_id', client.id)
           .maybeSingle()
 
-        const fields = {
-          views: insights.views,
-          reach: insights.reach,
-          // Se mantiene igual a story_replies: los agregados que alimentan
-          // los widgets de engagement siguen leyendo `comments` para todos
-          // los tipos de contenido.
-          comments: insights.replies,
-          total_interactions: insights.total_interactions,
+        // La portada se guarda en Storage mientras la historia sigue viva. Si
+        // la descarga falla, queda la URL del CDN como respaldo temporal y la
+        // corrida siguiente lo vuelve a intentar. Un mp4 nunca se guarda como
+        // portada: un <img> no lo puede mostrar.
+        let portada: string | null | undefined
+        if (!esPortadaGuardada(existing?.ig_thumbnail_url)) {
+          const origen = elegirPortada(story)
+          const guardada = await guardarPortada(supabase, client.id, story.id, origen)
+          if (guardada) portadasGuardadas++
+          else if (origen) portadasFallidas++
+          if (guardada ?? origen) portada = guardada ?? origen
+          else if (esVideo(existing?.ig_thumbnail_url)) portada = null
+        }
+
+        // Sin insights no se tocan las métricas: antes se escribían ceros con
+        // metrics_source='meta_api' y tapaban cualquier dato bueno.
+        const fields: Record<string, unknown> = {
           story_expires_at: expiresAt.toISOString(),
-          metrics_source: 'meta_api' as const,
-          metrics_updated_at: new Date().toISOString(),
+          ...(portada !== undefined && { ig_thumbnail_url: portada }),
+          ...(insights && {
+            views: insights.views,
+            reach: insights.reach,
+            // Se mantiene igual a story_replies: los agregados que alimentan
+            // los widgets de engagement siguen leyendo `comments` para todos
+            // los tipos de contenido.
+            comments: insights.replies,
+            shares: insights.shares,
+            total_interactions: insights.total_interactions,
+            metrics_source: 'meta_api',
+            metrics_updated_at: new Date().toISOString(),
+          }),
         }
 
         // Las agrega 056-metricas-historias.sql. Mientras esa migración no
         // se aplique las columnas no existen, así que la escritura se
         // reintenta sin ellas (Postgres 42703) en vez de fallar entera —
         // el mismo patrón de degradación que usa getClientTabCounts.
-        const storyFields = storyColumnsMissing ? {} : {
+        const storyFields: Record<string, unknown> = storyColumnsMissing || !insights ? {} : {
           story_replies: insights.replies,
-          story_taps_forward: insights.taps_forward,
-          story_taps_back: insights.taps_back,
-          story_exits: insights.exits,
+          ...(insights.taps_forward !== null && {
+            story_taps_forward: insights.taps_forward,
+            story_taps_back: insights.taps_back,
+            story_exits: insights.exits,
+          }),
         }
 
         const write = async (extra: Record<string, unknown>) =>
@@ -150,8 +214,8 @@ export async function GET(request: Request) {
                 content_type: 'story',
                 ig_media_id: story.id,
                 ig_permalink: story.permalink || null,
-                ig_thumbnail_url: story.media_url || null,
                 published_at: story.timestamp || new Date().toISOString(),
+                metrics_source: 'meta_api',
                 ...fields,
                 ...extra,
               })
@@ -185,6 +249,8 @@ export async function GET(request: Request) {
     historias: results.reduce((n, r) => n + (r.processed ?? 0), 0),
     erroresDeInsights: results.reduce((n, r) => n + (r.insightErrors ?? 0), 0),
     erroresDeEscritura: results.reduce((n, r) => n + (r.writeErrors ?? 0), 0),
+    portadasGuardadas,
+    portadasFallidas,
     columnasDeHistoriaFaltantes: storyColumnsMissing,
     errores: fallidos.map((r) => ({ cliente: r.client, error: r.error })),
   })
