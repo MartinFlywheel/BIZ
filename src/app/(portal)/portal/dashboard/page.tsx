@@ -30,7 +30,7 @@ export default async function PortalDashboardPage() {
   if (!profile?.client_id) {
     return (
       <div className="flex h-[60vh] items-center justify-center">
-        <p className="text-sm text-zinc-500">Tu cuenta no tiene un cliente asignado. Contactá a la agencia.</p>
+        <p className="text-sm text-zinc-500">Tu cuenta no tiene un cliente asignado. Contacta a la agencia.</p>
       </div>
     )
   }
@@ -49,10 +49,16 @@ export default async function PortalDashboardPage() {
     getCompetitorsCount(clientId),
   ])
 
+  // getClient trae la fila entera y ClientDetail es un componente de cliente:
+  // todo lo que recibe queda en el HTML. El token de Calendly y el de
+  // sincronización de Google no le sirven de nada al portal (solo los usa el
+  // formulario de edición, que aquí no se muestra), así que no se mandan.
+  const clienteSinSecretos = { ...client, calendly_token: null, calendly_webhook_id: null, google_calendar_sync_token: null }
+
   return (
     <Suspense fallback={null}>
       <ClientDetail
-        client={client}
+        client={clienteSinSecretos}
         contentPiecesCount={contentPiecesCount}
         leadsCount={leadsCount}
         callsCount={callsCount}

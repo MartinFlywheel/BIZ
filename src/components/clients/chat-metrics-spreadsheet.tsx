@@ -1,13 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
-import { getDailyLiveMetrics, type DailyLiveMetric } from '@/lib/actions/chat-metrics'
+import { getDailyLiveMetrics, getRangoDeMeses, type DailyLiveMetric, type RangoDeMeses } from '@/lib/actions/chat-metrics'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { hoyChile } from '@/lib/fecha-chile'
 import { formatCurrency } from '@/lib/utils'
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,24 +20,6 @@ function pct(a: number, b: number): string {
 
 function perUnit(money: number, units: number): string {
   return units > 0 ? formatCurrency(money / units) : '—'
-}
-
-// ── MonthSelector ─────────────────────────────────────────────────────────────
-
-function MonthSelector({ year, month, onChange }: { year: number; month: number; onChange: (y: number, m: number) => void }) {
-  const now = new Date()
-  const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
-  const cls = 'rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-zinc-500 [&>option]:bg-zinc-900'
-  return (
-    <div className="flex items-center gap-2">
-      <select value={month} onChange={e => onChange(year, +e.target.value)} className={cls}>
-        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-      </select>
-      <select value={year} onChange={e => onChange(+e.target.value, month)} className={cls}>
-        {years.map(y => <option key={y} value={y}>{y}</option>)}
-      </select>
-    </div>
-  )
 }
 
 // Calculated / read-only cell — no background, muted color
@@ -79,7 +59,7 @@ function ChatRow({ row }: { row: DailyLiveMetric }) {
       <ReadCell value={String(row.shows)} />
       <ReadCell value={String(row.llamadas_no_calificadas)} />
       <ReadCell value={String(row.cierres)} />
-      <ReadCell value="0" dim />
+      <ReadCell value={String(row.senados)} dim={!row.senados} />
       <ReadCell value={formatCurrency(row.facturacion)} emerald />
       <ReadCell value={formatCurrency(row.cash_collected)} emerald />
       {/* Calculated */}
@@ -116,7 +96,7 @@ function TotalsRow({ rows, label }: { rows: DailyLiveMetric[]; label: string }) 
           <span className="text-xs font-mono font-semibold text-zinc-300">{v}</span>
         </td>
       ))}
-      {[ll, sh, sum('llamadas_no_calificadas'), ci, 0].map((v, i) => (
+      {[ll, sh, sum('llamadas_no_calificadas'), ci, sum('senados')].map((v, i) => (
         <td key={i} className="px-2 py-1.5 text-right bg-white/[0.004]">
           <span className="text-xs font-mono font-semibold text-zinc-400">{v}</span>
         </td>
@@ -141,7 +121,7 @@ function TotalsRow({ rows, label }: { rows: DailyLiveMetric[]; label: string }) 
   )
 }
 
-type PeriodMetricsSumKeys = Pick<DailyLiveMetric, 'chats_abiertos' | 'conversaciones' | 'agendas' | 'llamadas' | 'llamadas_no_calificadas' | 'shows' | 'cierres' | 'facturacion' | 'cash_collected'>
+type PeriodMetricsSumKeys = Pick<DailyLiveMetric, 'chats_abiertos' | 'conversaciones' | 'agendas' | 'llamadas' | 'llamadas_no_calificadas' | 'shows' | 'cierres' | 'senados' | 'facturacion' | 'cash_collected'>
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -150,11 +130,23 @@ const CLOSING_HEADERS = ['Llamadas', 'Shows', 'No Cal.', 'Cierres', 'Señados', 
 const CALC_HEADERS = ['%Agenda', 'Closer%', 'Show%', 'AOV', 'CC/Ll.', 'CC/Sh.', 'CC/Ci.', 'Fact/Ll.', 'Fact/Sh.', 'Fact/Ci.']
 
 export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
-  const now = new Date()
-  const [year, setYear]   = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  // Mes inicial en hora de Chile, igual en el servidor y en el navegador.
+  const [year, setYear]   = useState(() => hoyChile().year)
+  const [month, setMonth] = useState(() => hoyChile().month)
+  const [rango, setRango] = useState<RangoDeMeses | null>(null)
   const [rows, setRows]   = useState<DailyLiveMetric[]>([])
   const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    getRangoDeMeses(clientId, 'chat')
+      .then((r) => { if (!cancelled) setRango(r) })
+      // Sin rango el selector usa su respaldo (últimos 12 meses).
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [clientId])
+
+  const cambiarMes = useCallback((y: number, m: number) => { setYear(y); setMonth(m) }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -185,7 +177,7 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        <MonthSelector year={year} month={month} onChange={cambiarMes} min={rango?.min} max={rango?.max} />
       </div>
 
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
@@ -255,7 +247,11 @@ export function ChatMetricsSpreadsheet({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      <p className="text-[11px] text-zinc-700">Datos en vivo desde ManyChat y Calendly · Se actualiza solo</p>
+      <p className="text-[11px] text-zinc-700">
+        Datos en vivo desde ManyChat y Calendly · Se actualiza solo · No incluye días posteriores a hoy ·
+        Señados = agendas no cerradas con upfront mayor a 0 (su upfront no entra al Cash) ·
+        Facturación usa el upfront cuando la agenda no tiene monto de facturación
+      </p>
     </div>
   )
 }

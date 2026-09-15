@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { aMes, hoyChile, sumarMeses } from '@/lib/fecha-chile'
 
 const MESES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -14,6 +15,10 @@ const MESES = [
  * a pantalla completa para lo que aquí es un toque. Son enlaces, así que la
  * página sigue siendo un componente de servidor y no hay JavaScript de por
  * medio.
+ *
+ * "Hoy" es el de Chile (el servidor corre en UTC) y la flecha de mes siguiente
+ * se desactiva pasado el mes siguiente al actual: sirve para ver llamadas ya
+ * agendadas por adelantado, pero más allá no hay nada que mirar.
  */
 export function MonthNav({
   basePath,
@@ -39,8 +44,9 @@ export function MonthNav({
   const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
   const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 }
 
-  const hoy = new Date()
-  const esMesActual = year === hoy.getFullYear() && month === hoy.getMonth() + 1
+  const hoy = hoyChile()
+  const esMesActual = year === hoy.year && month === hoy.month
+  const hayMesSiguiente = aMes(next.y, next.m) <= sumarMeses(aMes(hoy.year, hoy.month), 1)
 
   return (
     <div className="flex items-center gap-2 px-4 pb-3">
@@ -63,19 +69,29 @@ export function MonthNav({
         )}
       </div>
 
-      <Link
-        href={href(next.y, next.m)}
-        aria-label="Mes siguiente"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-zinc-400 active:bg-white/[0.09]"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Link>
+      {hayMesSiguiente ? (
+        <Link
+          href={href(next.y, next.m)}
+          aria-label="Mes siguiente"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.04] text-zinc-400 active:bg-white/[0.09]"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Link>
+      ) : (
+        <span
+          aria-disabled="true"
+          aria-label="Mes siguiente (no disponible)"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.04] bg-white/[0.02] text-zinc-700"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </span>
+      )}
 
       {/* Volver al mes actual con un toque, sin tener que contar meses hacia
           atrás cuando uno se fue lejos mirando histórico. */}
       {!esMesActual && (
         <Link
-          href={href(hoy.getFullYear(), hoy.getMonth() + 1)}
+          href={href(hoy.year, hoy.month)}
           className="shrink-0 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs font-medium text-zinc-300 active:bg-white/[0.09]"
         >
           Hoy

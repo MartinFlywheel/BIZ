@@ -2,10 +2,13 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSessionProfile, getSessionUser } from '@/lib/supabase/session'
 import { revalidatePath } from 'next/cache'
-import type { LeadStage, Lead } from '@/lib/types'
-import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
+import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
+import { fetchAllRows, fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 import { pickBalancedSetter } from '@/lib/manychat'
+import { getInteractionsForCrm, type InteraccionCrm } from '@/lib/actions/interactions'
+import { getAgencyUsers } from '@/lib/actions/team'
 
 export async function getLeads(clientId?: string) {
   const supabase = await createClient()
@@ -58,8 +61,12 @@ export interface LeadPipelineRow {
  * prequalification_data— para un tablero que usa diez campos y ni siquiera
  * mira el join de interactions. Es de las pocas consultas que además crece con
  * cada cliente nuevo, porque no filtra por ninguno.
+ *
+ * Con clientId el filtro va en la consulta: antes el selector de cliente del
+ * tablero filtraba en el navegador, así que elegir un cliente chico igual
+ * bajaba los ~8.400 leads de todos en 9 páginas.
  */
-export async function getLeadsForPipeline(): Promise<LeadPipelineRow[]> {
+export async function getLeadsForPipeline(clientId?: string): Promise<LeadPipelineRow[]> {
   const supabase = await createClient()
 
   const rows = await fetchAllRowsByCursor<LeadPipelineRow & { id: string }>((cursor, limit) => {
@@ -68,6 +75,7 @@ export async function getLeadsForPipeline(): Promise<LeadPipelineRow[]> {
       .select('id, client_id, ig_username, full_name, stage, assigned_to, close_value, days_to_close, first_touch_type, created_at, clients(name, ig_handle), users!leads_assigned_to_fkey(full_name)')
       .order('id', { ascending: true })
       .limit(limit)
+    if (clientId) query = query.eq('client_id', clientId)
     if (cursor) query = query.gt('id', cursor)
     return query as unknown as PromiseLike<{ data: (LeadPipelineRow & { id: string })[] | null; error: { message: string } | null }>
   })
@@ -120,27 +128,144 @@ export async function getLeadOptions(clientId?: string): Promise<{ id: string; f
 // before. Auth/role are re-derived from the session here, not trusted
 // from the caller, since this now runs from a client component.
 export async function getLeadsForViewer(clientId: string) {
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  const { data: viewer } = authUser
-    ? await supabase.from('users').select('role').eq('id', authUser.id).single()
-    : { data: null }
+  const viewer = await getSessionProfile()
   const isSetter = viewer?.role === 'setter'
 
   const leads = await getLeads(clientId)
   if (!isSetter) return leads
+  return soloVisiblesParaSetter(leads, viewer?.id)
+}
 
+/**
+ * Un setter no ve los leads calificados que son de otro setter. Las etapas
+ * anteriores (chat abierto, conversación real) las ve todo el equipo. La
+ * clasificación sale del join `interactions(classification)` por
+ * leads.interaction_id, que solo se pide cuando quien mira es setter.
+ */
+function soloVisiblesParaSetter<T extends { assigned_to: string | null }>(leads: T[], viewerId: string | undefined): T[] {
   return leads.filter((lead) => {
     const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
-    const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser?.id
+    const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== viewerId
     return !isQualifiedForSomeoneElse
   })
+}
+
+export interface CrmTabData {
+  leads: Lead[]
+  interactions: InteraccionCrm[]
+  agencyUsers: Awaited<ReturnType<typeof getAgencyUsers>>
+  contentPieces: ContentPiece[]
+  /** undefined si no se pudo contar: la pestaña Tareas queda sin badge. */
+  pendingTaskCount: number | undefined
+}
+
+/**
+ * Todo lo que necesita la pestaña CRM, en UNA server action.
+ *
+ * CrmTabLazy lanzaba cinco actions en un Promise.all (leads, interactions,
+ * usuarios, piezas y el contador de tareas). Desde el navegador Next despacha
+ * las server actions de a una, así que ese Promise.all corría en fila, y cada
+ * una repetía la validación de sesión y la consulta a `users`. Aquí la sesión
+ * se lee una vez y las cinco cargas van en paralelo de verdad, en el servidor.
+ *
+ * Además cada carga pide solo lo que el CRM usa:
+ * - leads: `*` sin los joins de clients y users, que nadie lee en la pestaña.
+ *   El join de interactions(classification) solo va si mira un setter, que es
+ *   quien necesita el filtro de calificados ajenos.
+ * - interactions: las ocho columnas de getInteractionsForCrm, sin joins.
+ * - piezas: sin los joins de clients y campaigns.
+ *
+ * Los leads son lo único imprescindible: si fallan, falla la pestaña y se
+ * ofrece reintentar. Lo demás degrada con un valor por defecto, para que un
+ * adorno no se lleve la pestaña entera.
+ */
+export async function getCrmTabData(clientId: string): Promise<CrmTabData> {
+  const perfil = await getSessionProfile()
+  if (!perfil) throw new Error('No hay sesión. Vuelve a iniciar sesión.')
+
+  // Un miembro del equipo que no es admin solo trabaja su cliente. El proxy ya
+  // lo confina por ruta, pero una server action se puede invocar con otro
+  // clientId a mano.
+  if (perfil.user_type === 'agency' && perfil.role !== 'admin' && perfil.client_id && perfil.client_id !== clientId) {
+    throw new Error('Sin acceso a este cliente')
+  }
+
+  const isSetter = perfil.role === 'setter'
+  const supabase = await createClient()
+
+  const avisar = (nombre: string) => (err: unknown) => {
+    console.error(`[getCrmTabData] ${nombre} falló para ${clientId}:`, err instanceof Error ? err.message : err)
+  }
+
+  const [leads, interactions, agencyUsers, contentPieces, pendingTaskCount] = await Promise.all([
+    fetchAllRowsByCursor<Lead>((cursor, limit) => {
+      let query = supabase
+        .from('leads')
+        .select(isSetter ? '*, interactions(classification)' : '*')
+        .eq('client_id', clientId)
+        .order('id', { ascending: true })
+        .limit(limit)
+      if (cursor) query = query.gt('id', cursor)
+      return query as unknown as PromiseLike<{ data: Lead[] | null; error: { message: string } | null }>
+    }),
+    getInteractionsForCrm(clientId).catch((err) => { avisar('interactions')(err); return [] as InteraccionCrm[] }),
+    getAgencyUsers(clientId).catch((err) => { avisar('agencyUsers')(err); return [] }),
+    fetchAllRows<ContentPiece>((from, to) =>
+      supabase
+        .from('content_pieces')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('published_at', { ascending: false, nullsFirst: false })
+        .order('created_at', { ascending: false })
+        .range(from, to) as unknown as PromiseLike<{ data: ContentPiece[] | null; error: { message: string } | null }>
+    ).catch((err) => { avisar('contentPieces')(err); return [] as ContentPiece[] }),
+    contarTareasPendientes(supabase, perfil, clientId).catch((err) => { avisar('pendingTaskCount')(err); return undefined }),
+  ])
+
+  // El orden de "lo último actualizado primero" que espera la pestaña; barato
+  // en JS con todo ya en memoria.
+  leads.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+
+  return {
+    leads: isSetter ? soloVisiblesParaSetter(leads, perfil.id) : leads,
+    interactions,
+    agencyUsers,
+    contentPieces,
+    pendingTaskCount,
+  }
+}
+
+/**
+ * El badge de la sub-pestaña Tareas. Misma regla que getPendingTaskCount en
+ * tasks.ts (el admin ve el total del cliente; cada miembro, solo lo suyo), pero
+ * con el perfil ya leído: esa función vuelve a validar la sesión y a consultar
+ * `users` por su cuenta. Si cambia la regla allá, hay que cambiarla aquí.
+ */
+async function contarTareasPendientes(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  perfil: { id: string; user_type: string; role: string; client_id: string | null },
+  clientId: string
+): Promise<number> {
+  if (perfil.user_type !== 'agency') return 0
+  const esAdmin = perfil.role === 'admin'
+  if (!esAdmin && perfil.client_id !== clientId) return 0
+
+  let query = supabase
+    .from('team_tasks')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', clientId)
+    .neq('status', 'hecha')
+  if (!esAdmin) query = query.eq('assigned_to', perfil.id)
+
+  const { count, error } = await query
+  if (error) return 0
+  return count ?? 0
 }
 
 export async function updateLeadStageAction(id: string, stage: string, agendaDate?: string): Promise<{ agendaError: string | null }> {
   const supabase = await createClient()
 
-  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const authUser = await getSessionUser()
 
   // Needed to tell a real advance from a re-marked "still here" touch —
   // fetched before the update overwrites it.
@@ -489,7 +614,7 @@ export async function assignLeadContentAction(leadId: string, contentId: string 
 // progreso del setter.
 export async function markFollowUpDoneAction(id: string) {
   const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const authUser = await getSessionUser()
 
   const { data: lead, error: lookupError } = await supabase
     .from('leads')
@@ -527,7 +652,7 @@ export async function markFollowUpDoneAction(id: string) {
 
 export async function snoozeLeadAction(id: string) {
   const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
+  const authUser = await getSessionUser()
 
   // Buscamos el lead para ver su contador actual
   const { data: lead, error: lookupError } = await supabase
@@ -645,4 +770,175 @@ export async function getLeadBasico(leadId: string): Promise<LeadBusqueda | null
 
   if (error) throw error
   return data
+}
+
+/** Una persona encontrada por el buscador global de leads. */
+export interface PersonaEncontrada {
+  leadId: string
+  clientId: string
+  clientName: string | null
+  nombre: string | null
+  igUsername: string | null
+  stage: string | null
+  /** instagram | nombre | correo | telefono | agenda_nombre | agenda_correo */
+  coincidencia: string
+}
+
+const PRIORIDAD_COINCIDENCIA = ['instagram', 'nombre', 'correo', 'telefono', 'agenda_nombre', 'agenda_correo']
+
+/**
+ * Busca un lead por nombre, @IG, correo o teléfono, para abrir su historial.
+ *
+ * No reemplaza a buscarLeads: esa sirve al selector de la agenda, acotada a un
+ * cliente y con otra forma de resultado. Esta es la caja de búsqueda global, y
+ * busca también en las agendas porque el correo y el teléfono casi nunca están
+ * en leads: llegan con la reserva.
+ *
+ * El alcance se decide aquí con la sesión, no con lo que mande el navegador:
+ * un admin busca en todos los clientes, el resto solo en el suyo, un setter no
+ * ve el lead calificado de otro setter, y el portal de clientes no busca nada.
+ *
+ * Usa la función buscar_personas (migración 075). Si todavía no se corrió cae a
+ * dos consultas directas, más lentas pero equivalentes.
+ */
+export async function buscarPersonas(texto: string): Promise<PersonaEncontrada[]> {
+  const q = String(texto ?? '').trim().slice(0, 100)
+  if (q.length < 2) return []
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: viewer } = await supabase
+    .from('users')
+    .select('role, user_type, client_id')
+    .eq('id', user.id)
+    .single()
+  if (!viewer || viewer.user_type !== 'agency') return []
+
+  const esAdmin = viewer.role === 'admin'
+  if (!esAdmin && !viewer.client_id) return []
+  const clientId: string | null = esAdmin ? null : viewer.client_id
+
+  let personas: PersonaEncontrada[]
+  const { data, error } = await supabase.rpc('buscar_personas', { p_texto: q, p_client_id: clientId })
+  if (!error) {
+    personas = ((data ?? []) as Record<string, unknown>[]).map((f) => ({
+      leadId: String(f.lead_id),
+      clientId: String(f.client_id),
+      clientName: (f.client_name as string | null) ?? null,
+      nombre: (f.nombre as string | null) ?? null,
+      igUsername: (f.ig_username as string | null) ?? null,
+      stage: (f.stage as string | null) ?? null,
+      coincidencia: String(f.coincidencia ?? 'nombre'),
+    }))
+  } else if (error.code === 'PGRST202' || error.code === '42883') {
+    personas = await buscarPersonasSinFuncion(supabase, q, clientId)
+  } else {
+    console.error('[buscarPersonas] buscar_personas falló:', error.code, error.message)
+    throw new Error('No se pudo buscar. Intenta de nuevo.')
+  }
+
+  if (viewer.role === 'setter' && personas.length > 0) {
+    const { data: filas } = await supabase
+      .from('leads')
+      .select('id, assigned_to, interactions(classification)')
+      .in('id', personas.map((p) => p.leadId))
+    const ocultos = new Set(
+      (filas ?? [])
+        .filter((l) => {
+          const classification = (l as { interactions?: { classification?: string } | null }).interactions?.classification
+          return classification === 'lead_calificado' && l.assigned_to && l.assigned_to !== user.id
+        })
+        .map((l) => String(l.id))
+    )
+    personas = personas.filter((p) => !ocultos.has(p.leadId))
+  }
+
+  return personas
+}
+
+/** La misma búsqueda que buscar_personas, para cuando la migración 075 no se corrió. */
+async function buscarPersonasSinFuncion(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  q: string,
+  clientId: string | null
+): Promise<PersonaEncontrada[]> {
+  // % y _ son comodines de ILIKE; el valor va entre comillas dobles para que
+  // una coma o un paréntesis no rompan la sintaxis de .or() de PostgREST.
+  const like = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+  const citar = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  const patron = citar(like(q))
+  const patronIg = citar(like(q.replace(/^@/, '')))
+  const digitos = q.replace(/\D/g, '')
+
+  const filtrosLead = [`ig_username.ilike.${patronIg}`, `full_name.ilike.${patron}`, `email.ilike.${patron}`]
+  if (digitos.length >= 6) filtrosLead.push(`phone_e164.ilike.${citar(`%${digitos}%`)}`)
+
+  let consultaLeads = supabase
+    .from('leads')
+    .select('id, client_id, full_name, ig_username, email, phone_e164, stage, updated_at')
+    .or(filtrosLead.join(','))
+    .order('updated_at', { ascending: false })
+    .limit(30)
+  if (clientId) consultaLeads = consultaLeads.eq('client_id', clientId)
+
+  let consultaAgendas = supabase
+    .from('agenda_records')
+    .select('lead_id, email_lead')
+    .not('lead_id', 'is', null)
+    .or(`nombre_lead.ilike.${patron},email_lead.ilike.${patron}`)
+    .limit(30)
+  if (clientId) consultaAgendas = consultaAgendas.eq('client_id', clientId)
+
+  const [rLeads, rAgendas] = await Promise.all([consultaLeads, consultaAgendas])
+  if (rLeads.error) console.error('[buscarPersonas] consulta de leads falló:', rLeads.error.code, rLeads.error.message)
+  if (rAgendas.error) console.error('[buscarPersonas] consulta de agendas falló:', rAgendas.error.code, rAgendas.error.message)
+
+  const t = q.toLowerCase()
+  const tIg = q.replace(/^@/, '').toLowerCase()
+  const encontrados = new Map<string, { fila: Record<string, unknown>; coincidencia: string }>()
+  for (const l of (rLeads.data ?? []) as Record<string, unknown>[]) {
+    const coincidencia = String(l.ig_username ?? '').toLowerCase().includes(tIg) ? 'instagram'
+      : String(l.full_name ?? '').toLowerCase().includes(t) ? 'nombre'
+      : String(l.email ?? '').toLowerCase().includes(t) ? 'correo'
+      : 'telefono'
+    encontrados.set(String(l.id), { fila: l, coincidencia })
+  }
+
+  const porAgenda = new Map<string, string>()
+  for (const a of (rAgendas.data ?? []) as Record<string, unknown>[]) {
+    const id = String(a.lead_id)
+    if (encontrados.has(id) || porAgenda.has(id)) continue
+    porAgenda.set(id, String(a.email_lead ?? '').toLowerCase().includes(t) ? 'agenda_correo' : 'agenda_nombre')
+  }
+  if (porAgenda.size > 0) {
+    const { data: leadsDeAgenda } = await supabase
+      .from('leads')
+      .select('id, client_id, full_name, ig_username, stage, updated_at')
+      .in('id', [...porAgenda.keys()])
+    for (const l of (leadsDeAgenda ?? []) as Record<string, unknown>[]) {
+      encontrados.set(String(l.id), { fila: l, coincidencia: porAgenda.get(String(l.id)) ?? 'agenda_nombre' })
+    }
+  }
+
+  const clientIds = [...new Set([...encontrados.values()].map((e) => String(e.fila.client_id)))]
+  const nombreCliente = new Map<string, string>()
+  if (clientIds.length > 0) {
+    const { data: clientes } = await supabase.from('clients').select('id, name').in('id', clientIds)
+    for (const c of (clientes ?? []) as Record<string, unknown>[]) nombreCliente.set(String(c.id), String(c.name ?? ''))
+  }
+
+  return [...encontrados.values()]
+    .map(({ fila, coincidencia }) => ({
+      leadId: String(fila.id),
+      clientId: String(fila.client_id),
+      clientName: nombreCliente.get(String(fila.client_id)) || null,
+      nombre: (fila.full_name as string | null) ?? null,
+      igUsername: (fila.ig_username as string | null) ?? null,
+      stage: (fila.stage as string | null) ?? null,
+      coincidencia,
+    }))
+    .sort((a, b) => PRIORIDAD_COINCIDENCIA.indexOf(a.coincidencia) - PRIORIDAD_COINCIDENCIA.indexOf(b.coincidencia))
+    .slice(0, 30)
 }

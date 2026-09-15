@@ -27,6 +27,42 @@ export async function getInteractions(clientId?: string) {
   return rows.sort((a, b) => b.bot_triggered_at.localeCompare(a.bot_triggered_at))
 }
 
+/** Las columnas de una interacción que de verdad lee la pestaña CRM. */
+export type InteraccionCrm = Pick<
+  Interaction,
+  'id' | 'ig_username' | 'classification' | 'updated_at' | 'bot_triggered_at' | 'content_id' | 'keyword_used' | 'prequalification_data'
+>
+
+/**
+ * Las interacciones de un cliente para la pestaña CRM, con solo las columnas
+ * que ese árbol usa: los filtros de conversación real y calificado
+ * (ig_username, classification), la ficha de calificación del drawer y de
+ * Seguimientos (prequalification_data, buscada por id o por ig_username con
+ * el updated_at más reciente) y el historial de contenido (content_id,
+ * keyword_used, bot_triggered_at). La pieza se resuelve con contentPieceById,
+ * no con un join.
+ *
+ * getInteractions() trae `*` más los joins de clients y content_pieces: para
+ * Mane eran unos 13 MB de JSON en 18 páginas; así son unos 6,5 MB. Queda para
+ * los demás consumidores, que sí usan esas columnas.
+ */
+export async function getInteractionsForCrm(clientId: string): Promise<InteraccionCrm[]> {
+  const supabase = await createClient()
+
+  const rows = await fetchAllRowsByCursor<InteraccionCrm>((cursor, limit) => {
+    let query = supabase
+      .from('interactions')
+      .select('id, ig_username, classification, updated_at, bot_triggered_at, content_id, keyword_used, prequalification_data')
+      .eq('client_id', clientId)
+      .order('id', { ascending: true })
+      .limit(limit)
+    if (cursor) query = query.gt('id', cursor)
+    return query as unknown as PromiseLike<{ data: InteraccionCrm[] | null; error: { message: string } | null }>
+  })
+
+  return rows.sort((a, b) => b.bot_triggered_at.localeCompare(a.bot_triggered_at))
+}
+
 export async function createInteractionAction(formData: FormData) {
   const supabase = await createClient()
   const classification = formData.get('classification') as InteractionClassification

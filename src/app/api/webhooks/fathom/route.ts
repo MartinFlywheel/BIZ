@@ -1,112 +1,87 @@
+import { createHmac, timingSafeEqual } from 'crypto'
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sincronizarFathom } from '@/lib/services/fathom-sync'
+import type { ReunionFathom } from '@/lib/services/fathom'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
-// Fathom's exact webhook payload shape hasn't been verified against a live
-// event yet — every call is logged to webhook_logs regardless of parse
-// outcome, so field names can be corrected here from real payloads without
-// losing data. Mirrors the Calendly webhook: match a lead by invitee email
-// (across all clients, since there's no per-client Fathom identifier yet),
-// then upsert sales_calls keyed by the recording id.
+// Webhook "New meeting content ready" de Fathom.
+//
+// El payload es el mismo objeto de reunión que devuelve GET /meetings, así que
+// pasa por el mismo camino que el cron: se guarda en fathom_grabaciones y se
+// cruza por puntaje con las agendas. Antes escribía en sales_calls buscando el
+// lead solo por correo, en todos los clientes a la vez, y nada de eso llegaba a
+// la agenda ni al reporte. Hasta hoy nunca recibió un evento (0 filas en
+// webhook_logs): el cron sync-fathom sigue siendo el camino principal y este
+// webhook solo adelanta la llegada de la grabación.
+//
+// Cada llamada se registra en webhook_logs pase lo que pase, para poder
+// corregir el parseo con payloads reales sin perder datos.
+//
+// Firma: si FATHOM_WEBHOOK_SECRET está configurado ("whsec_..."), se exige.
+// Sin la variable deja pasar, igual que el webhook de ManyChat: primero se
+// crea el webhook en Fathom y recién después se guarda el secreto en Vercel.
+
+const TOLERANCIA_SEGUNDOS = 300
+
+function firmaValida(secreto: string, headers: Headers, cuerpo: string): boolean {
+  const id = headers.get('webhook-id')
+  const timestamp = headers.get('webhook-timestamp')
+  const firma = headers.get('webhook-signature')
+  if (!id || !timestamp || !firma) return false
+
+  const ts = parseInt(timestamp, 10)
+  if (Number.isNaN(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > TOLERANCIA_SEGUNDOS) return false
+
+  const clave = Buffer.from(secreto.split('_')[1] ?? secreto, 'base64')
+  const esperada = createHmac('sha256', clave).update(`${id}.${timestamp}.${cuerpo}`).digest('base64')
+
+  return firma.split(' ').some((parte) => {
+    const recibida = parte.includes(',') ? parte.split(',')[1] : parte
+    const a = Buffer.from(esperada)
+    const b = Buffer.from(recibida)
+    return a.length === b.length && timingSafeEqual(a, b)
+  })
+}
 
 export async function POST(request: Request) {
   const supabase = createAdminClient()
   let webhookLogId: string | null = null
 
   try {
-    const body = await request.json()
+    const cuerpo = await request.text()
+
+    const secreto = process.env.FATHOM_WEBHOOK_SECRET
+    if (secreto && !firmaValida(secreto, request.headers, cuerpo)) {
+      return NextResponse.json({ error: 'Firma inválida' }, { status: 401 })
+    }
+
+    const body = JSON.parse(cuerpo) as ReunionFathom & { event?: string }
 
     const { data: logRow } = await supabase
       .from('webhook_logs')
-      .insert({ source: 'fathom', event_type: body?.event || 'recording', payload: body, processed: false })
+      .insert({ source: 'fathom', event_type: body?.event || 'new_meeting_content_ready', payload: body, processed: false })
       .select('id')
       .single()
     webhookLogId = logRow?.id || null
 
-    const recordingId: string | null = body.id || body.recording_id || body.share_id || null
-    const recordingUrl: string | null = body.url || body.share_url || body.recording_url || null
-    const transcript: string | null = body.transcript_text || (Array.isArray(body.transcript)
-      ? body.transcript.map((t: any) => t.text).filter(Boolean).join('\n')
-      : null)
-    const summary: string | null = body.default_summary || body.ai_summary || body.summary || null
-    const startTime: string | null = body.recording_start_time || body.scheduled_start_time || null
-    const endTime: string | null = body.recording_end_time || body.scheduled_end_time || null
-
-    const invitees: Array<{ email?: string; name?: string }> =
-      body.meeting_invitees || body.invitees || []
-
-    if (!recordingId) {
-      await markLog(supabase, webhookLogId, 'No recording id in payload')
-      return NextResponse.json({ received: true, warning: 'No recording id — logged for manual review' })
+    if (body?.recording_id === undefined || body?.recording_id === null || body?.recording_id === '') {
+      await markLog(supabase, webhookLogId, 'El payload no trae recording_id')
+      return NextResponse.json({ received: true, warning: 'Sin recording_id: queda registrado para revisarlo a mano' })
     }
 
-    // ── Match a lead (and its client) by invitee email ──
-    let leadId: string | null = null
-    let clientId: string | null = null
+    // Sin reintento de las viejas: eso lo hace el cron. Aquí solo interesa la
+    // reunión que acaba de llegar.
+    const { ok, motivo, resumen, detalle } = await sincronizarFathom({ reuniones: [body], reintentar: false })
 
-    for (const invitee of invitees) {
-      const email = invitee.email?.trim().toLowerCase()
-      if (!email) continue
-
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('id, client_id')
-        .ilike('email', email)
-        .limit(1)
-        .maybeSingle()
-
-      if (lead) {
-        leadId = lead.id
-        clientId = lead.client_id
-        break
-      }
-    }
-
-    if (!leadId) {
-      await markLog(supabase, webhookLogId, `No lead matched for invitees: ${invitees.map(i => i.email).join(', ') || 'none'}`)
-      return NextResponse.json({ received: true, warning: 'No lead matched — logged for manual review' })
-    }
-
-    const durationSeconds = startTime && endTime
-      ? Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 1000)
-      : null
-
-    const { data: existingCall } = await supabase
-      .from('sales_calls')
-      .select('id')
-      .eq('fathom_recording_id', recordingId)
-      .maybeSingle()
-
-    if (existingCall) {
-      await supabase
-        .from('sales_calls')
-        .update({
-          scheduled_at: startTime,
-          duration_seconds: durationSeconds,
-          fathom_call_url: recordingUrl,
-          transcript,
-          ai_summary: summary,
-        })
-        .eq('id', existingCall.id)
-    } else {
-      await supabase.from('sales_calls').insert({
-        lead_id: leadId,
-        scheduled_at: startTime,
-        duration_seconds: durationSeconds,
-        fathom_recording_id: recordingId,
-        fathom_call_url: recordingUrl,
-        transcript,
-        ai_summary: summary,
-      })
-    }
-
-    await markLog(supabase, webhookLogId, null)
-    return NextResponse.json({ received: true, lead_id: leadId, client_id: clientId })
+    await markLog(supabase, webhookLogId, ok ? null : motivo ?? 'Error al sincronizar')
+    return NextResponse.json({ received: true, ok, motivo: motivo ?? null, resumen, detalle })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown error'
-    console.error('[Fathom] Fatal error:', msg)
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
+    console.error('[Fathom] Error:', msg)
     await markLog(supabase, webhookLogId, msg)
     return NextResponse.json({ error: msg }, { status: 500 })
   }

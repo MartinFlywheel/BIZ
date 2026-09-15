@@ -1,5 +1,5 @@
 import { getDailySetterReports, getSettersProgress } from '@/lib/actions/setter-app'
-import { getClients } from '@/lib/actions/clients'
+import { getClientOptions } from '@/lib/actions/clients'
 import { Card, CardTitle } from '@/components/ui/card'
 import { formatDateCompact } from '@/lib/utils'
 import { ReportsClientPicker } from '@/components/reports/client-picker'
@@ -23,8 +23,11 @@ export default async function ReportsPage({
   searchParams: Promise<{ client?: string }>
 }) {
   const { client: clientId } = await searchParams
+  // Solo id y nombre: el selector es un componente de cliente y getClients()
+  // (select '*') le mandaba al navegador la fila completa de cada cliente,
+  // token de Calendly incluido, nada más que para llenar un desplegable.
   const [clients, reports, settersProgress] = await Promise.all([
-    getClients(),
+    getClientOptions(),
     getDailySetterReports(clientId),
     clientId ? getSettersProgress(clientId) : Promise.resolve(null),
   ])

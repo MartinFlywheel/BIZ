@@ -21,6 +21,14 @@ export default async function PortalLayout({
 
   if (!profile) redirect('/login')
 
+  // El proxy no revisa el perfil en /portal, así que un usuario de la agencia
+  // podía entrar aquí escribiendo la URL. Una setter veía entonces todas las
+  // pestañas de su cliente (analítica, llamadas, producto) aunque en el CRM
+  // solo tiene la de leads. El portal es para usuarios de tipo cliente; al
+  // resto se lo manda a su inicio, y el proxy lo lleva a su cliente si
+  // corresponde.
+  if (profile.user_type !== 'client') redirect('/dashboard')
+
   return (
     <div className="relative flex h-screen overflow-hidden bg-[#0B0B0B]">
       {/* Ambient glow bleeding down from the top */}

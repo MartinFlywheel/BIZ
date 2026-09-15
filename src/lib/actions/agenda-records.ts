@@ -1,7 +1,9 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paginate'
+import { aplicarResultadoAgenda } from '@/lib/services/resultado-agenda'
 
 export interface AgendaRecord {
   id: string
@@ -133,11 +135,26 @@ export async function createAgendaRecord(clientId: string, fields: AgendaRecordF
 
 export async function updateAgendaRecord(id: string, fields: AgendaRecordFields): Promise<void> {
   const supabase = await createClient()
+
+  // El resultado de la llamada mueve al lead (resultado-agenda.ts). Hace falta
+  // el estado anterior para distinguir una corrección ("Cerrado" que en
+  // realidad no cerró) de un resultado nuevo.
+  const tocaResultado = 'estado' in fields || 'lead_id' in fields || 'monto_facturacion' in fields || 'monto_upfront' in fields
+  const { data: anterior } = tocaResultado
+    ? await supabase.from('agenda_records').select('estado').eq('id', id).maybeSingle()
+    : { data: null }
+
   const { error } = await supabase
     .from('agenda_records')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+
+  if (tocaResultado) {
+    // Con el cliente admin: la sesión ya demostró acceso a la agenda al
+    // actualizarla, y el lead puede estar asignado a otra persona. Nunca lanza.
+    await aplicarResultadoAgenda(createAdminClient(), id, { estadoAnterior: (anterior?.estado as string | null) ?? null })
+  }
 
   // Asociar el lead desde la planilla también resuelve la tarea del setter. Si
   // no, solo la cerraba el barrido, que mira las agendas de los últimos días,

@@ -18,10 +18,13 @@ import { buscarLeads, getLeadBasico, type LeadBusqueda } from '@/lib/actions/lea
 import { LEAD_AVATARS } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import { Modal } from '@/components/ui/modal'
+import { EnlaceHistorialLead } from '@/components/leads/lead-timeline'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { getRangoDeMeses, type RangoDeMeses } from '@/lib/actions/chat-metrics'
+import { hoyChile, mesActualChile, sumarMeses } from '@/lib/fecha-chile'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const ESTADO_OPTIONS = ['Pendiente','Show','No Show','No Cerrado','Cerrado','No Calificado','Reagendado']
 const FORMA_CIERRE_OPTIONS = ['1 cuota','2 cuotas','3 cuotas','Pago completo','Otra']
 
@@ -112,24 +115,6 @@ function canonicalName(value: string, options: string[]): string | null {
   if (!name) return null
   const key = normalizeName(name)
   return options.find(o => normalizeName(o) === key) ?? name
-}
-
-// ── Month selector ────────────────────────────────────────────────────────────
-
-function MonthSelector({ year, month, onChange }: { year: number; month: number; onChange: (y: number, m: number) => void }) {
-  const now = new Date()
-  const years = [now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1]
-  const cls = 'rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 outline-none focus:ring-1 focus:ring-zinc-500 [&>option]:bg-zinc-900'
-  return (
-    <div className="flex items-center gap-2">
-      <select value={month} onChange={e => onChange(year, +e.target.value)} className={cls}>
-        {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-      </select>
-      <select value={year} onChange={e => onChange(+e.target.value, month)} className={cls}>
-        {years.map(y => <option key={y} value={y}>{y}</option>)}
-      </select>
-    </div>
-  )
 }
 
 // ── Full detail modal (for extra fields) ──────────────────────────────────────
@@ -443,6 +428,9 @@ function AgendaRecordModal({ record, avatarList, onClose, onUpdated, onDeleted }
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-zinc-100">{local.nombre_lead || 'Lead sin nombre'}</h3>
         <div className="flex items-center gap-3">
+          {local.lead_id && (
+            <EnlaceHistorialLead clientId={local.client_id} leadId={local.lead_id} nuevaPestana />
+          )}
           <button onClick={handleDelete} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">Eliminar</button>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200"><X className="h-4 w-4" /></button>
         </div>
@@ -582,9 +570,17 @@ interface TeamMember {
 
 export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }: { clientId: string; customAvatars?: string[]; agencyUsers?: TeamMember[] }) {
   const avatarList: readonly string[] = customAvatars && customAvatars.length > 0 ? customAvatars : LEAD_AVATARS
-  const now = new Date()
-  const [year, setYear]     = useState(now.getFullYear())
-  const [month, setMonth]   = useState(now.getMonth() + 1)
+  // Mes inicial en hora de Chile; el selector se acota a los meses con agendas
+  // (más el mes siguiente, por las llamadas agendadas por adelantado).
+  const [year, setYear]     = useState(() => hoyChile().year)
+  const [month, setMonth]   = useState(() => hoyChile().month)
+  const [rangoMeses, setRangoMeses] = useState<RangoDeMeses | null>(null)
+  useEffect(() => {
+    let cancelado = false
+    getRangoDeMeses(clientId, 'agendas').then(r => { if (!cancelado) setRangoMeses(r) }).catch(() => {})
+    return () => { cancelado = true }
+  }, [clientId])
+  const cambiarMes = useCallback((y: number, m: number) => { setYear(y); setMonth(m) }, [])
   const [people, setPeople] = useState<{ setters: string[]; closers: string[] }>({ setters: [], closers: [] })
   const [records, setRecords] = useState<AgendaRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -595,6 +591,9 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   const [tareas, setTareas] = useState<Map<string, TareaPendiente[]>>(new Map())
   const [ahora, setAhora] = useState<number | null>(null)
   const [modalPipeline, setModalPipeline] = useState<ModalPipeline>(null)
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
+  /** Agenda que pasó a Cerrado sin monto de venta: se le pide la Facturación. */
+  const [avisoMonto, setAvisoMonto] = useState<string | null>(null)
 
   async function load(silencioso = false) {
     if (!silencioso) setLoading(true)
@@ -656,9 +655,23 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
     return [...recs].sort((a, b) => (a.fecha_agenda ?? '').localeCompare(b.fecha_agenda ?? ''))
   }
 
-  async function saveCell(id: string, field: string, value: string | number | null) {
-    await updateAgendaRecord(id, { [field]: value } as AgendaRecordFields)
+  // Antes el guardado no tenía try/catch: commitEdit ya había cerrado la celda,
+  // así que un fallo quedaba como promesa rechazada sin mensaje y el valor se
+  // perdía sin que nadie lo notara. Ahora el valor se muestra de inmediato y,
+  // si falla, vuelve al anterior con el error a la vista.
+  async function saveCell(id: string, field: string, value: string | number | null): Promise<boolean> {
+    const previo = (records.find(r => r.id === id) as unknown as Record<string, unknown> | undefined)?.[field] ?? null
     setRecords(prev => sortRecords(prev.map(r => r.id === id ? { ...r, [field]: value } : r)))
+    try {
+      await updateAgendaRecord(id, { [field]: value } as AgendaRecordFields)
+      setErrorGuardado(null)
+      if (field === 'monto_facturacion' && typeof value === 'number' && value > 0 && avisoMonto === id) setAvisoMonto(null)
+      return true
+    } catch (e) {
+      setRecords(prev => sortRecords(prev.map(r => r.id === id ? { ...r, [field]: previo } : r)))
+      setErrorGuardado(`No se guardó el cambio: ${e instanceof Error ? e.message : 'error desconocido'}`)
+      return false
+    }
   }
 
   function startEdit(id: string, field: string, value: string) {
@@ -917,7 +930,16 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
       return (
         <select
           value={val}
-          onChange={e => saveCell(r.id, 'estado', e.target.value || null)}
+          onChange={async e => {
+            const nuevo = e.target.value || null
+            const ok = await saveCell(r.id, 'estado', nuevo)
+            // Un cierre sin monto deja la facturación del mes en 0: se abre la
+            // celda Facturación con el Upfront precargado para confirmarlo.
+            if (ok && nuevo === 'Cerrado' && !((r.monto_facturacion ?? 0) > 0)) {
+              setAvisoMonto(r.id)
+              startEdit(r.id, 'monto_facturacion', r.monto_upfront != null ? String(r.monto_upfront) : '')
+            }
+          }}
           className={`w-full rounded px-1.5 py-0.5 text-xs font-medium border focus:outline-none cursor-pointer [&>option]:bg-zinc-900 ${color} ${bg}`}
         >
           <option value="">— Estado —</option>
@@ -1062,7 +1084,13 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        <MonthSelector
+          year={year}
+          month={month}
+          onChange={cambiarMes}
+          min={rangoMeses?.min}
+          max={rangoMeses?.max ?? sumarMeses(mesActualChile(), 1)}
+        />
         {/* Lo que hoy es invisible —el olvido— pasa a ser un aviso a la vista. */}
         <div className="ml-3 mr-auto flex flex-wrap items-center gap-1.5">
           {totalSinLead > 0 && (
@@ -1082,6 +1110,23 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
           <Plus className="h-3.5 w-3.5" /> Agregar lead
         </button>
       </div>
+
+      {errorGuardado && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2 text-xs text-red-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">{errorGuardado}</span>
+          <button onClick={() => setErrorGuardado(null)} className="text-red-400/70 hover:text-red-200"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+      {avisoMonto && records.some(r => r.id === avisoMonto && r.estado === 'Cerrado' && !((r.monto_facturacion ?? 0) > 0)) && (
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-900/50 bg-emerald-950/20 px-3 py-2 text-xs text-emerald-200">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          <span className="flex-1">
+            Falta el monto de la venta de {records.find(r => r.id === avisoMonto)?.nombre_lead || 'esta agenda'}: escribe la Facturación (se precargó el Upfront).
+          </span>
+          <button onClick={() => setAvisoMonto(null)} className="text-emerald-400/70 hover:text-emerald-100"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
 
       <div className="rounded-xl border border-white/[0.06] overflow-hidden">
         <div className="overflow-x-auto">

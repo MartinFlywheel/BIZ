@@ -7,12 +7,12 @@ import { ContentFunnelForm, type ContentMetric } from './content-funnel-form'
 import { ContentPieceForm } from './content-piece-form'
 import { ContentAnalyticsSidebar } from './content-analytics-sidebar'
 import { ContentConversationTable } from './content-conversation-table'
-import { deleteContentAction, getContentTabData } from '@/lib/actions/content'
+import { ContentCover, contentTypeLabel, crearPortadasPrestadas, diaDePieza, historiaVencida } from './content-cover'
+import { deleteContentAction, getContentTabData, type ConteoInteraccionesPieza } from '@/lib/actions/content'
 import { syncClientContent } from '@/lib/actions/instagram'
-import { getInteractions } from '@/lib/actions/interactions'
 import { formatNumber, formatCurrency } from '@/lib/utils'
-import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, Play, ArrowUpDown, Eye, Rocket, ThumbsUp, TrendingDown, Reply, LogOut } from 'lucide-react'
-import type { ContentPiece, Interaction } from '@/lib/types'
+import { BarChart2, CheckCircle2, Plus, Trash2, Pencil, Link2, Copy, Check, ChevronDown, ChevronUp, RefreshCw, Heart, MessageCircle, MessageSquare, Share2, Bookmark, ExternalLink, ArrowUpDown, Eye, Rocket, ThumbsUp, TrendingDown, Reply, LogOut } from 'lucide-react'
+import type { ContentPiece } from '@/lib/types'
 import type { ContentAnalytics } from '@/lib/actions/content-analytics'
 import type { ClientFunnelTotals } from '@/lib/actions/metrics'
 
@@ -93,7 +93,7 @@ function WebhookBanner() {
             {expanded && (
                 <div className="px-4 pb-4 space-y-3 border-t border-zinc-800">
                     <p className="mt-3 text-[11px] text-zinc-600 leading-snug">
-                        Reemplazá <span className="font-mono text-zinc-500">{'{keyword_trigger}'}</span> con el ID de la pieza (ej: C_21_04, R_19_04, H_13_07). Cada pieza tiene sus tres propias URLs — la que uses depende de dónde pongas el nodo &ldquo;Solicitud externa&rdquo; en el flujo de ManyChat, no del contenido del body.
+                        Reemplaza <span className="font-mono text-zinc-500">{'{keyword_trigger}'}</span> con el ID de la pieza (ej: C_21_04, R_19_04, H_13_07). Cada pieza tiene sus tres propias URLs — la que uses depende de dónde pongas el nodo &ldquo;Solicitud externa&rdquo; en el flujo de ManyChat, no del contenido del body.
                     </p>
 
                     <WebhookUrlRow
@@ -135,6 +135,9 @@ interface Props {
     clientId: string
     contentAnalytics: ContentAnalytics
     funnelTotals: ClientFunnelTotals
+    // Chats y conversaciones por pieza, contados en la base (ver
+    // getContentTabData). Antes el grid bajaba todas las interactions.
+    interactionCounts: ConteoInteraccionesPieza[]
     reload: () => void
 }
 
@@ -173,14 +176,6 @@ function FunnelArrow() {
 function pct(num: number, den: number): string {
     if (!den) return '—'
     return `${((num / den) * 100).toFixed(1)}%`
-}
-
-const contentTypeLabel: Record<string, string> = {
-    reel: 'Reel',
-    story: 'Story',
-    post: 'Carrusel',
-    live: 'Bio',
-    trial: 'Trial',
 }
 
 function formatDayLabel(dateKey: string): string {
@@ -243,8 +238,11 @@ function StoryDayCard({
     chatCountsByPiece,
     onSelectPiece,
     onEditPiece,
+    onAgregarPortada,
     onDeletePiece,
     deletingId,
+    ahora,
+    portadasPrestadas,
 }: {
     pieces: ContentPiece[]
     dateKey: string
@@ -255,8 +253,11 @@ function StoryDayCard({
     chatCountsByPiece: Map<string, { chats: number; conversaciones: number }>
     onSelectPiece: (p: ContentPiece) => void
     onEditPiece: (p: ContentPiece) => void
+    onAgregarPortada: (p: ContentPiece) => void
     onDeletePiece: (e: React.MouseEvent, p: ContentPiece) => void
     deletingId: string | null
+    ahora: number
+    portadasPrestadas: (p: ContentPiece) => string[]
 }) {
     const totals = pieces.reduce(
         (acc, p) => {
@@ -280,7 +281,14 @@ function StoryDayCard({
         },
         { views: 0, likes: 0, comments: 0, replies: 0, exits: 0, shares: 0, saves: 0, agendas: 0, shows: 0, cierres: 0, revenue: 0 }
     )
-    const cover = pieces.find((p) => p.ig_thumbnail_url)?.ig_thumbnail_url
+    // Todas las portadas del día en orden: ContentCover usa la primera que no
+    // sea mp4 y, si esa no carga, la siguiente. Antes era la primera URL
+    // cualquiera, aunque fuera un video o estuviera caducada.
+    const portadas = Array.from(new Set(pieces.flatMap((p) => [p.ig_thumbnail_url, ...portadasPrestadas(p)]).filter((u): u is string => !!u)))
+    // Para explicar la falta de portada vale más una historia sincronizada
+    // (sabe si venció) que una manual.
+    const representativa = pieces.find((p) => p.ig_media_id) ?? pieces[0]
+    const codigos = pieces.map((p) => p.keyword_trigger).filter(Boolean).join(' · ')
 
     return (
         <div
@@ -295,15 +303,15 @@ function StoryDayCard({
                 onClick={onToggle}
                 className="relative aspect-square w-full overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
             >
-                {cover ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={cover} alt={`Historias del ${formatDayLabel(dateKey)}`} className="h-full w-full object-cover" />
-                ) : (
-                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
-                        <Play className="h-8 w-8 text-zinc-600" />
-                        <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">Historias</span>
-                    </div>
-                )}
+                <ContentCover
+                    piece={representativa}
+                    urls={portadas}
+                    ahora={ahora}
+                    alt={`Historias del ${formatDayLabel(dateKey)}`}
+                    etiqueta="Historias"
+                    leyenda={codigos || null}
+                    onAgregarPortada={() => onAgregarPortada(representativa)}
+                />
                 <span className="absolute top-2 left-2 rounded-md bg-black/60 backdrop-blur px-1.5 py-0.5 text-[10px] font-mono font-semibold text-zinc-200">
                     {pieces.length} historias
                 </span>
@@ -358,16 +366,18 @@ function StoryDayCard({
                                     className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-white/[0.04] cursor-pointer transition-colors"
                                 >
                                     <div className="relative h-10 w-7 flex-shrink-0 overflow-hidden rounded bg-zinc-800">
-                                        {p.ig_thumbnail_url ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img src={p.ig_thumbnail_url} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <Play className="h-3 w-3 text-zinc-600 absolute inset-0 m-auto" />
-                                        )}
+                                        <ContentCover
+                                            piece={p}
+                                            urls={[p.ig_thumbnail_url, ...portadasPrestadas(p)]}
+                                            ahora={ahora}
+                                            variante="mini"
+                                            alt=""
+                                        />
                                         {hasMetrics && <CheckCircle2 className="absolute -top-0.5 -right-0.5 h-3 w-3 text-emerald-400 drop-shadow" />}
                                     </div>
                                     <div className="min-w-0 flex-1">
                                         <p className="text-[11px] font-mono text-zinc-200 truncate">
+                                            {p.keyword_trigger && <span className="text-zinc-400">{p.keyword_trigger} · </span>}
                                             {formatNumber(p.views)} vistas
                                             <span className="text-zinc-500"> · {formatNumber(p.story_replies ?? p.comments ?? 0)} resp.</span>
                                         </p>
@@ -407,16 +417,24 @@ function StoryDayCard({
     )
 }
 
-export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, reload }: Props) {
+export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, contentAnalytics, funnelTotals, interactionCounts, reload }: Props) {
     const [selectedPiece, setSelectedPiece] = useState<ContentPiece | null>(null)
     const [showNewPieceForm, setShowNewPieceForm] = useState(false)
     const [editingPiece, setEditingPiece] = useState<ContentPiece | null>(null)
+    // Al abrir la edición desde "Agregar portada" el foco va directo a ese campo.
+    const [enfocarPortada, setEnfocarPortada] = useState(false)
+    function agregarPortada(piece: ContentPiece) {
+        setEnfocarPortada(true)
+        setEditingPiece(piece)
+    }
     const [deleting, setDeleting] = useState<string | null>(null)
     const [syncing, setSyncing] = useState(false)
     const [syncToast, setSyncToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
     const [sortBy, setSortBy] = useState<SortKey>('recent')
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
-    const [interactions, setInteractions] = useState<Interaction[]>([])
+    // Un solo "ahora" por montaje para decidir qué historias vencieron: leer
+    // la hora en cada render haría que el resultado cambie entre renders.
+    const [ahora] = useState(() => Date.now())
     const [expandedStoryDays, setExpandedStoryDays] = useState<Set<string>>(new Set())
     // Defaults to the most recent month that actually has pieces — old
     // months (e.g. a July piece like H_23_07 sitting there in August)
@@ -434,31 +452,17 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
         })
     }
 
-    // Fetched here instead of received as a prop — clients/[id]/page.tsx no
-    // longer pulls the whole interactions table (a dozen-plus paginated
-    // requests on a busy client) into the initial page load just for this
-    // tab's per-piece chat counts.
-    useEffect(() => {
-        let cancelled = false
-        getInteractions(clientId)
-            .then((data) => { if (!cancelled) setInteractions(data as unknown as Interaction[]) })
-            .catch((err) => { if (!cancelled) console.error('[ContentMetricsGrid] getInteractions failed', err) })
-        return () => { cancelled = true }
-    }, [clientId])
+    // Per-piece Chats/Conversaciones (all-time, matching the all-time
+    // views/likes/etc. already on each piece). Llegan contados desde
+    // getContentTabData: bajar todas las interactions solo para esto pesaba
+    // unos 13 MB en un cliente con 17 mil filas.
+    const interactionCountsByPiece = useMemo(
+        () => new Map(interactionCounts.map((c) => [c.content_id, { chats: c.chats, conversaciones: c.conversaciones }])),
+        [interactionCounts]
+    )
 
-    // Per-piece Chats/Conversaciones, live from interactions (all-time,
-    // matching the all-time views/likes/etc. already on each piece)
-    const interactionCountsByPiece = useMemo(() => {
-        const counts = new Map<string, { chats: number; conversaciones: number }>()
-        for (const i of interactions ?? []) {
-            if (!i.content_id) continue
-            const entry = counts.get(i.content_id) ?? { chats: 0, conversaciones: 0 }
-            entry.chats += 1
-            if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') entry.conversaciones += 1
-            counts.set(i.content_id, entry)
-        }
-        return counts
-    }, [interactions])
+    // Portadas prestadas para piezas manuales (solo lectura, sin fusionar filas).
+    const portadasPrestadas = useMemo(() => crearPortadasPrestadas(contentPieces), [contentPieces])
 
     async function handleSync() {
         setSyncing(true)
@@ -535,7 +539,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                 items.push({ kind: 'piece', piece: cp })
                 continue
             }
-            const dateKey = cp.published_at ? cp.published_at.slice(0, 10) : cp.id
+            // Día en hora de Chile: una historia subida a las 22:00 ya es el día
+            // siguiente en UTC y quedaba separada de su H_dd_mm manual.
+            const dateKey = diaDePieza(cp) ?? cp.id
             let bucket = dayBuckets.get(dateKey)
             if (!bucket) {
                 bucket = []
@@ -629,7 +635,9 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                     <FunnelStep
                         label="Shows"
                         value={funnelTotals.shows}
-                        rate={pct(funnelTotals.shows, funnelTotals.agendas)}
+                        // Contra las llamadas que ya ocurrieron, no contra todas las
+                        // agendas: las pendientes todavía no son show ni no-show.
+                        rate={pct(funnelTotals.shows, funnelTotals.llamadas)}
                     />
                     <FunnelArrow />
                     <FunnelStep
@@ -645,7 +653,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
             <WebhookBanner />
 
             {/* ── Chats → Conversaciones diagnostic, per piece ── */}
-            <ContentConversationTable contentPieces={contentPieces} interactions={interactions ?? []} />
+            <ContentConversationTable contentPieces={contentPieces} conteos={interactionCounts} />
 
             {/* ── Two-column Moka layout ── */}
             <div className="flex flex-col gap-4 items-start lg:flex-row">
@@ -732,8 +740,11 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 chatCountsByPiece={interactionCountsByPiece}
                                                 onSelectPiece={setSelectedPiece}
                                                 onEditPiece={setEditingPiece}
+                                                onAgregarPortada={agregarPortada}
                                                 onDeletePiece={handleDelete}
                                                 deletingId={deleting}
+                                                ahora={ahora}
+                                                portadasPrestadas={portadasPrestadas}
                                             />
                                         )
                                     }
@@ -757,6 +768,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                     const reelUrl = cp.ig_permalink?.includes('instagram.com')
                                         ? cp.ig_permalink
                                         : undefined
+                                    // El enlace se mantiene: si quedó en destacadas todavía abre.
+                                    const vencida = historiaVencida(cp, ahora)
 
                                     return (
                                         <div
@@ -783,21 +796,14 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                 onClick={() => setSelectedPiece(cp)}
                                                 className="relative w-full aspect-square overflow-hidden rounded-t-xl bg-zinc-800 focus-visible:outline-none"
                                             >
-                                                {cp.ig_thumbnail_url ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={cp.ig_thumbnail_url}
-                                                        alt={cp.caption || cp.content_type}
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center">
-                                                        <Play className="h-8 w-8 text-zinc-600" />
-                                                        <span className="text-[10px] text-zinc-600 font-medium uppercase tracking-wider">
-                                                            {contentTypeLabel[cp.content_type] || cp.content_type}
-                                                        </span>
-                                                    </div>
-                                                )}
+                                                <ContentCover
+                                                    piece={cp}
+                                                    urls={[cp.ig_thumbnail_url, ...portadasPrestadas(cp)]}
+                                                    ahora={ahora}
+                                                    alt={cp.caption || contentTypeLabel[cp.content_type] || cp.content_type}
+                                                    leyenda={cp.keyword_trigger ? null : cp.caption}
+                                                    onAgregarPortada={() => agregarPortada(cp)}
+                                                />
 
                                                 {/* Multiplier badge — top left (only when views > 0) */}
                                                 {(cp.views || 0) > 0 && (
@@ -957,10 +963,16 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             onClick={(e) => e.stopPropagation()}
-                                                            className="flex-1 flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] text-zinc-300 hover:bg-white/[0.06] hover:text-zinc-100 transition-colors"
+                                                            title={vencida ? 'La historia ya venció: Instagram solo la muestra si quedó en destacadas' : undefined}
+                                                            className={`flex-1 flex items-center justify-center gap-1 rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[11px] hover:bg-white/[0.06] hover:text-zinc-100 transition-colors ${vencida ? 'text-zinc-500' : 'text-zinc-300'}`}
                                                         >
                                                             <ExternalLink className="h-3 w-3" />
                                                             Ver en IG
+                                                            {vencida && (
+                                                                <span className="rounded bg-amber-500/10 px-1 py-px text-[9px] font-semibold uppercase tracking-wider text-amber-400/90">
+                                                                    Vencida
+                                                                </span>
+                                                            )}
                                                         </a>
                                                     )}
                                                 </div>
@@ -1002,7 +1014,8 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
                 <ContentPieceForm
                     clientId={clientId}
                     editingPiece={editingPiece}
-                    onClose={() => setEditingPiece(null)}
+                    enfocarPortada={enfocarPortada}
+                    onClose={() => { setEditingPiece(null); setEnfocarPortada(false) }}
                     onCreated={reload}
                 />
             )}
@@ -1010,7 +1023,7 @@ export function ContentMetricsGrid({ contentPieces, contentMetrics, clientId, co
     )
 }
 
-type TabData = Pick<Props, 'contentPieces' | 'contentMetrics' | 'contentAnalytics' | 'funnelTotals'>
+type TabData = Pick<Props, 'contentPieces' | 'contentMetrics' | 'contentAnalytics' | 'funnelTotals' | 'interactionCounts'>
 
 // Fetches the Contenido tab's data (pieces, metrics, analytics, funnel
 // totals) only once this tab actually opens — clients/[id]/page.tsx no
@@ -1029,9 +1042,10 @@ export function ContentMetricsGridLazy({ clientId }: { clientId: string }) {
 
     useEffect(() => {
         let cancelled = false
-        setError(null)
+        // El error se limpia al llegar datos o al pulsar Reintentar, no aquí:
+        // un setState síncrono dentro del efecto fuerza un render en cascada.
         getContentTabData(clientId)
-            .then((result) => { if (!cancelled) setData(result) })
+            .then((result) => { if (!cancelled) { setData(result); setError(null) } })
             .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Error inesperado') })
         return () => { cancelled = true }
     }, [clientId, attempt])
@@ -1040,7 +1054,7 @@ export function ContentMetricsGridLazy({ clientId }: { clientId: string }) {
         return (
             <div className="py-16 text-center text-sm">
                 <p className="text-red-400 mb-3">No se pudo cargar el contenido ({error}).</p>
-                <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+                <Button variant="secondary" size="sm" onClick={() => { setError(null); setAttempt((a) => a + 1) }}>Reintentar</Button>
             </div>
         )
     }

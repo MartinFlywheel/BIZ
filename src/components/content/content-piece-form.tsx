@@ -11,11 +11,13 @@ import type { ContentPiece } from '@/lib/types'
 interface Props {
     clientId: string
     editingPiece?: ContentPiece | null
+    // Se abrió desde "Agregar portada" en una tarjeta sin imagen.
+    enfocarPortada?: boolean
     onClose: () => void
     onCreated?: () => void
 }
 
-export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }: Props) {
+export function ContentPieceForm({ clientId, editingPiece, enfocarPortada, onClose, onCreated }: Props) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
@@ -51,7 +53,7 @@ export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }:
             open
             onClose={onClose}
             title={isEditing ? 'Editar Pieza de Contenido' : 'Nueva Pieza de Contenido'}
-            description={isEditing ? 'Corregí los datos de la pieza (código, link, portada, tipo, fecha)' : 'Registra una pieza para luego cargarle sus métricas de funnel'}
+            description={isEditing ? 'Corrige los datos de la pieza (código, link, portada, tipo, fecha)' : 'Registra una pieza para luego cargarle sus métricas de funnel'}
         >
             <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Caption */}
@@ -92,7 +94,7 @@ export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }:
                     >
                         <option value="reel">Reel</option>
                         <option value="trial">Trial</option>
-                        <option value="story">Story</option>
+                        <option value="story">Historia</option>
                         <option value="post">Post</option>
                         <option value="live">Live</option>
                     </select>
@@ -131,10 +133,12 @@ export function ContentPieceForm({ clientId, editingPiece, onClose, onCreated }:
                         label="Portada / Thumbnail (URL)"
                         type="url"
                         defaultValue={editingPiece?.ig_thumbnail_url ?? undefined}
+                        autoFocus={enfocarPortada}
                         placeholder="https://... o pegar link de imagen"
                     />
                     <p className="text-[11px] text-zinc-600 leading-snug">
-                        Tip: abre el Reel en el navegador, click derecho en la imagen → &quot;Copiar dirección de imagen&quot;
+                        Tip: abre el Reel en el navegador, click derecho en la imagen → &quot;Copiar dirección de imagen&quot;.
+                        Si el enlace es de Instagram se guarda una copia permanente, porque esos enlaces caducan en pocos días.
                     </p>
                 </div>
 

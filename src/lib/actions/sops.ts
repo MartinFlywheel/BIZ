@@ -60,6 +60,11 @@ export async function updateSopAction(id: string, formData: FormData) {
   const attachmentsRaw = formData.get('attachments') as string
   const attachments = attachmentsRaw ? JSON.parse(attachmentsRaw) : []
 
+  // La lista muestra "v{version}", pero ningún camino la subía: los SOPs
+  // editados seguían todos en v1. Cada guardado cuenta como una versión nueva.
+  const { data: actual, error: readError } = await supabase.from('sops').select('version').eq('id', id).single()
+  if (readError) throw readError
+
   const { error } = await supabase
     .from('sops')
     .update({
@@ -68,6 +73,7 @@ export async function updateSopAction(id: string, formData: FormData) {
       category: (formData.get('category') as string) || null,
       tags,
       attachments,
+      version: (Number(actual?.version) || 1) + 1,
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

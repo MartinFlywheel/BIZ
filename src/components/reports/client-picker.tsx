@@ -1,9 +1,10 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import type { Client } from '@/lib/types'
 
-export function ReportsClientPicker({ clients, selectedId }: { clients: Client[]; selectedId?: string }) {
+// Solo id y nombre: es lo único que usa el desplegable, y todo lo que recibe
+// un componente de cliente viaja al navegador.
+export function ReportsClientPicker({ clients, selectedId }: { clients: { id: string; name: string }[]; selectedId?: string }) {
   const router = useRouter()
   const searchParams = useSearchParams()
 

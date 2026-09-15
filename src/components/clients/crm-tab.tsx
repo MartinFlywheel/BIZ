@@ -15,11 +15,9 @@ import {
   updateLeadFieldsAction,
   deleteLeadAction,
   createLeadAction,
-  getLeadsForViewer,
+  getCrmTabData,
 } from '@/lib/actions/leads'
-import { getInteractions } from '@/lib/actions/interactions'
-import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction, getAgencyUsers, type TeamMemberStats } from '@/lib/actions/team'
-import { getContentPieces } from '@/lib/actions/content'
+import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction, type TeamMemberStats } from '@/lib/actions/team'
 import { Dialog } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
@@ -27,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { saveAvatarsAction } from '@/lib/actions/clients'
 import { PipelineStagesModal } from './pipeline-stages-modal'
 import { TasksPanel } from '@/components/tasks/tasks-panel'
-import { getPendingTaskCount } from '@/lib/actions/tasks'
+import { SeccionLineaDeTiempo } from '@/components/leads/lead-timeline'
 
 type SubTab = 'leads' | 'seguimientos' | 'agendas' | 'tareas' | 'equipo'
 
@@ -504,6 +502,10 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
               </div>
             </div>
           )}
+
+          {/* Línea de tiempo: se carga recién al abrir la sección, nunca con
+              la pestaña (ver src/components/leads/lead-timeline.tsx). */}
+          <SeccionLineaDeTiempo clientId={lead.client_id} leadId={lead.id} />
 
           {/* Notas */}
           <div>
@@ -1695,7 +1697,12 @@ function ConfigurarAvatarsModal({
 // requests) was the slowest thing on every tab view, including ones that
 // never touch leads at all (Analítica, Contenido, Script...). The setter
 // visibility scoping that used to live in clients/[id]/page.tsx moved into
-// getLeadsForViewer itself, so it still applies here unchanged.
+// the server action itself, so it still applies here unchanged.
+//
+// Todo llega en UNA server action (getCrmTabData). Antes eran cinco en un
+// Promise.all, pero Next despacha las server actions del navegador de a una:
+// ese Promise.all corría en fila y además dejaba esperando a cualquier otra
+// action de la pantalla (el aviso de tareas, la pestaña siguiente).
 export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agencyUsers' | 'contentPieces' | 'pendingTaskCount'>) {
   const [leads, setLeads] = useState<Lead[] | null>(null)
   const [interactions, setInteractions] = useState<Interaction[]>([])
@@ -1707,22 +1714,17 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
 
   useEffect(() => {
     let cancelled = false
-    setError(null)
-    Promise.all([
-      getLeadsForViewer(props.clientId),
-      getInteractions(props.clientId),
-      getAgencyUsers(props.clientId),
-      getContentPieces(props.clientId),
-      // Un count(head) contra team_tasks: barato, y evita que la pestaña
-      // Tareas sea la única sin badge hasta que alguien la abre.
-      getPendingTaskCount(props.clientId).catch(() => 0),
-    ]).then(([leadsData, interactionsData, agencyUsersData, contentPiecesData, pendingCount]) => {
+    getCrmTabData(props.clientId).then((data) => {
       if (cancelled) return
-      setPendingTasks(pendingCount)
-      setLeads(leadsData as unknown as Lead[])
-      setInteractions(interactionsData as unknown as Interaction[])
-      setAgencyUsers(agencyUsersData as unknown as AgencyUser[])
-      setContentPieces(contentPiecesData as unknown as ContentPiece[])
+      setError(null)
+      setPendingTasks(data.pendingTaskCount)
+      setLeads(data.leads)
+      // Las interactions llegan solo con las columnas que lee el CRM (ver
+      // getInteractionsForCrm); los componentes siguen tipados con la fila
+      // completa, así que se castea aquí y en ningún otro lado.
+      setInteractions(data.interactions as unknown as Interaction[])
+      setAgencyUsers(data.agencyUsers as AgencyUser[])
+      setContentPieces(data.contentPieces)
     }).catch((err) => {
       if (cancelled) return
       setError(err instanceof Error ? err.message : 'Error inesperado')
@@ -1734,7 +1736,9 @@ export function CrmTabLazy(props: Omit<Props, 'leads' | 'interactions' | 'agency
     return (
       <div className="py-16 text-center text-sm">
         <p className="text-red-400 mb-3">No se pudieron cargar los leads ({error}).</p>
-        <Button variant="secondary" size="sm" onClick={() => setAttempt((a) => a + 1)}>Reintentar</Button>
+        {/* El error se limpia al pedir el reintento (no dentro del efecto),
+            para que mientras carga se vea "Cargando" y no el error viejo. */}
+        <Button variant="secondary" size="sm" onClick={() => { setError(null); setAttempt((a) => a + 1) }}>Reintentar</Button>
       </div>
     )
   }

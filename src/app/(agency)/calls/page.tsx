@@ -1,22 +1,12 @@
-import { getCalls } from '@/lib/actions/calls'
-import { getLeadOptions } from '@/lib/actions/leads'
-import { getAgencyUsers } from '@/lib/actions/team'
-import { CallsList } from '@/components/calls/calls-list'
+import { getLlamadasGlobal } from '@/lib/actions/llamadas'
+import { LlamadasGlobal } from '@/components/llamadas/llamadas-global'
+
+// La misma fuente que la pestaña Llamadas del cliente (agendas + grabaciones
+// sin agenda + legado). Antes leía sales_calls y cargaba todos los leads de
+// todos los clientes para el formulario, en cada visita.
+const DIAS = 60
 
 export default async function CallsPage() {
-  const [calls, leads, users] = await Promise.all([
-    getCalls(),
-    getLeadOptions(),
-    getAgencyUsers(),
-  ])
-
-  return (
-    <div className="space-y-6">
-      <CallsList
-        calls={calls as any}
-        leads={leads}
-        callers={users.map((u) => ({ id: u.id, full_name: u.full_name }))}
-      />
-    </div>
-  )
+  const datos = await getLlamadasGlobal(DIAS)
+  return <LlamadasGlobal datos={datos} dias={DIAS} />
 }

@@ -48,7 +48,7 @@ export async function triggerOnboarding(clientId: string, templateId: string) {
     .eq('id', templateId)
     .single()
 
-  if (!template) throw new Error('Template not found')
+  if (!template) throw new Error('No se encontró el template')
 
   const { data: run, error: runError } = await supabase
     .from('onboarding_runs')
@@ -60,7 +60,7 @@ export async function triggerOnboarding(clientId: string, templateId: string) {
     .select()
     .single()
 
-  if (runError || !run) throw runError || new Error('Failed to create run')
+  if (runError || !run) throw runError || new Error('No se pudo iniciar el onboarding')
 
   const steps = (template.steps as Array<{
     order: number

@@ -46,16 +46,23 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // getClaims() y no getUser(): este código corre en CADA request (también en
+  // cada server action y cada prefetch), y getUser() era un viaje HTTP a
+  // Supabase Auth cada vez. El proyecto firma los JWT con una llave asimétrica
+  // (ES256), así que getClaims() valida la firma aquí mismo contra la JWKS
+  // cacheada. Igual que getUser(), refresca la sesión si el token está por
+  // vencer y deja las cookies nuevas vía setAll. Un token revocado sigue
+  // valiendo hasta que vence: por eso se mantiene abajo el chequeo de
+  // users.is_active, que es lo que corta a una cuenta desactivada.
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims()
+  const userId = claimsError ? null : (claimsData?.claims?.sub ?? null)
 
   // Not authenticated — redirect to login
-  if (!user) {
+  if (!userId) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     const redirectResponse = NextResponse.redirect(url)
-    // Carry over cookies set by Supabase during getUser()
+    // Carry over cookies set by Supabase during getClaims()
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       redirectResponse.cookies.set(cookie.name, cookie.value)
     })
@@ -67,7 +74,7 @@ export async function updateSession(request: NextRequest) {
     const { data: profile } = await supabase
       .from('users')
       .select('user_type, role, client_id, is_active')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single()
 
     // Deactivating someone in the database (without deleting their Supabase

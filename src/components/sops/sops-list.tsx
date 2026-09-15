@@ -36,7 +36,29 @@ function tagColor(tag: string) {
   for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) >>> 0
   return TAG_PALETTE[hash % TAG_PALETTE.length]
 }
-
+function SopCard({ sop, onOpen, onDelete }: { sop: Sop; onOpen: (sop: Sop) => void; onDelete: (sop: Sop) => void }) {
+  return (
+    <Card className="p-4 flex items-center justify-between cursor-pointer hover:border-zinc-700" onClick={() => onOpen(sop)}>
+      <div className="flex items-center gap-3">
+        <FileText className="h-4 w-4 text-zinc-400" />
+        <div>
+          <p className="font-medium text-zinc-100">{sop.title}</p>
+          <p className="text-xs text-zinc-500">v{sop.version} · {formatDate(sop.updated_at)}</p>
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          void onDelete(sop)
+        }}
+        title="Eliminar SOP"
+        className="text-zinc-500 hover:text-red-400"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </Card>
+  )
+}
 
 export function SopsList({ sops, templates }: Props) {
   const [showSopForm, setShowSopForm] = useState(false)
@@ -75,6 +97,7 @@ export function SopsList({ sops, templates }: Props) {
   const query = searchQuery.trim().toLowerCase()
   const visibleSops = query ? byTag.filter((s) => s.title.toLowerCase().includes(query)) : byTag
   const categories = [...new Set(visibleSops.map((s) => s.category).filter((c): c is string => !!c))]
+  const sinCategoria = visibleSops.filter((s) => !s.category)
 
   async function handleDeleteCategory(e: React.MouseEvent, cat: string) {
     e.stopPropagation()
@@ -83,8 +106,26 @@ export function SopsList({ sops, templates }: Props) {
       ? `¿Eliminar la categoría "${cat}"? Se le va a quitar la categoría a ${count} SOP${count !== 1 ? 's' : ''} (no se borran los SOPs).`
       : `¿Eliminar la categoría "${cat}"?`
     if (!confirm(msg)) return
-    await deleteCategoryAction(cat)
+    try {
+      await deleteCategoryAction(cat)
+    } catch (err) {
+      alert(err instanceof Error ? `No se pudo eliminar la categoría: ${err.message}` : 'No se pudo eliminar la categoría')
+      return
+    }
     if (activeTag === cat) setActiveTag('all')
+    router.refresh()
+  }
+
+  // Si la acción fallaba, la promesa rechazada quedaba sin atender: el SOP
+  // seguía en la lista y nadie se enteraba de por qué.
+  async function handleDeleteSop(sop: Sop) {
+    if (!confirm('¿Eliminar este SOP?')) return
+    try {
+      await deleteSopAction(sop.id)
+    } catch (err) {
+      alert(err instanceof Error ? `No se pudo eliminar el SOP: ${err.message}` : 'No se pudo eliminar el SOP')
+      return
+    }
     router.refresh()
   }
 
@@ -190,66 +231,36 @@ export function SopsList({ sops, templates }: Props) {
                   </div></Card>
                 ) : (
                   <div className="space-y-6">
-                    {categories.length > 0 ? (
-                      categories.map((cat) => (
-                        <div key={cat}>
-                          <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider mb-3">
-                            <span className={`h-1.5 w-1.5 rounded-full ${tagColor(cat).solid}`} />
-                            <span className={tagColor(cat).text}>{cat}</span>
-                          </h3>
-                          <div className="space-y-2">
-                            {visibleSops.filter((s) => s.category === cat).map((sop) => (
-
-                              <Card key={sop.id} className="p-4 flex items-center justify-between cursor-pointer hover:border-zinc-700" onClick={() => setEditingSop(sop)}>
-                                <div className="flex items-center gap-3">
-                                  <FileText className="h-4 w-4 text-zinc-400" />
-                                  <div>
-                                    <p className="font-medium text-zinc-100">{sop.title}</p>
-                                    <p className="text-xs text-zinc-500">v{sop.version} · {formatDate(sop.updated_at)}</p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation()
-                                    if (confirm('¿Eliminar este SOP?')) {
-                                      await deleteSopAction(sop.id)
-                                      router.refresh()
-                                    }
-                                  }}
-                                  className="text-zinc-500 hover:text-red-400"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </Card>
-                            ))}
-                          </div>
+                    {categories.map((cat) => (
+                      <div key={cat}>
+                        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider mb-3">
+                          <span className={`h-1.5 w-1.5 rounded-full ${tagColor(cat).solid}`} />
+                          <span className={tagColor(cat).text}>{cat}</span>
+                        </h3>
+                        <div className="space-y-2">
+                          {visibleSops.filter((s) => s.category === cat).map((sop) => (
+                            <SopCard key={sop.id} sop={sop} onOpen={setEditingSop} onDelete={handleDeleteSop} />
+                          ))}
                         </div>
-                      ))
-                    ) : (
-                      <div className="space-y-2">
-                        {sops.map((sop) => (
-                          <Card key={sop.id} className="p-4 flex items-center justify-between cursor-pointer hover:border-zinc-700" onClick={() => setEditingSop(sop)}>
-                            <div className="flex items-center gap-3">
-                              <FileText className="h-4 w-4 text-zinc-400" />
-                              <div>
-                                <p className="font-medium text-zinc-100">{sop.title}</p>
-                                <p className="text-xs text-zinc-500">v{sop.version} · {formatDate(sop.updated_at)}</p>
-                              </div>
-                            </div>
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation()
-                                if (confirm('¿Eliminar este SOP?')) {
-                                  await deleteSopAction(sop.id)
-                                  router.refresh()
-                                }
-                              }}
-                              className="text-zinc-500 hover:text-red-400"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </Card>
-                        ))}
+                      </div>
+                    ))}
+                    {/* Los SOPs sin categoría van en su propio grupo. Antes solo
+                        se listaban cuando ningún SOP tenía categoría: en cuanto
+                        existía una, los sin categoría desaparecían de la
+                        pantalla (había 4 así en producción). */}
+                    {sinCategoria.length > 0 && (
+                      <div>
+                        {categories.length > 0 && (
+                          <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider mb-3 text-zinc-500">
+                            <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                            Sin categoría
+                          </h3>
+                        )}
+                        <div className="space-y-2">
+                          {sinCategoria.map((sop) => (
+                            <SopCard key={sop.id} sop={sop} onOpen={setEditingSop} onDelete={handleDeleteSop} />
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

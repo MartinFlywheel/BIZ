@@ -145,7 +145,7 @@ export async function getTaskBoard(clientId: string): Promise<TaskBoardData> {
   if (!canSeeClient(viewer, clientId)) throw new Error('Sin acceso a este cliente')
 
   const supabase = await createClient()
-  const [{ data: tasks }, config] = await Promise.all([
+  const [{ data: tasks, error: tasksError }, config] = await Promise.all([
     supabase
       .from('team_tasks')
       .select('*')
@@ -153,6 +153,12 @@ export async function getTaskBoard(clientId: string): Promise<TaskBoardData> {
       .order('due_date', { ascending: true, nullsFirst: false }),
     loadConfig(clientId),
   ])
+  // El tablero sigue saliendo vacío si la lectura falla (no se tumba la
+  // pestaña), pero ya no en silencio: un tablero vacío se confunde con "no
+  // hay tareas".
+  if (tasksError && !MISSING_SCHEMA_CODES.includes(tasksError.code ?? '')) {
+    console.error(`[tasks] no se pudieron leer las tareas del cliente ${clientId}:`, tasksError.message)
+  }
 
   return {
     tasks: (tasks ?? []) as TeamTask[],
@@ -227,13 +233,20 @@ export async function disconnectNotionAction(clientId: string): Promise<{ succes
   try {
     await requireEditor(clientId)
     const supabase = await createClient()
-    // Se borra el espejo también: dejar tareas huérfanas de una base que ya
-    // no se mira sólo confunde al equipo.
-    await supabase.from('team_tasks').delete().eq('client_id', clientId)
-    await supabase
+    // Primero se suelta la conexión y después se borra el espejo. Antes ambos
+    // errores se ignoraban y la acción respondía éxito igual: si fallaba el
+    // update, la pantalla recargaba conectada, el auto-sync volvía a traer las
+    // tareas y parecía que el botón no hacía nada.
+    const { error: errorCliente } = await supabase
       .from('clients')
       .update({ notion_tasks_db_id: null, notion_tasks_map: null, notion_tasks_synced_at: null })
       .eq('id', clientId)
+    if (errorCliente) return { success: false, error: errorCliente.message }
+
+    // Se borra el espejo también: dejar tareas huérfanas de una base que ya
+    // no se mira sólo confunde al equipo.
+    const { error: errorTareas } = await supabase.from('team_tasks').delete().eq('client_id', clientId)
+    if (errorTareas) console.error('[tasks] Notion desconectado pero no se pudo borrar el espejo:', clientId, errorTareas.message)
     revalidatePath(`/clients/${clientId}/tareas`)
     return { success: true }
   } catch (e) {
@@ -376,10 +389,17 @@ export async function syncNotionTasksAction(
     const livePageIds = new Set(notionTasks.map((t) => t.notion_page_id))
     const goneIds = (existingRows ?? []).filter((r) => !livePageIds.has(r.notion_page_id)).map((r) => r.id)
     if (goneIds.length > 0) {
-      await supabase.from('team_tasks').delete().in('id', goneIds)
+      const { error: errorBorrado } = await supabase.from('team_tasks').delete().in('id', goneIds)
+      // No corta el sync (lo demás ya quedó al día), pero deja rastro: sin esto
+      // las tareas borradas en Notion seguían en el CRM sin ninguna pista.
+      if (errorBorrado) console.error(`[sync-notion-tasks] no se pudieron borrar ${goneIds.length} tareas del espejo (cliente ${clientId}):`, errorBorrado.message)
     }
 
-    await supabase.from('clients').update({ notion_tasks_synced_at: now, notion_tasks_map: map }).eq('id', clientId)
+    const { error: errorMarca } = await supabase
+      .from('clients')
+      .update({ notion_tasks_synced_at: now, notion_tasks_map: map })
+      .eq('id', clientId)
+    if (errorMarca) console.error(`[sync-notion-tasks] no se pudo guardar la hora del sync (cliente ${clientId}):`, errorMarca.message)
 
     // Avisos: sólo cuando la tarea es nueva para esa persona o cambió de
     // responsable. Sin esto, cada sync le volvería a notificar lo mismo.
@@ -474,11 +494,16 @@ export async function setTaskStatusAction(
   }
 
   const note = completionNote?.trim() || null
+  // Guardar la nota de una tarea ya hecha también pasa por aquí, con el mismo
+  // estado. Antes eso volvía a estampar completed_at con la hora actual y la
+  // tarea aparecía como terminada hoy. Solo se estampa al pasar a "hecha".
+  const completedAt =
+    status === 'hecha' ? (task.status === 'hecha' && task.completed_at ? task.completed_at : new Date().toISOString()) : null
   const { error } = await supabase
     .from('team_tasks')
     .update({
       status,
-      completed_at: status === 'hecha' ? new Date().toISOString() : null,
+      completed_at: completedAt,
       completion_note: completionNote === undefined ? task.completion_note : note,
       updated_at: new Date().toISOString(),
     })
@@ -490,7 +515,14 @@ export async function setTaskStatusAction(
   try {
     await updateTask(task.notion_page_id, map, { status, ...(completionNote === undefined ? {} : { note }) })
   } catch (e) {
-    await supabase.from('team_tasks').update({ status: task.status }).eq('id', taskId)
+    // Se deja la fila como estaba entera. Revertir solo el estado dejaba una
+    // tarea pendiente con fecha de completado y la nota nueva que Notion nunca
+    // recibió.
+    const { error: errorReversa } = await supabase
+      .from('team_tasks')
+      .update({ status: task.status, completed_at: task.completed_at, completion_note: task.completion_note })
+      .eq('id', taskId)
+    if (errorReversa) console.error('[tasks] no se pudo revertir la tarea tras fallar Notion:', taskId, errorReversa.message)
     return {
       success: false,
       error: e instanceof Error ? `No se pudo actualizar Notion: ${e.message}` : 'No se pudo actualizar Notion',
@@ -733,15 +765,23 @@ async function requireTaskAccess(clientId: string, taskId: string): Promise<{ pa
   if (!canSeeClient(viewer, clientId)) return { error: 'Sin acceso a este cliente' }
 
   const supabase = await createClient()
+  // select('*') por lo mismo que en setTaskStatusAction: assignees llegó con la
+  // 042 y así esto no se rompe en una base donde aún no se corrió.
   const { data: task } = await supabase
     .from('team_tasks')
-    .select('notion_page_id, assigned_to')
+    .select('*')
     .eq('id', taskId)
     .eq('client_id', clientId)
     .single()
 
   if (!task) return { error: 'La tarea ya no existe' }
-  if (!viewer.canEdit && task.assigned_to !== viewer.id) return { error: 'Esta tarea no está asignada a ti' }
+  // Misma regla que setTaskStatusAction: en una tarea de "Equipo" o de
+  // "Fabi - Martin" cualquiera del grupo puede marcarla, así que también
+  // tiene que poder tildar su checklist. Antes solo miraba assigned_to (la
+  // primera persona) y a las demás el check se les revertía con error.
+  const leToca =
+    task.assigned_to === viewer.id || (Array.isArray(task.assignees) && task.assignees.includes(viewer.id))
+  if (!viewer.canEdit && !leToca) return { error: 'Esta tarea no está asignada a ti' }
   return { pageId: task.notion_page_id }
 }
 

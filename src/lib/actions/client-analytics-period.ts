@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { getEffectiveMetricsForRange } from './live-metrics'
+import { hoyChile, sumarDias } from '@/lib/fecha-chile'
 
 export type ClientAnalyticsPeriod = {
   period: {
@@ -64,16 +65,15 @@ export async function getClientAnalyticsByPeriod(
   const supabase = await createClient()
 
   const now = new Date()
-  const periodStart = new Date(now.getTime() - days * 86_400_000)
-  const prevStart = new Date(periodStart.getTime() - days * 86_400_000)
-  const prevEnd = new Date(periodStart.getTime() - 86_400_000)
+  // Días calendario de Chile: "hoy" en UTC ya era mañana desde las 21:00, y
+  // el período de Analítica terminaba en un día que todavía no empezaba.
+  const todayDate = hoyChile().iso
+  const periodStartDate = sumarDias(todayDate, -days)
+  const prevStartDate = sumarDias(periodStartDate, -days)
+  const prevEndDate = sumarDias(periodStartDate, -1)
 
-  const periodStartIso = periodStart.toISOString()
-  const prevStartIso = prevStart.toISOString()
-  const todayDate = now.toISOString().split('T')[0]
-  const periodStartDate = periodStartIso.split('T')[0]
-  const prevStartDate = prevStartIso.split('T')[0]
-  const prevEndDate = prevEnd.toISOString().split('T')[0]
+  const periodStartIso = `${periodStartDate}T00:00:00Z`
+  const prevStartIso = `${prevStartDate}T00:00:00Z`
 
   const [curPiecesRes, prevPiecesRes, curLive, prevLive] = await Promise.all([
     supabase
@@ -123,8 +123,7 @@ export async function getClientAnalyticsByPeriod(
 
   // Build daily time series
   const dayMap = new Map<string, { views: number; likes: number; comments: number; saves: number; reach: number }>()
-  for (let d = 0; d < days; d++) {
-    const date = new Date(periodStart.getTime() + d * 86_400_000).toISOString().split('T')[0]
+  for (let date = periodStartDate; date <= todayDate; date = sumarDias(date, 1)) {
     dayMap.set(date, { views: 0, likes: 0, comments: 0, saves: 0, reach: 0 })
   }
 

@@ -201,7 +201,10 @@ export async function listarCambios(
     } else {
       const desde = new Date(Date.now() - diasHaciaAtras * 86_400_000)
       params.set('timeMin', desde.toISOString())
-      params.set('orderBy', 'startTime')
+      // Sin orderBy a propósito. Con orderBy=startTime Google no devolvía
+      // nextSyncToken (clients.google_calendar_synced_at quedó siempre en
+      // NULL) y cada vuelta releía la semana completa. El orden no importa:
+      // cada evento se procesa por separado.
     }
     if (pageToken) params.set('pageToken', pageToken)
 

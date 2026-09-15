@@ -2,18 +2,25 @@ import { redirect } from 'next/navigation'
 import { getSetterContext, getMyAgendas, getCycleProgress } from '@/lib/actions/setter-app'
 import { AgendaList } from '@/components/setter-app/agenda-list'
 import { MonthNav } from '@/components/setter-app/month-nav'
+import { aMes, hoyChile, mesComoNumeros, sumarMeses } from '@/lib/fecha-chile'
 
-/** Devuelve el mes pedido por query string, o el actual si no vino o es basura. */
+/**
+ * Devuelve el mes pedido por query string, o el actual si no vino o es basura.
+ *
+ * "Actual" es el mes de Chile, no el del servidor (UTC): desde las 21:00 del
+ * último día del mes el servidor ya estaba en el siguiente. Un mes pedido más
+ * allá del siguiente al actual se ajusta a ese tope, el mismo que usa MonthNav.
+ */
 function resolvePeriod(y?: string, m?: string): { year: number; month: number } {
-  const now = new Date()
+  const hoy = hoyChile()
   const year = Number(y)
   const month = Number(m)
   const valido =
     Number.isInteger(year) && year >= 2020 && year <= 2100 &&
     Number.isInteger(month) && month >= 1 && month <= 12
-  return valido
-    ? { year, month }
-    : { year: now.getFullYear(), month: now.getMonth() + 1 }
+  if (!valido) return { year: hoy.year, month: hoy.month }
+  const tope = sumarMeses(aMes(hoy.year, hoy.month), 1)
+  return aMes(year, month) > tope ? mesComoNumeros(tope) : { year, month }
 }
 
 export default async function SetterAgendasPage({

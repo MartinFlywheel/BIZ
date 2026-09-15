@@ -18,6 +18,7 @@ import {
   type FichaTriaje,
 } from '@/lib/pipeline-tipos'
 import { fechaHora, textoVencimiento } from './formato'
+import { EnlaceHistorialLead } from '@/components/leads/lead-timeline'
 
 /**
  * La ficha de triaje.
@@ -186,6 +187,11 @@ export function FichaTriajeModal({
                 {datos.historial.agendas === 0
                   ? 'Primera agenda'
                   : `${datos.historial.agendas} agenda(s) previa(s) · ${datos.historial.noShows} no-show · ${datos.historial.cierres} cierre(s)`}
+                {datos.lead && (
+                  <span className="mt-1 block">
+                    <EnlaceHistorialLead clientId={datos.clientId} leadId={datos.lead.id} texto="Ver de dónde vino y qué conversó" nuevaPestana />
+                  </span>
+                )}
               </Dato>
             </div>
 

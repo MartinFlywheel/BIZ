@@ -2,11 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
-import type { ContentPiece, Interaction } from '@/lib/types'
+import type { ContentPiece } from '@/lib/types'
+import type { ConteoInteraccionesPieza } from '@/lib/actions/content'
 
 interface Props {
   contentPieces: ContentPiece[]
-  interactions: Interaction[]
+  // Conteo por pieza hecho en el servidor (getContentTabData). Antes recibía
+  // todas las interactions del cliente solo para contarlas aquí.
+  conteos: ConteoInteraccionesPieza[]
 }
 
 interface Row {
@@ -29,7 +32,7 @@ interface Row {
 
 const contentTypeLabel: Record<string, string> = {
   reel: 'Reel',
-  story: 'Story',
+  story: 'Historia',
   post: 'Post',
   live: 'Live',
 }
@@ -48,43 +51,30 @@ function rateColor(rate: number): string {
   return 'text-red-400'
 }
 
-export function ContentConversationTable({ contentPieces, interactions }: Props) {
+export function ContentConversationTable({ contentPieces, conteos }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
 
   const rows = useMemo<Row[]>(() => {
     const pieceMap = new Map(contentPieces.map((p) => [p.id, p]))
-    const statsMap = new Map<string, { chats: number; conversaciones: number; chatAbiertoEvidence: number }>()
 
-    for (const i of interactions) {
-      if (!i.content_id) continue
-      const s = statsMap.get(i.content_id) ?? { chats: 0, conversaciones: 0, chatAbiertoEvidence: 0 }
-      s.chats += 1
-      if (i.classification === 'chat_abierto') {
-        s.chatAbiertoEvidence += 1
-      } else if (i.classification === 'conversacion_real' || i.classification === 'lead_calificado') {
-        s.conversaciones += 1
-        if (i.prospect_responded_at !== i.bot_triggered_at) s.chatAbiertoEvidence += 1
-      }
-      statsMap.set(i.content_id, s)
-    }
-
-    return Array.from(statsMap.entries())
-      .map(([content_id, s]) => {
-        const p = pieceMap.get(content_id)
+    return conteos
+      .filter((c) => c.chats > 0)
+      .map((c) => {
+        const p = pieceMap.get(c.content_id)
         return {
-          content_id,
+          content_id: c.content_id,
           caption: p?.caption ?? null,
           keyword_trigger: p?.keyword_trigger ?? null,
           content_type: p?.content_type ?? 'reel',
-          chats: s.chats,
-          conversaciones: s.conversaciones,
-          conversion_rate: s.chats > 0 ? Math.round((s.conversaciones / s.chats) * 1000) / 10 : 0,
-          missing_chat_node: s.conversaciones > 0 && s.chatAbiertoEvidence === 0,
+          chats: c.chats,
+          conversaciones: c.conversaciones,
+          conversion_rate: c.chats > 0 ? Math.round((c.conversaciones / c.chats) * 1000) / 10 : 0,
+          missing_chat_node: c.sin_nodo_chat_abierto,
         }
       })
       .sort((a, b) => b.chats - a.chats)
-  }, [contentPieces, interactions])
+  }, [contentPieces, conteos])
 
   const filteredRows = typeFilter === 'all' ? rows : rows.filter((r) => r.content_type === typeFilter)
   const flaggedCount = filteredRows.filter((r) => r.missing_chat_node).length

@@ -5,6 +5,7 @@ import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
 import { getEffectiveMetricsForRange } from './live-metrics'
 import { fetchAllRows } from '@/lib/supabase/paginate'
 import { ESTADOS_ASISTIO, ESTADOS_CON_DESENLACE, ESTADO_CERRADO } from '@/lib/metrics-types'
+import { hoyChile, primerDiaDelMes, sumarMeses, ultimoDiaDe } from '@/lib/fecha-chile'
 
 export async function getDashboardMetrics(
   clientId: string,
@@ -93,7 +94,13 @@ export async function getDashboardMetrics(
   ).length
   const cierresRows = agendaRecords.filter((a) => a.estado === ESTADO_CERRADO)
   const cierres = cierresRows.length
-  const facturacion = cierresRows.reduce((sum, a) => sum + (Number(a.monto_facturacion) || 0), 0)
+  // Si la agenda no tiene monto_facturacion se usa el upfront, igual que
+  // getLiveMetricsBuckets y content-analytics.ts: el equipo casi siempre llena
+  // solo Upfront, y sin este respaldo la Facturación salía en 0.
+  const facturacion = cierresRows.reduce((sum, a) => {
+    const tieneFacturacion = a.monto_facturacion !== null && a.monto_facturacion !== undefined && a.monto_facturacion !== ''
+    return sum + (tieneFacturacion ? Number(a.monto_facturacion) || 0 : Number(a.monto_upfront) || 0)
+  }, 0)
   const cash_collected = cierresRows.reduce((sum, a) => sum + (Number(a.monto_upfront) || 0), 0)
 
   const total_views = views.reduce((sum, c) => sum + (c.views || 0), 0)
@@ -129,12 +136,11 @@ export async function getDashboardMetrics(
 // (ManyChat), agenda_records (Calendly + CRM closing).
 export async function getClientFunnelTotals(clientId: string) {
   const supabase = await createClient()
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
-  const start = `${year}-${String(month).padStart(2, '0')}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  // Mes en curso de Chile y hasta hoy: antes iba hasta el último día del mes
+  // (en UTC), así que las agendas ya puestas para días futuros sumaban.
+  const hoy = hoyChile()
+  const start = `${hoy.iso.slice(0, 7)}-01`
+  const end = hoy.iso
 
   const [viewsRows, live] = await Promise.all([
     fetchAllRows((from, to) =>
@@ -150,6 +156,9 @@ export async function getClientFunnelTotals(clientId: string) {
     chats: live.chats_abiertos,
     conversaciones: live.conversaciones,
     agendas: live.agendas,
+    // Agendas cuya llamada ya tuvo desenlace: denominador del show rate, para
+    // que las agendas aún pendientes no se cuenten como no-shows.
+    llamadas: live.llamadas,
     shows: live.shows,
     cierres: live.cierres,
     facturacion: live.facturacion,
@@ -160,10 +169,6 @@ export async function getClientFunnelTotals(clientId: string) {
 export type ClientFunnelTotals = Awaited<ReturnType<typeof getClientFunnelTotals>>
 
 // ── Month-over-month comparison ──────────────────────────────────────────────
-
-function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0]
-}
 
 export interface MonthComparisonMetric {
   current: number
@@ -219,18 +224,14 @@ function pctChange(current: number, previous: number): number | null {
 // what "Métricas en Vivo (CRM)" shows for the same client — same source
 // tables, same classification/estado rules, just date-scoped twice.
 export async function getMonthOverMonthComparison(clientId: string): Promise<MonthComparison> {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
+  // Mes y día en hora de Chile, no del servidor (UTC): desde las 21:00 del
+  // último día del mes, el "mes actual" pasaba a ser el siguiente.
+  const hoy = hoyChile()
+  const mesActual = hoy.iso.slice(0, 7)
+  const mesAnterior = sumarMeses(mesActual, -1)
 
-  const currentStart = new Date(year, month, 1)
-
-  const previousMonthFirst = new Date(year, month - 1, 1)
-  const previousStart = previousMonthFirst
-  const previousEnd = new Date(previousMonthFirst.getFullYear(), previousMonthFirst.getMonth() + 1, 0)
-
-  const currentRange = { start: toDateStr(currentStart), end: toDateStr(now) }
-  const previousRange = { start: toDateStr(previousStart), end: toDateStr(previousEnd) }
+  const currentRange = { start: primerDiaDelMes(mesActual), end: hoy.iso }
+  const previousRange = { start: primerDiaDelMes(mesAnterior), end: ultimoDiaDe(mesAnterior) }
 
   const [current, previous] = await Promise.all([
     getDashboardMetrics(clientId, currentRange.start, currentRange.end),

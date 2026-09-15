@@ -81,10 +81,11 @@ export default async function ClientAdsPage({
   const { id } = await params
   unstable_noStore()
 
-  const client = await getClient(id).catch(() => null)
-  if (!client) notFound()
-
-  const [ads, atribucion] = await Promise.all([
+  // El cliente va en el mismo Promise.all que lo demás: antes se esperaba solo
+  // y solo después se lanzaban la API de Meta y la atribución. Si el cliente
+  // no existe, esas dos devuelven vacío sin romper y la página igual cae en 404.
+  const [client, ads, atribucion] = await Promise.all([
+    getClient(id).catch(() => null),
     getClientAdsData(id),
     // Nunca tumba la página: si la atribución falla, la pestaña sigue
     // mostrando el gasto y las campañas.
@@ -93,6 +94,7 @@ export default async function ClientAdsPage({
       return { status: 'sin_datos' }
     }),
   ])
+  if (!client) notFound()
 
   return (
     <div className="space-y-6">

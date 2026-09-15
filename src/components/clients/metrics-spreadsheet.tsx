@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Check, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { getComputedClientMetrics, saveMetricsOverrides, type ComputedMetricsRow } from '@/lib/actions/funnel'
 import type { OverridableField } from '@/lib/metrics-types'
 import { formatCurrency } from '@/lib/utils'
@@ -72,7 +72,7 @@ function SplitCell({ value }: { value: number }) {
   )
 }
 
-// ── Editable cell (Seguidores + / Notas — the only fields with no live source) ─
+// ── Celda editable de texto (Notas, el único campo sin fuente automática) ────
 
 function EditCell({ value, onChange, type = 'number', placeholder = '0' }: {
   value: number | string | null
@@ -105,20 +105,35 @@ function SpreadsheetRow({ clientId, periodType, row }: {
   row: ComputedMetricsRow
 }) {
   const [overrides, setOverrides] = useState<Partial<Record<OverridableField, number>>>(row.overrides)
-  const [followers, setFollowers] = useState(row.followers_gained)
   const [notes, setNotes] = useState(row.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cambios aún sin guardar. Se acumulan porque el guardado espera 600 ms: si
+  // en ese lapso se tocaban dos columnas, antes solo viajaba la última.
+  const pendingRef = useRef<CambiosPendientes>({})
 
-  const persist = useCallback((fields: Partial<Record<OverridableField, number | null>> & { followers_gained?: number; notes?: string | null }) => {
+  const persist = useCallback((fields: CambiosPendientes) => {
+    pendingRef.current = { ...pendingRef.current, ...fields }
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(async () => {
-      setSaving(true); setSaved(false)
+      const pending = pendingRef.current
+      pendingRef.current = {}
+      setSaving(true); setSaved(false); setError(null)
       try {
-        await saveMetricsOverrides(clientId, periodType, row.period_start, row.period_end, fields)
-        setSaved(true); setTimeout(() => setSaved(false), 2000)
-      } catch {}
+        const res = await saveMetricsOverrides(clientId, periodType, row.period_start, row.period_end, pending)
+        if (res.error) {
+          setError(res.error)
+        } else {
+          setSaved(true); setTimeout(() => setSaved(false), 2000)
+        }
+      } catch (e) {
+        // Un corte de red o un error del servidor no puede verse como guardado.
+        setError(e instanceof Error && e.message
+          ? `No se pudo guardar: ${e.message}`
+          : 'No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.')
+      }
       setSaving(false)
     }, 600)
   }, [clientId, periodType, row.period_start, row.period_end])
@@ -137,8 +152,22 @@ function SpreadsheetRow({ clientId, periodType, row }: {
   const displayValue = (field: OverridableField) => overrides[field] ?? row.live[field]
   const editable = periodType === 'daily'
 
-  const pctResp = pct(displayValue('chats_abiertos'), displayValue('views_reels'))
-  const pctSeg  = pct(followers, displayValue('views_reels'))
+  const cell = (field: OverridableField, currency = false) => (
+    <OverrideCell
+      value={displayValue(field)}
+      isOverride={field in overrides}
+      onChange={(v) => setField(field, v)}
+      currency={currency}
+      editable={editable}
+    />
+  )
+
+  // Mismo denominador para % Resp. y % Seguid.: todas las vistas del contenido
+  // con CTA (reels + carruseles + historias). Views Carruseles no es
+  // corregible (client_metrics no tiene esa columna), así que va en vivo.
+  const totalViews = displayValue('views_reels') + row.views_carruseles + displayValue('views_historias')
+  const pctResp = pct(displayValue('chats_abiertos'), totalViews)
+  const pctSeg  = pct(displayValue('followers_gained'), totalViews)
   const pctConv = pct(displayValue('conversaciones'), displayValue('chats_abiertos'))
 
   return (
@@ -147,20 +176,21 @@ function SpreadsheetRow({ clientId, periodType, row }: {
         <span className="text-xs font-mono text-zinc-300">{fmtPeriod(row.period_start, row.period_end, periodType)}</span>
       </td>
 
-      <OverrideCell value={displayValue('views_reels')} isOverride={'views_reels' in overrides} onChange={(v) => setField('views_reels', v)} editable={editable} />
-      <OverrideCell value={displayValue('views_historias')} isOverride={'views_historias' in overrides} onChange={(v) => setField('views_historias', v)} editable={editable} />
-      <EditCell value={followers} onChange={(v) => { const n = parseFloat(v) || 0; setFollowers(n); persist({ followers_gained: n }) }} />
-      <OverrideCell value={displayValue('chats_abiertos')} isOverride={'chats_abiertos' in overrides} onChange={(v) => setField('chats_abiertos', v)} editable={editable} />
+      {cell('views_reels')}
+      <OverrideCell value={row.views_carruseles} isOverride={false} onChange={() => {}} editable={false} />
+      {cell('views_historias')}
+      {cell('followers_gained')}
+      {cell('chats_abiertos')}
       <SplitCell value={row.chats_abiertos_reel} />
       <SplitCell value={row.chats_abiertos_historia} />
-      <OverrideCell value={displayValue('conversaciones')} isOverride={'conversaciones' in overrides} onChange={(v) => setField('conversaciones', v)} editable={editable} />
+      {cell('conversaciones')}
       <SplitCell value={row.conversaciones_reel} />
       <SplitCell value={row.conversaciones_historia} />
-      <OverrideCell value={displayValue('agendas')} isOverride={'agendas' in overrides} onChange={(v) => setField('agendas', v)} editable={editable} />
-      <OverrideCell value={displayValue('shows')} isOverride={'shows' in overrides} onChange={(v) => setField('shows', v)} editable={editable} />
-      <OverrideCell value={displayValue('cierres')} isOverride={'cierres' in overrides} onChange={(v) => setField('cierres', v)} editable={editable} />
-      <OverrideCell value={displayValue('facturacion')} isOverride={'facturacion' in overrides} onChange={(v) => setField('facturacion', v)} currency editable={editable} />
-      <OverrideCell value={displayValue('cash_collected')} isOverride={'cash_collected' in overrides} onChange={(v) => setField('cash_collected', v)} currency editable={editable} />
+      {cell('agendas')}
+      {cell('shows')}
+      {cell('cierres')}
+      {cell('facturacion', true)}
+      {cell('cash_collected', true)}
 
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctResp}</span></td>
       <td className="px-2 py-1.5 text-right"><span className="text-xs font-mono text-zinc-500">{pctSeg}</span></td>
@@ -169,20 +199,29 @@ function SpreadsheetRow({ clientId, periodType, row }: {
       <EditCell value={notes} onChange={(v) => { setNotes(v); persist({ notes: v || null }) }} type="text" placeholder="Notas..." />
 
       <td className="px-2 py-1.5">
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {saving && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
-          {saved && !saving && <Check className="h-3 w-3 text-emerald-400" />}
-        </div>
+        {error ? (
+          <span className="flex items-center gap-1 whitespace-nowrap text-[10px] text-red-400" title={error} role="alert">
+            <AlertTriangle className="h-3 w-3 shrink-0" />
+            No se guardó
+          </span>
+        ) : (
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {saving && <Loader2 className="h-3 w-3 text-zinc-500 animate-spin" />}
+            {saved && !saving && <Check className="h-3 w-3 text-emerald-400" />}
+          </div>
+        )}
       </td>
     </tr>
   )
 }
 
+type CambiosPendientes = Partial<Record<OverridableField, number | null>> & { notes?: string | null }
+
 // ── Totals row ────────────────────────────────────────────────────────────────
 
 function TotalsRow({ rows }: { rows: ComputedMetricsRow[] }) {
   const sum = (key: keyof ComputedMetricsRow) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0)
-  const vr = sum('views_reels')
+  const totalViews = sum('views_reels') + sum('views_carruseles') + sum('views_historias')
   const ch = sum('chats_abiertos')
   const fg = sum('followers_gained')
   const conv = sum('conversaciones')
@@ -192,18 +231,18 @@ function TotalsRow({ rows }: { rows: ComputedMetricsRow[] }) {
       <td className="px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Total</span>
       </td>
-      {[sum('views_reels'), sum('views_historias'), sum('followers_gained')].map((v, i) => (
+      {[sum('views_reels'), sum('views_carruseles'), sum('views_historias'), fg].map((v, i) => (
         <td key={i} className="px-2 py-2 text-right">
           <span className="text-xs font-mono font-semibold text-zinc-300">{v.toLocaleString('es')}</span>
         </td>
       ))}
       <td className="px-2 py-2 text-right">
-        <span className="text-xs font-mono font-semibold text-zinc-300">{sum('chats_abiertos').toLocaleString('es')}</span>
+        <span className="text-xs font-mono font-semibold text-zinc-300">{ch.toLocaleString('es')}</span>
       </td>
       <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('chats_abiertos_reel').toLocaleString('es')}</span></td>
       <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('chats_abiertos_historia').toLocaleString('es')}</span></td>
       <td className="px-2 py-2 text-right">
-        <span className="text-xs font-mono font-semibold text-zinc-300">{sum('conversaciones').toLocaleString('es')}</span>
+        <span className="text-xs font-mono font-semibold text-zinc-300">{conv.toLocaleString('es')}</span>
       </td>
       <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('conversaciones_reel').toLocaleString('es')}</span></td>
       <td className="px-2 py-2 text-right"><span className="text-[11px] font-mono text-zinc-600">{sum('conversaciones_historia').toLocaleString('es')}</span></td>
@@ -223,10 +262,10 @@ function TotalsRow({ rows }: { rows: ComputedMetricsRow[] }) {
         </span>
       </td>
       <td className="px-2 py-2 text-right">
-        <span className="text-xs font-mono text-zinc-500">{pct(ch, vr)}</span>
+        <span className="text-xs font-mono text-zinc-500">{pct(ch, totalViews)}</span>
       </td>
       <td className="px-2 py-2 text-right">
-        <span className="text-xs font-mono text-zinc-500">{pct(fg, vr)}</span>
+        <span className="text-xs font-mono text-zinc-500">{pct(fg, totalViews)}</span>
       </td>
       <td className="px-2 py-2 text-right">
         <span className="text-xs font-mono text-zinc-500">{pct(conv, ch)}</span>
@@ -244,9 +283,20 @@ const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: 'daily', label: 'Diario' },
 ]
 
+// Cuántos períodos pedir como máximo. La tabla nunca arranca antes del inicio
+// del cliente en el CRM (getComputedClientMetrics lo recorta), así que Semanal
+// y Mensual muestran desde ahí hasta hoy con un tope de 24 meses. Diario se
+// queda en los últimos 12 días, que es donde se hacen las correcciones.
+const PERIODOS_A_MOSTRAR: Record<PeriodType, number> = {
+  monthly: 24,
+  weekly: 104,
+  daily: 12,
+}
+
 const HEADERS = [
   { label: 'Período', align: 'left' },
   { label: 'Views Reels', align: 'right' },
+  { label: 'Views Carruseles', align: 'right' },
   { label: 'Views Historias', align: 'right' },
   { label: 'Seguidores +', align: 'right' },
   { label: 'Chats', align: 'right' },
@@ -276,7 +326,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const data = await getComputedClientMetrics(clientId, periodType, 12)
+      const data = await getComputedClientMetrics(clientId, periodType, PERIODOS_A_MOSTRAR[periodType])
       if (!cancelled) { setRows(data); setLoading(false) }
     }
     load()
@@ -285,7 +335,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
 
   // Only show periods with some activity — a wall of empty rows is just noise
   const activeRows = rows.filter((r) =>
-    r.views_reels + r.views_historias + r.chats_abiertos + r.agendas + r.followers_gained > 0 || r.notes
+    r.views_reels + r.views_carruseles + r.views_historias + r.chats_abiertos + r.agendas + r.followers_gained > 0 || r.notes
   )
 
   return (
@@ -339,7 +389,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
               ) : activeRows.length === 0 ? (
                 <tr>
                   <td colSpan={HEADERS.length} className="py-12 text-center">
-                    <p className="text-zinc-600 text-xs">Sin actividad en los últimos períodos</p>
+                    <p className="text-zinc-600 text-xs">Sin actividad desde el inicio del cliente</p>
                   </td>
                 </tr>
               ) : (
@@ -355,11 +405,24 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
         </div>
       </div>
 
-      <p className="text-[11px] text-zinc-700">
-        Datos en vivo desde ManyChat, Calendly y Meta · Las correcciones se hacen desde{' '}
-        <span className="text-zinc-500">Diario</span> (<span className="text-amber-400">ámbar</span> = corregido,
-        vacío = automático) — Semanal y Mensual son la suma de esos días
-      </p>
+      <div className="space-y-1 text-[11px] text-zinc-700">
+        <p>
+          Datos en vivo desde ManyChat, Calendly y Meta · Las correcciones se hacen desde{' '}
+          <span className="text-zinc-500">Diario</span> (<span className="text-amber-400">ámbar</span> = corregido,
+          vacío = automático) — Semanal y Mensual son la suma de esos días · El período en curso cuenta solo hasta hoy
+        </p>
+        <p>
+          <span className="text-zinc-500">% Resp.</span> = Chats ÷ (Views Reels + Views Carruseles + Views Historias) ·{' '}
+          <span className="text-zinc-500">% Seguid.</span> = Seguidores + ÷ esas mismas vistas ·{' '}
+          <span className="text-zinc-500">% Conv.</span> = Convs. ÷ Chats
+        </p>
+        <p>
+          Views Reels y Views Carruseles son las vistas de por vida de cada publicación, asignadas al día en que se
+          publicó · Views Historias y Seguidores + salen de los insights diarios de la cuenta de Instagram (días en
+          hora del Pacífico, como los entrega Meta); los días sin ese dato usan las vistas guardadas de cada historia ·
+          Facturación usa el upfront cuando la agenda cerrada no tiene monto de facturación
+        </p>
+      </div>
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { Modal } from '@/components/ui/modal'
 import { aprobarReporte, getDatosReporte, type DatosReporte } from '@/lib/actions/triage'
 import { ESTADOS_REPORTE } from '@/lib/pipeline-tipos'
 import { fechaHora } from './formato'
+import { EnlaceHistorialDeAgenda } from '@/components/leads/lead-timeline'
 
 type Campo = 'objecion' | 'situacion_actual' | 'dolores' | 'preguntas_no_resueltas' | 'aporte_a_mkt'
 
@@ -38,6 +39,8 @@ export function ReporteLlamadaModal({
     objecion: '', situacion_actual: '', dolores: '', preguntas_no_resueltas: '', aporte_a_mkt: '',
   })
   const [estado, setEstado] = useState('')
+  // Como texto: un input numérico vacío tiene que poder quedar vacío.
+  const [montos, setMontos] = useState({ facturacion: '', upfront: '' })
   const [verResumen, setVerResumen] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +59,10 @@ export function ReporteLlamadaModal({
           aporte_a_mkt: d.aporte_a_mkt ?? '',
         })
         setEstado(d.estado && d.estado !== 'Pendiente' ? d.estado : '')
+        setMontos({
+          facturacion: d.monto_facturacion != null ? String(d.monto_facturacion) : '',
+          upfront: d.monto_upfront != null ? String(d.monto_upfront) : '',
+        })
       })
       .finally(() => { if (vigente) setCargando(false) })
     return () => { vigente = false }
@@ -65,7 +72,18 @@ export function ReporteLlamadaModal({
     setGuardando(true)
     setError(null)
     try {
-      const r = await aprobarReporte(agendaId, { estado, ...valores })
+      const aNumero = (v: string) => (v.trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v))
+      const facturacion = aNumero(montos.facturacion)
+      if (estado === 'Cerrado' && !(facturacion !== null && facturacion > 0)) {
+        setError('Falta el monto de la venta')
+        return
+      }
+      const r = await aprobarReporte(agendaId, {
+        estado,
+        ...valores,
+        monto_facturacion: facturacion,
+        monto_upfront: aNumero(montos.upfront),
+      })
       if (!r.ok) { setError(r.error ?? 'No se pudo aprobar'); return }
       onAprobado?.()
       onClose()
@@ -119,6 +137,7 @@ export function ReporteLlamadaModal({
                 {verResumen ? 'Ocultar resumen de Fathom' : 'Ver resumen de Fathom'}
               </button>
             )}
+            <EnlaceHistorialDeAgenda agendaId={agendaId} className="flex items-center gap-1 text-zinc-400 hover:text-zinc-200" />
           </div>
 
           {verResumen && datos.resumen && (
@@ -144,6 +163,23 @@ export function ReporteLlamadaModal({
                   {e}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className={`mb-1 text-[10px] uppercase tracking-wide ${estado === 'Cerrado' ? 'text-emerald-300/90' : 'text-zinc-500'}`}>
+                Facturación (total de la venta){estado === 'Cerrado' ? ' · obligatoria' : ''}
+              </p>
+              <input type="number" min={0} inputMode="decimal" className={area} value={montos.facturacion}
+                placeholder={estado === 'Cerrado' ? 'Monto de la venta' : '—'}
+                onChange={(e) => setMontos((m) => ({ ...m, facturacion: e.target.value }))} />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">Upfront (lo que pagó al cerrar)</p>
+              <input type="number" min={0} inputMode="decimal" className={area} value={montos.upfront}
+                placeholder="—"
+                onChange={(e) => setMontos((m) => ({ ...m, upfront: e.target.value }))} />
             </div>
           </div>
 

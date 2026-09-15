@@ -62,13 +62,16 @@ export async function POST(request: Request) {
           .select('prequalification_data')
           .eq('id', lead.interaction_id)
           .maybeSingle()
-        await supabase
+        // Antes el error de este update se ignoraba: el agente recibía
+        // qualified: true y las respuestas nuevas no quedaban en ninguna parte.
+        const { error: errorRespuestas } = await supabase
           .from('interactions')
           .update({
             prequalification_data: { ...((data?.prequalification_data as Record<string, unknown>) ?? {}), ...respuestas },
             updated_at: ahora,
           })
           .eq('id', lead.interaction_id)
+        if (errorRespuestas) throw errorRespuestas
       }
     } else {
       const { data: interaccion, error } = await supabase

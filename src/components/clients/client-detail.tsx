@@ -1,25 +1,52 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs } from '@/components/ui/tabs'
-import { ClientForm } from './client-form'
-import { ContentMetricsGridLazy } from '@/components/content/content-metrics-grid'
-
-import { ClientCallsListLazy } from './client-calls-list'
-import { ClientCompetitorsLazy } from './client-competitors'
 import { deleteClientAction } from '@/lib/actions/clients'
 import { formatCurrency } from '@/lib/utils'
-import { ClientAnalyticsDashboard } from './client-analytics-dashboard'
-import { ContentPipelineBoard } from './content-pipeline-board'
-import { CrmTabLazy } from './crm-tab'
-import { ProductTab } from './product-tab'
-import { LeadMagnetTab } from './lead-magnet-tab'
 import { Pencil, Trash2, Megaphone } from 'lucide-react'
 import Link from 'next/link'
 import type { Client } from '@/lib/types'
+
+// Cada pestaña se descarga solo cuando se abre. Antes todas iban importadas de
+// forma estática y la ruta cargaba un solo chunk de 655 KB (173 KB gzip) con
+// recharts, el CRM, el tablero de contenido y el resto, aunque un setter solo
+// vea el CRM y un admin abra una o dos pestañas por visita. next/dynamic parte
+// cada una en su propio chunk; la pestaña que se abre primero se sigue
+// renderizando en el servidor igual que antes.
+function CargandoPestana() {
+  return <div className="py-16 text-center text-sm text-zinc-500 animate-pulse">Cargando...</div>
+}
+
+const ClientAnalyticsDashboard = dynamic(
+  () => import('./client-analytics-dashboard').then((m) => m.ClientAnalyticsDashboard),
+  { loading: CargandoPestana }
+)
+const ContentMetricsGridLazy = dynamic(
+  () => import('@/components/content/content-metrics-grid').then((m) => m.ContentMetricsGridLazy),
+  { loading: CargandoPestana }
+)
+const ContentPipelineBoard = dynamic(
+  () => import('./content-pipeline-board').then((m) => m.ContentPipelineBoard),
+  { loading: CargandoPestana }
+)
+const CrmTabLazy = dynamic(() => import('./crm-tab').then((m) => m.CrmTabLazy), { loading: CargandoPestana })
+const ClientCallsListLazy = dynamic(
+  () => import('./client-calls-list').then((m) => m.ClientCallsListLazy),
+  { loading: CargandoPestana }
+)
+const ClientCompetitorsLazy = dynamic(
+  () => import('./client-competitors').then((m) => m.ClientCompetitorsLazy),
+  { loading: CargandoPestana }
+)
+const ProductTab = dynamic(() => import('./product-tab').then((m) => m.ProductTab), { loading: CargandoPestana })
+const LeadMagnetTab = dynamic(() => import('./lead-magnet-tab').then((m) => m.LeadMagnetTab), { loading: CargandoPestana })
+// El formulario de edición solo existe para el admin y solo cuando lo abre.
+const ClientForm = dynamic(() => import('./client-form').then((m) => m.ClientForm))
 
 interface Props {
   client: Client

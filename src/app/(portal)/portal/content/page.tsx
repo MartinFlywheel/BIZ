@@ -52,10 +52,10 @@ export default async function PortalContentPage() {
             <thead>
               <tr className="border-b border-zinc-800">
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Caption</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Views</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Likes</th>
-                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Saves</th>
+                <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Descripción</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Vistas</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Me gusta</th>
+                <th className="px-4 py-3 text-right text-xs font-medium uppercase text-zinc-400">Guardados</th>
                 <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Fecha</th>
               </tr>
             </thead>

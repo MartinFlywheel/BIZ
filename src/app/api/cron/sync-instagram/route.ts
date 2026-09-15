@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logCronRun } from '@/lib/cron-log'
+import {
+  codigoPermalink,
+  crearCupo,
+  listarMediosDeCuenta,
+  portadaParaEscribir,
+  type MedioDeCuenta,
+  type ResultadoPortada,
+} from '@/lib/services/portadas'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -10,6 +18,15 @@ export const runtime = 'nodejs'
 // Requesting the old name either 400s or silently returns nothing,
 // which is why pieces kept syncing at 0.
 const GENERAL_METRICS = 'views,reach,likes,comments,shares,saved,total_interactions'
+
+// /media se pagina hasta este tope por cliente. Antes era un solo limit=50:
+// los reels más antiguos nunca se volvían a tocar, sus métricas quedaban
+// congeladas y la portada caducaba.
+const MAX_MEDIOS_POR_CLIENTE = 200
+
+// Margen para no pasar los 60 s de Vercel: pasado este tiempo no se empieza
+// otra tanda. La corrida siguiente vuelve a recorrer todo.
+const PRESUPUESTO_MS = 48_000
 
 function dayTypeKeys(contentType: string, isoTimestamp: string): string[] {
   const dayMs = new Date(`${isoTimestamp.slice(0, 10)}T00:00:00Z`).getTime()
@@ -25,13 +42,10 @@ function isRealInstagramPermalink(url: string): boolean {
   }
 }
 
-// thumbnail_url only comes back for VIDEO media (reels) — photos and
-// carousels only carry media_url. Falling back straight to thumbnail_url
-// for those left every synced carousel with no cover at all.
-function pickThumbnail(media: { media_type: string; thumbnail_url?: string; media_url?: string }): string | null {
-  if (media.media_type === 'VIDEO' && media.thumbnail_url) return media.thumbnail_url
-  if (media.media_url) return media.media_url
-  return media.thumbnail_url || null
+// Clave para cruzar permalinks: el código corto, porque los enlaces pegados a
+// mano traen ?utm_source=... y nunca coincidían con el de la API.
+function permalinkKey(url: string): string {
+  return codigoPermalink(url) ?? url
 }
 
 interface Insights {
@@ -88,6 +102,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'META_SYSTEM_USER_TOKEN not configured' }, { status: 500 })
   }
 
+  const inicio = Date.now()
   const supabase = createAdminClient()
 
   const { data: clients } = await supabase
@@ -103,31 +118,35 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'no_clients_with_ig' })
   }
 
+  // Un solo cupo de subidas para toda la corrida, repartido entre clientes.
+  const cupo = crearCupo()
+  const portadas: Record<Exclude<ResultadoPortada, null>, number> = { guardada: 0, fallida: 0, 'sin-cupo': 0 }
+  let cortadoPorTiempo = false
+
   const results = []
 
   for (const client of clients) {
+    if (Date.now() - inicio > PRESUPUESTO_MS) {
+      cortadoPorTiempo = true
+      results.push({ client: client.ig_handle, status: 'error', error: 'sin tiempo en esta corrida' })
+      continue
+    }
     try {
-      const mediaRes = await fetch(
-        `https://graph.facebook.com/${client.ig_account_id}/media?fields=id,caption,media_type,permalink,thumbnail_url,media_url,timestamp&access_token=${token}&limit=50`
-      )
+      const { medios, error: mediaError } = await listarMediosDeCuenta(client.ig_account_id, token, MAX_MEDIOS_POR_CLIENTE)
 
-      if (!mediaRes.ok) {
-        results.push({ client: client.ig_handle, status: 'error', error: `API ${mediaRes.status}` })
+      if (mediaError) {
+        results.push({ client: client.ig_handle, status: 'error', error: mediaError })
         continue
       }
 
-      const mediaData = await mediaRes.json()
-      type Item = {
-        id: string; caption?: string; media_type: string; permalink?: string
-        thumbnail_url?: string; media_url?: string; timestamp: string
-      }
+      type Item = MedioDeCuenta
       // Meta's /media edge sometimes returns a reel twice: once as the real
       // post (permalink like instagram.com/reel/...) and once as its
       // underlying video asset — same timestamp, a different (longer) id,
       // and a permalink that's actually a raw signed CDN .mp4 URL, not a
       // real Instagram post. Drop those before matching/inserting, or they
       // become permanent garbage rows with no real content behind them.
-      const items: Item[] = (mediaData.data || []).filter((m: Item) => !m.permalink || isRealInstagramPermalink(m.permalink))
+      const items: Item[] = medios.filter((m) => !m.permalink || isRealInstagramPermalink(m.permalink))
 
       // Pieces created manually (tagged with a keyword_trigger, sometimes
       // carrying their own revenue via content_metrics) never got an
@@ -139,7 +158,7 @@ export async function GET(request: Request) {
       const [{ data: existingRows }, { data: unmatchedRows }] = await Promise.all([
         supabase
           .from('content_pieces')
-          .select('id, ig_media_id')
+          .select('id, ig_media_id, ig_thumbnail_url')
           .eq('client_id', client.id)
           .not('ig_media_id', 'is', null),
         supabase
@@ -149,11 +168,13 @@ export async function GET(request: Request) {
           .is('ig_media_id', null),
       ])
 
-      const existingByMediaId = new Map((existingRows || []).map((r) => [r.ig_media_id as string, r.id]))
+      const existingByMediaId = new Map(
+        (existingRows || []).map((r) => [r.ig_media_id as string, { id: r.id as string, ig_thumbnail_url: r.ig_thumbnail_url as string | null }])
+      )
       const byPermalink = new Map<string, ManualRow>()
       const byDayType = new Map<string, ManualRow[]>()
       for (const row of unmatchedRows || []) {
-        if (row.ig_permalink) byPermalink.set(row.ig_permalink, row)
+        if (row.ig_permalink) byPermalink.set(permalinkKey(row.ig_permalink), row)
         if (row.published_at) {
           const key = `${row.content_type}|${row.published_at.slice(0, 10)}`
           const arr = byDayType.get(key) ?? []
@@ -165,8 +186,8 @@ export async function GET(request: Request) {
       // Decide each item's match up front, synchronously, before any of the
       // slow API/DB work runs concurrently below — avoids two items racing
       // onto the same manual candidate.
-      type Plan = { media: typeof items[number]; contentType: string } & (
-        | { kind: 'existing'; targetId: string }
+      type Plan = { media: Item; contentType: string } & (
+        | { kind: 'existing'; targetId: string; actual: string | null }
         | { kind: 'manual'; manualMatch: ManualRow }
         | { kind: 'new' }
       )
@@ -175,10 +196,10 @@ export async function GET(request: Request) {
           : media.media_type === 'CAROUSEL_ALBUM' ? 'post'
           : 'post'
 
-        const targetId = existingByMediaId.get(media.id)
-        if (targetId) return { media, contentType, kind: 'existing', targetId }
+        const target = existingByMediaId.get(media.id)
+        if (target) return { media, contentType, kind: 'existing', targetId: target.id, actual: target.ig_thumbnail_url }
 
-        let manualMatch = (media.permalink && byPermalink.get(media.permalink)) || null
+        let manualMatch = (media.permalink && byPermalink.get(permalinkKey(media.permalink))) || null
         if (!manualMatch) {
           // Manual entries only carry a plain calendar date, but the real
           // post's UTC timestamp can land on the adjacent day depending on
@@ -189,7 +210,7 @@ export async function GET(request: Request) {
           if (candidates.length === 1) manualMatch = candidates[0]
         }
         if (manualMatch) {
-          if (media.permalink) byPermalink.delete(media.permalink)
+          if (manualMatch.ig_permalink) byPermalink.delete(permalinkKey(manualMatch.ig_permalink))
           for (const k of dayTypeKeys(contentType, media.timestamp)) {
             byDayType.set(k, (byDayType.get(k) ?? []).filter((c) => c.id !== manualMatch!.id))
           }
@@ -205,13 +226,23 @@ export async function GET(request: Request) {
       const CONCURRENCY = 8
       let processed = 0
       for (let i = 0; i < plans.length; i += CONCURRENCY) {
+        if (Date.now() - inicio > PRESUPUESTO_MS) {
+          cortadoPorTiempo = true
+          break
+        }
         const batch = plans.slice(i, i + CONCURRENCY)
         await Promise.all(batch.map(async (plan) => {
           const { media, contentType } = plan
-          const [insights, avgWatchTime] = await Promise.all([
+          const actual = plan.kind === 'existing' ? plan.actual : plan.kind === 'manual' ? plan.manualMatch.ig_thumbnail_url : null
+          const [insights, avgWatchTime, portada] = await Promise.all([
             fetchInsights(media.id, token),
             contentType === 'reel' ? fetchReelWatchTime(media.id, token) : Promise.resolve(null),
+            // La portada se guarda en Storage en los tres caminos: antes solo
+            // el insert escribía la URL del CDN y nunca se renovaba.
+            portadaParaEscribir({ supabase, clientId: client.id, mediaId: media.id, actual, medio: media, cupo }),
           ])
+          if (portada.resultado) portadas[portada.resultado]++
+          const thumbnailField = portada.valor !== undefined ? { ig_thumbnail_url: portada.valor } : {}
 
           const metricFields = {
             views: insights.views,
@@ -229,7 +260,7 @@ export async function GET(request: Request) {
           if (plan.kind === 'existing') {
             await supabase
               .from('content_pieces')
-              .update({ ...metricFields, updated_at: new Date().toISOString() })
+              .update({ ...metricFields, ...thumbnailField, updated_at: new Date().toISOString() })
               .eq('id', plan.targetId)
           } else if (plan.kind === 'manual') {
             // Backfill ig_media_id so future syncs match directly — never
@@ -242,7 +273,7 @@ export async function GET(request: Request) {
               .from('content_pieces')
               .update({
                 ig_media_id: media.id,
-                ig_thumbnail_url: plan.manualMatch.ig_thumbnail_url ?? pickThumbnail(media),
+                ...thumbnailField,
                 ig_permalink: plan.manualMatch.ig_permalink ?? media.permalink,
                 caption: plan.manualMatch.caption || media.caption,
                 ...metricFields,
@@ -255,7 +286,7 @@ export async function GET(request: Request) {
               content_type: contentType,
               ig_media_id: media.id,
               ig_permalink: media.permalink,
-              ig_thumbnail_url: pickThumbnail(media),
+              ig_thumbnail_url: portada.valor ?? null,
               caption: media.caption,
               published_at: media.timestamp,
               ...metricFields,
@@ -265,7 +296,7 @@ export async function GET(request: Request) {
         processed += batch.length
       }
 
-      results.push({ client: client.ig_handle, status: 'success', processed })
+      results.push({ client: client.ig_handle, status: 'success', processed, medios: plans.length })
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown'
       results.push({ client: client.ig_handle, status: 'error', error: msg })
@@ -278,8 +309,12 @@ export async function GET(request: Request) {
     ok: results.length - fallidos.length,
     fallidos: fallidos.length,
     publicaciones: results.reduce((n, r) => n + (r.processed ?? 0), 0),
+    portadasGuardadas: portadas.guardada,
+    portadasFallidas: portadas.fallida,
+    portadasPendientesPorCupo: portadas['sin-cupo'],
+    cortadoPorTiempo,
     errores: fallidos.map((r) => ({ cliente: r.client, error: r.error })),
   })
 
-  return NextResponse.json({ results })
+  return NextResponse.json({ results, portadas, cortadoPorTiempo })
 }

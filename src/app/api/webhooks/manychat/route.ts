@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { resolveClassification, upsertInteraction, pickBalancedSetter, incrementarChatsNuevos } from '@/lib/manychat'
+import {
+  resolveClassification,
+  upsertInteraction,
+  pickBalancedSetter,
+  incrementarChatsNuevos,
+  buscarPiezaPorCodigo,
+  clientePorCuentaManyChat,
+  cuentaManyChat,
+  errorCodigoSinPieza,
+  marcarLogProcesado,
+} from '@/lib/manychat'
 import { exigirTokenManyChat } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
@@ -83,13 +93,7 @@ export async function POST(request: Request) {
     let clientId: string | null = null
 
     if (payloadId) {
-      const { data: contentMatch } = await supabase
-        .from('content_pieces')
-        .select('id, client_id')
-        .ilike('keyword_trigger', payloadId)
-        .limit(1)
-        .maybeSingle()
-
+      const contentMatch = await buscarPiezaPorCodigo(supabase, payloadId)
       if (contentMatch) {
         contentId = contentMatch.id
         clientId = contentMatch.client_id
@@ -102,6 +106,16 @@ export async function POST(request: Request) {
     if (!clientId) {
       clientId = payload.client_id || customFields.client_id || null
     }
+
+    // Después, la cuenta de ManyChat del live_chat_url: identifica al cliente
+    // sin adivinar (no es el usuario del prospecto, es la cuenta del negocio).
+    if (!clientId) {
+      clientId = await clientePorCuentaManyChat(supabase, cuentaManyChat(payload))
+    }
+
+    // El código llegó pero no tiene pieza: el chat se registra igual y el log
+    // queda con la alerta para crear la pieza.
+    const errorPieza = payloadId && !contentId && clientId ? errorCodigoSinPieza(payloadId) : null
 
     // Deliberately no further fallback here. This used to also guess the
     // client by substring-matching the *prospect's own* ig_username against
@@ -122,6 +136,8 @@ export async function POST(request: Request) {
       .select('id, stage, first_touch_content_id, assigned_to')
       .eq('client_id', clientId)
       .eq('ig_username', igUsername)
+      .order('created_at', { ascending: true })
+      .limit(1)
       .maybeSingle()
 
     let leadId: string
@@ -223,12 +239,10 @@ export async function POST(request: Request) {
     }
 
     // ── Step 7: Mark webhook log as processed ────────────────────
-    if (webhookLogId) {
-      await supabase
-        .from('webhook_logs')
-        .update({ processed: true })
-        .eq('id', webhookLogId)
-    }
+    await marcarLogProcesado(supabase, webhookLogId, {
+      leadId,
+      ...(errorPieza ? { error: errorPieza } : {}),
+    })
 
     return NextResponse.json({
       received: true,

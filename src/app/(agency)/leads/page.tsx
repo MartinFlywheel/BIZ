@@ -9,7 +9,9 @@ export default async function LeadsPage({
   searchParams: Promise<{ client?: string }>
 }) {
   const { client: filterClient } = await searchParams
-  const [leads, clients] = await Promise.all([getLeadsForPipeline(), getClientOptions()])
+  // El cliente elegido filtra en la consulta: filtrar en el navegador obligaba a
+  // bajar los leads de todos los clientes para mostrar los de uno.
+  const [leads, clients] = await Promise.all([getLeadsForPipeline(filterClient || undefined), getClientOptions()])
 
   return (
     <div className="space-y-6">

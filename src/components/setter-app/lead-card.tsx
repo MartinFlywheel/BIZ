@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { LEAD_STAGES } from '@/lib/types'
 import type { SetterLeadCard } from '@/lib/actions/setter-app'
 import { Calendar, XCircle, CheckCircle2, ArrowRight, ChevronDown, MessageCircle } from 'lucide-react'
+import { BotonHistorialEnDialogo } from '@/components/leads/lead-timeline'
 
 const STAGE_LABEL = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.label])) as Record<string, string>
 const STAGE_COLOR = Object.fromEntries(LEAD_STAGES.map((s) => [s.id, s.color])) as Record<string, string>
@@ -109,6 +110,11 @@ export function LeadCard({ lead, onChangeStage, pending }: Props) {
         )}
         {lead.classification && <span>·</span>}
         <span>hace {timeAgo(lead.updated_at).replace('hace ', '')}</span>
+        <BotonHistorialEnDialogo
+          leadId={lead.id}
+          nombre={lead.full_name || (lead.ig_username ? `@${lead.ig_username}` : 'Sin nombre')}
+          className="ml-auto inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300"
+        />
       </div>
 
       <div className="mt-3 flex items-center gap-2">

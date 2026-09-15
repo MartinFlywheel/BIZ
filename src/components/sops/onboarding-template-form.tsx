@@ -46,7 +46,15 @@ export function OnboardingTemplateForm({ sops, onClose }: Props) {
       title: s.title,
       sop_id: s.sop_id,
     }))))
-    await createOnboardingTemplate(formData)
+    // Mismo caso que el formulario de SOP: sin try, un error dejaba el botón
+    // en "Creando..." y el modal colgado.
+    try {
+      await createOnboardingTemplate(formData)
+    } catch (err) {
+      setLoading(false)
+      alert(err instanceof Error ? `No se pudo crear el template: ${err.message}` : 'No se pudo crear el template')
+      return
+    }
     setLoading(false)
     onClose()
   }

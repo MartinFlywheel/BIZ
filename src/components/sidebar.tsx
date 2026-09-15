@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { BuscadorPersonas } from '@/components/leads/buscador-personas'
 
 const SIDEBAR_COLLAPSED_KEY = 'sidebarCollapsed'
 
@@ -147,6 +148,10 @@ export function Sidebar({ userType, userName, restricted = false, homeHref }: Si
             </Link>
           )
         })}
+
+        {/* Buscador de leads (Ctrl+K). También para usuarios confinados a un
+            cliente: el servidor acota los resultados al suyo. */}
+        {userType === 'agency' && <BuscadorPersonas variante="boton" collapsed={collapsed} />}
 
         {/* Logout lives inline with nav on mobile to fit the bar */}
         <button

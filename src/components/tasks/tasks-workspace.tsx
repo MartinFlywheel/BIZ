@@ -922,7 +922,17 @@ function DangerZone({ clientId }: { clientId: string }) {
   async function disconnect() {
     if (!confirm('¿Desconectar Notion? Se borra el espejo de tareas del CRM; en Notion no se toca nada.')) return
     setBusy(true)
-    await disconnectNotionAction(clientId)
+    // Antes se recargaba pasara lo que pasara: si la acción fallaba, la
+    // pantalla volvía conectada y no había forma de saber por qué.
+    const result = await disconnectNotionAction(clientId).catch((e) => ({
+      success: false,
+      error: e instanceof Error ? e.message : 'Error inesperado',
+    }))
+    if (!result.success) {
+      setBusy(false)
+      alert(`No se pudo desconectar Notion: ${result.error ?? 'Error inesperado'}`)
+      return
+    }
     window.location.reload()
   }
 

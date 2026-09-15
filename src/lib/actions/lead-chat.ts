@@ -4,35 +4,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInstagramDM } from '@/lib/services/instagram-messaging'
 import type { IncomingMessage } from '@/lib/types'
-
 // Same rule as the CRM tab's own leads list (getLeadsForViewer in
-// src/lib/actions/leads.ts): a setter sees everything except another
-// setter's already-qualified lead. Re-checked here too since this page is
-// reachable by a direct URL, not just by clicking through the table.
-async function assertCanViewLead(leadId: string) {
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  if (!authUser) throw new Error('No autenticado')
-
-  const { data: viewer } = await supabase.from('users').select('role').eq('id', authUser.id).single()
-  const isSetter = viewer?.role === 'setter'
-
-  const { data: lead, error } = await supabase
-    .from('leads')
-    .select('id, client_id, assigned_to, ig_username, full_name, interactions(classification)')
-    .eq('id', leadId)
-    .single()
-
-  if (error || !lead) throw new Error('Lead no encontrado')
-
-  if (isSetter) {
-    const classification = (lead as { interactions?: { classification?: string } | null }).interactions?.classification
-    const isQualifiedForSomeoneElse = classification === 'lead_calificado' && lead.assigned_to && lead.assigned_to !== authUser.id
-    if (isQualifiedForSomeoneElse) throw new Error('No tienes acceso a este lead')
-  }
-
-  return { supabase, lead, currentUserId: authUser.id }
-}
+// src/lib/actions/leads.ts), re-checked here since this page is reachable by
+// a direct URL. Vive en lead-access.ts porque la línea de tiempo del lead usa
+// exactamente la misma regla.
+import { assertCanViewLead } from './lead-access'
 
 export async function getLeadChatHeader(leadId: string) {
   const { lead } = await assertCanViewLead(leadId)

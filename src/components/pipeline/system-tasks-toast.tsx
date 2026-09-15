@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Bell, Calendar, Clock, FileText, Lock, UserSearch } from 'lucide-react'
 import {
-  getMisTareas,
   getResponsables,
   posponerTarea,
   reasignarTarea,
@@ -54,37 +53,100 @@ export function SystemTasksToast() {
   const [aviso, setAviso] = useState<string | null>(null)
   const [permiso, setPermiso] = useState<NotificationPermission | 'no-soportado'>('no-soportado')
   const vistas = useRef<Map<string, string>>(new Map())
+  const enCurso = useRef(false)
+  const repetir = useRef(false)
+  const cajaRef = useRef<HTMLDivElement>(null)
+  const arrastre = useRef<{ px: number; py: number; x: number; y: number; rect: DOMRect } | null>(null)
+  const [desplazamiento, setDesplazamiento] = useState({ x: 0, y: 0 })
 
+  // El aviso no se puede cerrar: si al achicar la ventana queda fuera de la
+  // pantalla, se vuelve a meter dentro.
+  useEffect(() => {
+    const alRedimensionar = () => {
+      const caja = cajaRef.current
+      if (caja) setDesplazamiento((d) => acotar(d.x, d.y, caja.getBoundingClientRect(), d))
+    }
+    window.addEventListener('resize', alRedimensionar)
+    return () => window.removeEventListener('resize', alRedimensionar)
+  }, [])
+
+  // Por fetch a un route handler y no con la server action getMisTareas: Next
+  // despacha las server actions del navegador de a una, y este sondeo cada 45
+  // segundos (más cada vuelta a la ventana) hacía esperar a la pestaña que el
+  // usuario estaba abriendo. Las escrituras (posponer, reasignar) siguen como
+  // server actions.
   const cargar = useCallback(async () => {
+    // Una consulta a la vez. Si se pide otra mientras una está en vuelo (por
+    // ejemplo, justo después de posponer), se repite al terminar: la que ya
+    // iba pudo leer la base antes del cambio y devolvería la tarea pospuesta.
+    if (enCurso.current) {
+      repetir.current = true
+      return
+    }
+    enCurso.current = true
     try {
-      const t = await getMisTareas()
-      setTareas(t)
-      const momento = Date.now()
-      setAhora(momento)
-      avisarAlSistema(t, momento, vistas.current)
-    } catch {
-      // Una vuelta fallida no borra lo que ya se mostraba.
+      do {
+        repetir.current = false
+        try {
+          const res = await fetch('/api/tareas/mias', { cache: 'no-store' })
+          if (!res.ok) continue
+          const t = (await res.json()) as TareaSistema[]
+          if (repetir.current) continue
+          setTareas(t)
+          const momento = Date.now()
+          setAhora(momento)
+          avisarAlSistema(t, momento, vistas.current)
+        } catch {
+          // Una vuelta fallida no borra lo que ya se mostraba.
+        }
+      } while (repetir.current)
+    } finally {
+      enCurso.current = false
     }
   }, [])
 
   useEffect(() => {
+    // Con la pestaña oculta no se consulta: nadie ve el aviso. La excepción es
+    // cuando hay permiso de notificaciones del sistema, que existen justamente
+    // para avisar de lo nuevo y lo vencido mientras el CRM está en otra pestaña.
+    const vale = () =>
+      document.visibilityState !== 'hidden' ||
+      (typeof Notification !== 'undefined' && Notification.permission === 'granted')
+
     // La primera carga va en un timeout para no escribir estado dentro del
     // cuerpo del efecto.
     const inicial = setTimeout(() => {
       void cargar()
       if (typeof Notification !== 'undefined') setPermiso(Notification.permission)
     }, 0)
-    const cada = setInterval(() => void cargar(), 45_000)
+    const cada = setInterval(() => { if (vale()) void cargar() }, 45_000)
     const reloj = setInterval(() => setAhora(Date.now()), 30_000)
-    const alVolver = () => void cargar()
+
+    // Volver a la ventana dispara focus y visibilitychange casi juntos, y
+    // cambiar de ventana varias veces seguidas los repite: con el debounce sale
+    // una sola consulta.
+    let espera: ReturnType<typeof setTimeout> | null = null
+    const alVolver = () => {
+      if (espera) clearTimeout(espera)
+      espera = setTimeout(() => {
+        espera = null
+        if (document.visibilityState !== 'hidden') void cargar()
+      }, 600)
+    }
+    // Cuando otra pantalla cierra una tarea, el aviso se actualiza en el acto.
+    const alRefrescar = () => void cargar()
+
     window.addEventListener('focus', alVolver)
-    window.addEventListener(EVENTO_REFRESCAR, alVolver)
+    document.addEventListener('visibilitychange', alVolver)
+    window.addEventListener(EVENTO_REFRESCAR, alRefrescar)
     return () => {
       clearTimeout(inicial)
+      if (espera) clearTimeout(espera)
       clearInterval(cada)
       clearInterval(reloj)
       window.removeEventListener('focus', alVolver)
-      window.removeEventListener(EVENTO_REFRESCAR, alVolver)
+      document.removeEventListener('visibilitychange', alVolver)
+      window.removeEventListener(EVENTO_REFRESCAR, alRefrescar)
     }
   }, [cargar])
 
@@ -189,9 +251,32 @@ export function SystemTasksToast() {
 
   return (
     <>
-      <div className="fixed right-4 top-4 z-[90] w-[min(360px,calc(100vw-2rem))] sm:right-6 sm:top-6">
+      <div
+        ref={cajaRef}
+        className="fixed right-4 top-4 z-[90] w-[min(360px,calc(100vw-2rem))] sm:right-6 sm:top-6"
+        style={{ transform: `translate(${desplazamiento.x}px, ${desplazamiento.y}px)` }}
+      >
         <div className={`rounded-2xl border bg-[#141415]/95 p-4 shadow-2xl backdrop-blur-xl ${borde}`}>
-          <div className="mb-3 flex items-center gap-2.5">
+          <div
+            title="Arrastra para mover"
+            className="mb-3 flex cursor-grab touch-none select-none items-center gap-2.5 active:cursor-grabbing"
+            onPointerDown={(e) => {
+              if (e.button !== 0 || !cajaRef.current) return
+              e.currentTarget.setPointerCapture(e.pointerId)
+              arrastre.current = {
+                px: e.clientX,
+                py: e.clientY,
+                ...desplazamiento,
+                rect: cajaRef.current.getBoundingClientRect(),
+              }
+            }}
+            onPointerMove={(e) => {
+              const a = arrastre.current
+              if (a) setDesplazamiento(acotar(a.x + e.clientX - a.px, a.y + e.clientY - a.py, a.rect, a))
+            }}
+            onPointerUp={() => { arrastre.current = null }}
+            onPointerCancel={() => { arrastre.current = null }}
+          >
             <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${colorIcono}`}>
               <Icono className="h-3.5 w-3.5" />
             </div>
@@ -309,6 +394,21 @@ export function SystemTasksToast() {
       {modal}
     </>
   )
+}
+
+/** Deja la caja completa dentro de la ventana; `rect` se midió con el desplazamiento `base` aplicado. */
+function acotar(x: number, y: number, rect: DOMRect, base: { x: number; y: number }) {
+  const margen = 8
+  const izquierda = rect.left - base.x
+  const arriba = rect.top - base.y
+  const minX = margen - izquierda
+  const maxX = window.innerWidth - rect.width - margen - izquierda
+  const minY = margen - arriba
+  const maxY = window.innerHeight - rect.height - margen - arriba
+  return {
+    x: Math.max(minX, Math.min(maxX, x)),
+    y: Math.max(minY, Math.min(maxY, y)),
+  }
 }
 
 /**

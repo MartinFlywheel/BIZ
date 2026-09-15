@@ -139,10 +139,18 @@ export function SopForm({ sop, existingCategories, onClose }: Props) {
     if (categorySelect === CUSTOM_CATEGORY) {
       formData.set('category', customCategory.trim())
     }
-    if (sop) {
-      await updateSopAction(sop.id, formData)
-    } else {
-      await createSopAction(formData)
+    // Sin try, un error de la acción dejaba el botón en "Guardando..." para
+    // siempre y el modal abierto sin decir qué pasó.
+    try {
+      if (sop) {
+        await updateSopAction(sop.id, formData)
+      } else {
+        await createSopAction(formData)
+      }
+    } catch (err) {
+      setLoading(false)
+      alert(err instanceof Error ? `No se pudo guardar el SOP: ${err.message}` : 'No se pudo guardar el SOP')
+      return
     }
     setLoading(false)
     onClose()

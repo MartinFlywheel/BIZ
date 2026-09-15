@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { crearCupo, esPortadaGuardada, esVideo, guardarPortada } from '@/lib/services/portadas'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -31,38 +32,6 @@ interface SyncPayload {
   reels: ReelPayload[]
 }
 
-async function uploadThumbnail(
-  supabase: ReturnType<typeof createAdminClient>,
-  clientId: string,
-  mediaId: string,
-  thumbnailUrl: string
-): Promise<string | null> {
-  try {
-    const res = await fetch(thumbnailUrl, { redirect: 'follow' })
-    if (!res.ok) return null
-
-    const contentType = res.headers.get('content-type') || 'image/jpeg'
-    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg'
-    const buffer = await res.arrayBuffer()
-
-    const path = `clients/${clientId}/${mediaId}.${ext}`
-
-    const { error } = await supabase.storage
-      .from('thumbnails')
-      .upload(path, buffer, { contentType, upsert: true })
-
-    if (error) return null
-
-    const { data: urlData } = supabase.storage
-      .from('thumbnails')
-      .getPublicUrl(path)
-
-    return urlData.publicUrl
-  } catch {
-    return null
-  }
-}
-
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -90,32 +59,47 @@ export async function POST(request: Request) {
 
     let inserted = 0
     let updated = 0
+    let portadasGuardadas = 0
+    // Tope de subidas por llamada para no pasar los 60 s; lo que quede con la
+    // URL del CDN lo guarda la llamada siguiente o el cron diario.
+    const cupo = crearCupo()
 
     for (const reel of payload.reels) {
       if (!reel.ig_media_id && !reel.video_url) continue
 
       const mediaId = reel.ig_media_id || `ext_${Date.now()}_${inserted}`
-
-      let permanentUrl: string | null = null
-      if (reel.thumbnail_url) {
-        permanentUrl = await uploadThumbnail(supabase, payload.client_id, mediaId, reel.thumbnail_url)
-      }
+      // Apify a veces trae el video en thumbnail_url: un mp4 no es portada.
+      const origen = reel.thumbnail_url && !esVideo(reel.thumbnail_url) ? reel.thumbnail_url : null
 
       const contentType = 'reel'
 
       const { data: existing } = await supabase
         .from('content_pieces')
-        .select('id')
+        .select('id, ig_thumbnail_url')
         .eq('ig_media_id', mediaId)
         .eq('client_id', payload.client_id)
         .maybeSingle()
+
+      // Una portada ya guardada en Storage no se vuelve a subir ni se pisa.
+      const yaGuardada = esPortadaGuardada(existing?.ig_thumbnail_url)
+      let portada: string | null = null
+      if (!yaGuardada && origen) {
+        if (cupo.restantes > 0) {
+          cupo.restantes--
+          portada = await guardarPortada(supabase, payload.client_id, mediaId, origen)
+          if (portada) portadasGuardadas++
+        }
+        portada ??= origen
+      }
 
       if (existing) {
         const sanitizedPermalink = sanitizeIgPermalink(reel.video_url, reel.shortCode)
         await supabase
           .from('content_pieces')
           .update({
-            ig_thumbnail_url: permanentUrl || reel.thumbnail_url || null,
+            // Sin portada nueva no se toca la columna: antes se escribía NULL
+            // encima de la que hubiera.
+            ...(portada && { ig_thumbnail_url: portada }),
             ...(sanitizedPermalink && { ig_permalink: sanitizedPermalink }),
             caption: reel.caption || null,
             views: reel.views || 0,
@@ -135,7 +119,7 @@ export async function POST(request: Request) {
           content_type: contentType,
           ig_media_id: mediaId,
           ig_permalink: sanitizeIgPermalink(reel.video_url, reel.shortCode),
-          ig_thumbnail_url: permanentUrl || reel.thumbnail_url || null,
+          ig_thumbnail_url: portada,
           caption: reel.caption || null,
           published_at: reel.published_at || null,
           views: reel.views || 0,
@@ -155,6 +139,7 @@ export async function POST(request: Request) {
       client: client.name,
       inserted,
       updated,
+      thumbnails_uploaded: portadasGuardadas,
     })
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'

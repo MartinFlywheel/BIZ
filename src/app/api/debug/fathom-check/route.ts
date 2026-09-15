@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listarReuniones, correosExternos, credencialesConfiguradas } from '@/lib/services/fathom'
+import { listarReuniones, credencialesConfiguradas } from '@/lib/services/fathom'
+import {
+  cargarCandidatas,
+  evaluarGrabacion,
+  grabacionDesdeReunion,
+  momentoDe,
+  puntuarCandidata,
+  PUNTAJE_AUTO,
+  PUNTAJE_SUGERENCIA,
+  VENTAJA_MINIMA,
+} from '@/lib/services/fathom-sync'
 import { exigirCronSecret } from '@/lib/api-auth'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 /**
  * Comprueba, sin escribir nada, si el circuito de Fathom está funcionando.
@@ -12,13 +23,15 @@ export const runtime = 'nodejs'
  * Son dos cosas distintas que desde afuera se confunden:
  *
  * 1. Que Fathom entre a la llamada y la grabe. Eso no lo hace el CRM: lo hace
- *    la integración de Fathom con Google Meet. Si acá no aparece ninguna
- *    reunión, el problema está en Fathom, no en el CRM.
+ *    la integración de Fathom con Google Meet. Si aquí no aparece ninguna
+ *    reunión, el problema está en Fathom (o la llamada la grabó otra cuenta),
+ *    no en el CRM.
  * 2. Que la grabación llegue a la agenda del CRM. Eso sí es nuestro, y es lo
  *    que hace el cron sync-fathom.
  *
- * Esta ruta las separa: muestra qué ve Fathom y, para cada reunión, si el CRM
- * ya la enganchó a una agenda o no, y por qué.
+ * Por cada reunión muestra lo que faltó en la investigación original: el
+ * recording_id, quién grabó, las horas por separado, el título, las agendas
+ * candidatas con su puntaje y por qué no se asoció.
  *
  * Uso: /api/debug/fathom-check?dias=14
  */
@@ -62,60 +75,97 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient()
+  const grabaciones = reuniones.map(grabacionDesdeReunion).filter((g) => g !== null)
 
-  // Las agendas de la misma ventana, para poder decir cuáles quedaron sin
-  // grabación y cuáles ya la tienen.
-  const { data: agendas, error } = await supabase
-    .from('agenda_records')
-    .select('id, nombre_lead, hora_agenda, email_lead, fathom_recording_id, link_reporte')
-    .not('hora_agenda', 'is', null)
-    .gte('hora_agenda', desde.toISOString())
-
+  // Todas las agendas de la ventana, también las que ya tienen grabación, para
+  // poder explicar "esta agenda ya tiene otra".
+  const { agendas, error } = await cargarCandidatas(supabase, grabaciones, { incluirConGrabacion: true })
   if (error) {
     return NextResponse.json({
       ok: false,
       paso: 'migracion',
       problema: error.message,
       ayuda: error.code === COLUMNA_INEXISTENTE
-        ? 'Falta correr supabase/052-fathom-grabaciones.sql en el editor SQL de Supabase.'
+        ? 'Falta correr supabase/052-fathom-grabaciones.sql o la 055 en el editor SQL de Supabase.'
         : null,
       reunionesEnFathom: reuniones.length,
     })
   }
 
-  const enganchadas = new Set(
-    (agendas ?? []).map((a) => a.fathom_recording_id).filter(Boolean) as string[]
-  )
+  // Estado guardado en la tabla de la 074, si existe.
+  const ids = grabaciones.map((g) => g.recordingId)
+  const { data: filas, error: errorTabla } = ids.length > 0
+    ? await supabase
+        .from('fathom_grabaciones')
+        .select('recording_id, client_id, agenda_record_id, match_metodo, match_puntaje, sugerida_agenda_id')
+        .in('recording_id', ids)
+    : { data: [], error: null }
+  const guardada = new Map((filas ?? []).map((f) => [String(f.recording_id), f]))
+
+  const sinGrabacion = agendas.filter((a) => !a.fathom_recording_id)
 
   return NextResponse.json({
     ok: true,
     diasRevisados: dias,
+    tablaFathomGrabaciones: errorTabla?.code === '42P01' ? 'falta correr la 074' : 'disponible',
+    reglas: { puntajeAuto: PUNTAJE_AUTO, ventajaMinima: VENTAJA_MINIMA, puntajeSugerencia: PUNTAJE_SUGERENCIA },
 
     // Paso 1: ¿Fathom está grabando? Si esto es 0, no hay nada que traer y el
     // problema está en la integración de Fathom con Meet, no en el CRM.
     reunionesEnFathom: reuniones.length,
 
-    grabaciones: reuniones.slice(0, 20).map((r) => ({
-      titulo: r.meeting_title ?? r.title ?? '(sin título)',
-      cuando: r.scheduled_start_time ?? r.recording_start_time ?? null,
-      invitadosExternos: correosExternos(r),
-      tieneEnlace: !!(r.share_url ?? r.url),
-      tieneResumen: !!r.default_summary?.markdown_formatted,
-      // Lo que decide si el CRM la puede enganchar.
-      yaEnganchada: r.recording_id ? enganchadas.has(r.recording_id) : false,
-    })),
+    grabaciones: grabaciones.slice(0, 40).map((g) => {
+      const asociadaA = agendas.find((a) => a.fathom_recording_id && String(a.fathom_recording_id) === g.recordingId)
+      const ev = evaluarGrabacion(g, sinGrabacion)
+      // Las que ya tienen otra grabación no compiten, pero se muestran para
+      // explicar por qué la agenda "obvia" no se eligió.
+      const ocupadas = agendas
+        .filter((a) => a.fathom_recording_id && String(a.fathom_recording_id) !== g.recordingId)
+        .map((a) => puntuarCandidata(g, a))
+        .filter((c) => c !== null && c.puntaje >= PUNTAJE_SUGERENCIA)
+        .map((c) => ({ agendaId: c!.agenda.id, nombre: c!.agenda.nombre_lead, puntaje: c!.puntaje, grabacion: c!.agenda.fathom_recording_id }))
+
+      return {
+        recordingId: g.recordingId,
+        titulo: g.titulo ?? '(sin título)',
+        grabadoPor: { nombre: g.grabadoPorNombre, email: g.grabadoPorEmail },
+        horaAgendada: g.programada,
+        inicioGrabacion: g.inicio,
+        finGrabacion: g.fin,
+        creadaEnFathom: g.creadaEnFathom,
+        referencia: momentoDe(g),
+        invitados: g.invitados.map((i) => ({ nombre: i.name ?? null, email: i.email ?? null, externo: i.is_external ?? null })),
+        tieneEnlace: !!(g.shareUrl ?? g.url),
+        tieneResumen: !!g.resumen,
+        enTabla: guardada.get(g.recordingId) ?? null,
+        yaAsociadaA: asociadaA ? { agendaId: asociadaA.id, nombre: asociadaA.nombre_lead } : null,
+        decision: asociadaA ? 'ya_tenia' : ev.decision,
+        motivo: asociadaA ? 'ya estaba asociada' : ev.motivo,
+        candidatas: ev.candidatas.slice(0, 5).map((c) => ({
+          agendaId: c.agenda.id,
+          clientId: c.agenda.client_id,
+          nombre: c.agenda.nombre_lead ?? c.agenda.lead_nombre,
+          fecha: c.agenda.fecha_agenda,
+          hora: c.agenda.hora_agenda,
+          closer: c.agenda.closer,
+          manual: !c.agenda.google_event_id,
+          puntaje: c.puntaje,
+          motivos: c.motivos,
+        })),
+        candidatasConOtraGrabacion: ocupadas.slice(0, 3),
+      }
+    }),
 
     // Paso 2: ¿el CRM las está enganchando?
-    agendasEnLaVentana: agendas?.length ?? 0,
-    agendasConGrabacion: (agendas ?? []).filter((a) => a.fathom_recording_id).length,
-
-    agendasSinGrabacion: (agendas ?? [])
-      .filter((a) => !a.fathom_recording_id)
-      .slice(0, 20)
-      .map((a) => ({
-        nombre: a.nombre_lead,
-        cuando: a.hora_agenda,
-        email: a.email_lead,
-      })),
+    agendasEnLaVentana: agendas.length,
+    agendasConGrabacion: agendas.filter((a) => a.fathom_recording_id).length,
+    agendasSinGrabacion: sinGrabacion.slice(0, 30).map((a) => ({
+      agendaId: a.id,
+      nombre: a.nombre_lead ?? a.lead_nombre,
+      fecha: a.fecha_agenda,
+      hora: a.hora_agenda,
+      email: a.email_lead ?? a.lead_email,
+      manual: !a.google_event_id,
+    })),
   })
 }

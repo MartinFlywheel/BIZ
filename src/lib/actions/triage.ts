@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizarTelefono } from '@/lib/phone'
 import { normalizarInstagram } from '@/lib/services/calendly-event'
 import { moverLeadAAgendado } from '@/lib/services/agenda-sync'
+import { aplicarResultadoAgenda } from '@/lib/services/resultado-agenda'
 import { pickBalancedSetter } from '@/lib/manychat'
 import {
   POSTERGACIONES_PARA_ESCALAR,
@@ -775,6 +776,8 @@ export interface DatosReporte {
   preguntas_no_resueltas: string | null
   aporte_a_mkt: string | null
   deDondeVino: string | null
+  monto_facturacion: number | null
+  monto_upfront: number | null
 }
 
 export async function getDatosReporte(agendaId: string): Promise<DatosReporte | null> {
@@ -796,6 +799,8 @@ export async function getDatosReporte(agendaId: string): Promise<DatosReporte | 
     preguntas_no_resueltas: a.preguntas_no_resueltas,
     aporte_a_mkt: a.aporte_a_mkt,
     deDondeVino: a.de_donde_vino,
+    monto_facturacion: a.monto_facturacion ?? null,
+    monto_upfront: a.monto_upfront ?? null,
   }
 }
 
@@ -806,6 +811,17 @@ export interface CamposReporte {
   dolores: string | null
   preguntas_no_resueltas: string | null
   aporte_a_mkt: string | null
+  /** Total de la venta. Obligatorio si el estado es Cerrado. */
+  monto_facturacion: number | null
+  /** Lo que pagó al cerrar (puede ser menos que la facturación). */
+  monto_upfront: number | null
+}
+
+/** Un monto del formulario: vacío o no numérico = null. */
+function monto(v: number | string | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
 }
 
 /** La dirección de ventas corrige el borrador y lo aprueba. */
@@ -818,9 +834,22 @@ export async function aprobarReporte(agendaId: string, campos: CamposReporte): P
     return { ok: false, error: 'Falta el aporte a marketing: es lo que llega al panel.' }
   }
 
+  // Cada cierre aprobado sin monto nacía con facturación y cash en 0, y el
+  // Registro mostraba US$ 0 aunque hubiera ventas.
+  const facturacion = monto(campos.monto_facturacion)
+  const upfront = monto(campos.monto_upfront)
+  if ((facturacion !== null && facturacion < 0) || (upfront !== null && upfront < 0)) {
+    return { ok: false, error: 'Los montos no pueden ser negativos' }
+  }
+  if (campos.estado === 'Cerrado' && !(facturacion !== null && facturacion > 0)) {
+    return { ok: false, error: 'Falta el monto de la venta' }
+  }
+
   const supabase = await createClient()
   const ahora = new Date().toISOString()
   const texto = (v: string | null) => (v?.trim() ? v.trim() : null)
+
+  const { data: anterior } = await supabase.from('agenda_records').select('estado').eq('id', agendaId).maybeSingle()
 
   const { error } = await supabase
     .from('agenda_records')
@@ -831,6 +860,8 @@ export async function aprobarReporte(agendaId: string, campos: CamposReporte): P
       dolores: texto(campos.dolores),
       preguntas_no_resueltas: texto(campos.preguntas_no_resueltas),
       aporte_a_mkt: texto(campos.aporte_a_mkt),
+      monto_facturacion: facturacion,
+      monto_upfront: upfront,
       reporte_estado: 'aprobado',
       reporte_aprobado_at: ahora,
       reporte_aprobado_por: yo.id,
@@ -851,6 +882,11 @@ export async function aprobarReporte(agendaId: string, campos: CamposReporte): P
     .eq('agenda_record_id', agendaId)
     .eq('tipo', 'reporte_llamada')
     .eq('estado', 'pendiente')
+
+  // El resultado aprobado llega al lead (cierre, no calificado o agendado).
+  await aplicarResultadoAgenda(createAdminClient(), agendaId, {
+    estadoAnterior: (anterior?.estado as string | null) ?? null,
+  })
 
   revalidatePath('/clients')
   return { ok: true }

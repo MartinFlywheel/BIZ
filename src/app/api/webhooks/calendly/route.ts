@@ -1,40 +1,74 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isoChileDe } from '@/lib/fecha-chile'
+import { buscarAgendaManualEquivalente, moverLeadAAgendado } from '@/lib/services/agenda-sync'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
+// Webhook de Calendly (planes pagados). Hoy está dormido: ningún cliente tiene
+// calendly_org_uri y las reservas llegan por Google Calendar (agenda-sync).
+//
+// Dos cosas que hacía mal y ya no:
+// - Guardaba la URI del evento de Calendly en agenda_records.link_reporte y
+//   cancelaba y deduplicaba buscando por ese valor. link_reporte es el enlace
+//   de la grabación: en cuanto el sync de Fathom lo sobrescribía, la
+//   cancelación dejaba de encontrar la agenda. Ahora se usa calendly_uuid, la
+//   misma columna que llena el sync del calendario.
+// - Creaba una fila en sales_calls con la URI de Calendly metida en
+//   fathom_recording_id. Las llamadas viven en agenda_records; sales_calls
+//   quedó como legado de solo lectura.
+
 interface CalendlyInvitee {
-  name: string
-  email: string
-  uri: string
+  name?: string
+  email?: string
+  uri?: string
+  cancel_url?: string
 }
 
 interface CalendlyEvent {
   uri: string
-  name: string
+  name?: string
   start_time: string
-  end_time: string
-  status: string
+  end_time?: string
+  status?: string
   location?: {
-    type: string
+    type?: string
     join_url?: string
     location?: string
-  }
-  calendar_event?: {
-    external_id: string
-    kind: string
   }
 }
 
 interface CalendlyPayload {
   event: string
   payload: {
-    event: CalendlyEvent
+    // v1 trae el evento y el invitado por separado; v2 manda el invitado como
+    // payload y el evento en scheduled_event.
+    event?: CalendlyEvent
+    scheduled_event?: CalendlyEvent
     invitee?: CalendlyInvitee
+    name?: string
+    email?: string
+    uri?: string
     cancel_url?: string
-    reschedule_url?: string
   }
+}
+
+/**
+ * Los UUID con los que puede estar guardada la reserva.
+ *
+ * El sync del calendario guarda el del invitado (sale del enlace de
+ * cancelación "calendly.com/cancellations/<uuid>"); el evento tiene otro. Se
+ * prueban los dos para que una reserva que entró por el calendario y luego
+ * llega por webhook no se duplique.
+ */
+function uuidsDeReserva(evento: CalendlyEvent, invitado: CalendlyInvitee): string[] {
+  const deInvitado =
+    invitado.cancel_url?.match(/cancellations\/([\w-]+)/i)?.[1] ??
+    invitado.uri?.match(/invitees\/([\w-]+)/i)?.[1] ??
+    null
+  const deEvento = evento.uri?.match(/scheduled_events\/([\w-]+)/i)?.[1] ?? null
+  return [deInvitado, deEvento].filter((u): u is string => !!u)
 }
 
 export async function POST(request: Request) {
@@ -57,42 +91,40 @@ export async function POST(request: Request) {
 
     webhookLogId = logRow?.id || null
 
-    const eventData = body.payload?.event
-    const invitee = body.payload?.invitee
+    const eventData = body.payload?.event ?? body.payload?.scheduled_event
+    const invitee: CalendlyInvitee | undefined = body.payload?.invitee ?? (body.payload?.email
+      ? { name: body.payload.name, email: body.payload.email, uri: body.payload.uri, cancel_url: body.payload.cancel_url }
+      : undefined)
 
     if (!eventData || !invitee) {
-      await markLog(supabase, webhookLogId, true, 'No event or invitee data')
+      await markLog(supabase, webhookLogId, true, 'Sin datos de evento o invitado')
       return NextResponse.json({ received: true, skipped: 'no_data' })
     }
 
     const inviteeName = invitee.name?.trim() || null
     const inviteeEmail = invitee.email?.trim().toLowerCase() || null
     const scheduledAt = eventData.start_time
-    const endTime = eventData.end_time
     const meetingUrl = eventData.location?.join_url || null
-    const eventName = eventData.name || null
     const calendlyEventUri = eventData.uri
+    const uuids = uuidsDeReserva(eventData, invitee)
 
-    // ── Handle cancellations ──
+    // ── Cancelaciones ──
     if (body.event === 'invitee.canceled') {
-      await Promise.all([
-        supabase
-          .from('sales_calls')
-          .update({ outcome: 'cancelled' })
-          .eq('fathom_recording_id', calendlyEventUri),
+      if (uuids.length > 0) {
         // Cancelar no es no-show: marcarla así bajaba el show rate, que es
         // justo lo que la migración 055 quiso evitar. Se anota la
         // cancelación y el estado queda como estaba.
-        supabase
+        await supabase
           .from('agenda_records')
           .update({ cancelada_at: new Date().toISOString() })
-          .eq('link_reporte', calendlyEventUri),
-      ])
-      await markLog(supabase, webhookLogId, true)
+          .in('calendly_uuid', uuids)
+          .is('cancelada_at', null)
+      }
+      await markLog(supabase, webhookLogId, true, uuids.length === 0 ? 'Cancelación sin UUID de Calendly' : undefined)
       return NextResponse.json({ received: true, action: 'cancelled' })
     }
 
-    // ── Identify client by Calendly organization URI ──
+    // ── Cliente por la URI de la organización de Calendly ──
     let clientId: string | null = null
 
     const { data: clientsWithCalendly } = await supabase
@@ -108,145 +140,115 @@ export async function POST(request: Request) {
           break
         }
       }
-      // Only safe to guess when exactly one client has Calendly connected —
-      // with two or more, an unmatched org URI must not be silently
-      // attributed to an arbitrary client (would mix up their CRM data).
+      // Solo se adivina si hay exactamente un cliente con Calendly conectado:
+      // con dos o más, una URI que no coincide no puede atribuirse a uno
+      // cualquiera (mezclaría los datos de dos clientes).
       if (!clientId && clientsWithCalendly.length === 1) {
         clientId = clientsWithCalendly[0].id
       }
     }
 
     if (!clientId) {
-      await markLog(supabase, webhookLogId, true, `No client matched for Calendly org URI in event ${calendlyEventUri || 'unknown'}`)
+      await markLog(supabase, webhookLogId, true, `Ningún cliente coincide con la organización de Calendly del evento ${calendlyEventUri || 'desconocido'}`)
       return NextResponse.json({
         received: true,
-        warning: 'No client matched — logged for manual review',
+        warning: 'Ningún cliente coincide: queda registrado para revisarlo a mano',
       })
     }
 
-    // ── Find matching lead ──
+    // ── Lead ──
     let leadId: string | null = null
 
     if (inviteeEmail) {
-      let query = supabase
+      const { data: leadByEmail } = await supabase
         .from('leads')
-        .select('id, client_id')
-        .ilike('email', inviteeEmail)
-        .limit(1)
-
-      if (clientId) query = query.eq('client_id', clientId)
-
-      const { data: leadByEmail } = await query.maybeSingle()
-
-      if (leadByEmail) {
-        leadId = leadByEmail.id
-        if (!clientId) clientId = leadByEmail.client_id
-      }
-    }
-
-    if (!leadId && inviteeName) {
-      let query = supabase
-        .from('leads')
-        .select('id, client_id')
-        .ilike('full_name', `%${inviteeName}%`)
-        .limit(1)
-
-      if (clientId) query = query.eq('client_id', clientId)
-
-      const { data: leadByName } = await query.maybeSingle()
-
-      if (leadByName) {
-        leadId = leadByName.id
-        if (!clientId) clientId = leadByName.client_id
-      }
-    }
-
-    if (!leadId) {
-      console.log(`[Calendly] No lead match for: ${inviteeName} (${inviteeEmail}). Client: ${clientId || 'unknown'}`)
-    }
-
-    // ── Mover el lead a agendado, sin retroceder a quien ya cerró ──
-    if (leadId) {
-      await supabase
-        .from('leads')
-        .update({
-          stage: 'agendado',
-          agenda_at: scheduledAt,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', leadId)
-        .not('stage', 'in', '(agendado,cierre,cliente,closed_won,no_calificado,closed_lost)')
-    }
-
-    // ── Create or update agenda_record ──
-    if (clientId) {
-      const fechaAgenda = scheduledAt ? scheduledAt.split('T')[0] : null
-
-      // Deduplicate by Calendly event URI stored in link_reporte field
-      const { data: existingAgenda } = await supabase
-        .from('agenda_records')
         .select('id')
         .eq('client_id', clientId)
-        .eq('link_reporte', calendlyEventUri)
+        .ilike('email', inviteeEmail)
+        .limit(1)
         .maybeSingle()
-
-      if (existingAgenda) {
-        await supabase
-          .from('agenda_records')
-          .update({ nombre_lead: inviteeName, fecha_agenda: fechaAgenda, link_reunion: meetingUrl, lead_id: leadId })
-          .eq('id', existingAgenda.id)
-      } else {
-        await supabase.from('agenda_records').insert({
-          client_id: clientId,
-          lead_id: leadId,
-          nombre_lead: inviteeName,
-          fecha_agenda: fechaAgenda,
-          link_reunion: meetingUrl,
-          link_reporte: calendlyEventUri,
-          estado: 'Pendiente',
-        })
-      }
+      if (leadByEmail) leadId = leadByEmail.id
     }
 
-    // ── Create sales_calls record ──
-    const durationSeconds = scheduledAt && endTime
-      ? Math.round((new Date(endTime).getTime() - new Date(scheduledAt).getTime()) / 1000)
-      : null
+    if (!leadId && inviteeName && inviteeName.length >= 4) {
+      const { data: leadsByName } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('client_id', clientId)
+        .ilike('full_name', `%${inviteeName}%`)
+        .limit(2)
+      // Dos leads con el mismo nombre: no se adivina. Lo resuelve el setter.
+      if (leadsByName && leadsByName.length === 1) leadId = leadsByName[0].id
+    }
 
-    const { data: existingCall } = await supabase
-      .from('sales_calls')
-      .select('id')
-      .eq('fathom_recording_id', calendlyEventUri)
-      .maybeSingle()
+    if (leadId) await moverLeadAAgendado(supabase, clientId, leadId, scheduledAt)
 
-    if (existingCall) {
+    // ── Agenda: se deduplica por calendly_uuid ──
+    // La fecha en hora de Chile: start_time viene en UTC y un split('T') corría
+    // las llamadas de la noche al día siguiente.
+    const fechaAgenda = scheduledAt ? isoChileDe(scheduledAt) : null
+
+    const { data: existentes } = uuids.length > 0
+      ? await supabase
+          .from('agenda_records')
+          .select('id')
+          .eq('client_id', clientId)
+          .in('calendly_uuid', uuids)
+          .limit(1)
+      : { data: [] as { id: string }[] }
+    const existingAgenda = existentes?.[0] ?? null
+
+    let agendaId: string | null = null
+
+    if (existingAgenda) {
+      agendaId = existingAgenda.id
       await supabase
-        .from('sales_calls')
-        .update({
-          scheduled_at: scheduledAt,
-          duration_seconds: durationSeconds,
-          fathom_call_url: meetingUrl,
-          ai_summary: eventName ? `Calendly: ${eventName}` : null,
-        })
-        .eq('id', existingCall.id)
-    } else if (leadId) {
-      // sales_calls.lead_id es NOT NULL: sin lead el insert fallaba en
-      // silencio. La agenda ya quedó creada arriba; la llamada se registra
-      // cuando el triaje asocie el lead.
-      await supabase.from('sales_calls').insert({
-        lead_id: leadId,
-        scheduled_at: scheduledAt,
-        duration_seconds: durationSeconds,
-        outcome: null,
-        fathom_recording_id: calendlyEventUri,
-        fathom_call_url: meetingUrl,
-        ai_summary: [
-          eventName ? `Calendly: ${eventName}` : null,
-          inviteeName ? `Invitado: ${inviteeName}` : null,
-          inviteeEmail ? `Email: ${inviteeEmail}` : null,
-        ].filter(Boolean).join(' · '),
-        next_steps: meetingUrl ? `Google Meet: ${meetingUrl}` : null,
+        .from('agenda_records')
+        .update({ hora_agenda: scheduledAt, fecha_agenda: fechaAgenda, link_reunion: meetingUrl })
+        .eq('id', existingAgenda.id)
+    } else {
+      const manual = await buscarAgendaManualEquivalente(supabase, clientId, {
+        fecha: fechaAgenda,
+        leadId,
+        nombre: inviteeName,
+        calendlyUuid: uuids[0] ?? null,
+        canceladasDisponible: true,
       })
+
+      if (manual) {
+        agendaId = manual.id
+        await supabase
+          .from('agenda_records')
+          .update({
+            calendly_uuid: uuids[0] ?? null,
+            hora_agenda: scheduledAt,
+            fecha_agenda: fechaAgenda,
+            ...(manual.link_reunion ? {} : { link_reunion: meetingUrl }),
+            ...(manual.email_lead ? {} : { email_lead: inviteeEmail }),
+            ...(manual.lead_id || !leadId ? {} : { lead_id: leadId }),
+            ...(manual.nombre_lead ? {} : { nombre_lead: inviteeName }),
+          })
+          .eq('id', manual.id)
+      } else {
+        const { data: creada } = await supabase
+          .from('agenda_records')
+          .insert({
+            client_id: clientId,
+            lead_id: leadId,
+            nombre_lead: inviteeName,
+            email_lead: inviteeEmail,
+            calendly_uuid: uuids[0] ?? null,
+            hora_agenda: scheduledAt,
+            fecha_agenda: fechaAgenda,
+            fecha_agendado: isoChileDe(new Date()),
+            link_reunion: meetingUrl,
+            de_donde_vino: eventData.name ?? null,
+            estado: 'Pendiente',
+          })
+          .select('id')
+          .single()
+        agendaId = creada?.id ?? null
+      }
     }
 
     await markLog(supabase, webhookLogId, true)
@@ -255,11 +257,12 @@ export async function POST(request: Request) {
       received: true,
       lead_id: leadId,
       client_id: clientId,
+      agenda_id: agendaId,
       scheduled_at: scheduledAt,
       meeting_url: meetingUrl,
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown error'
+    const msg = error instanceof Error ? error.message : 'Error desconocido'
     console.error('[Calendly] Error:', msg)
     await markLog(supabase, webhookLogId, false, msg)
     return NextResponse.json({ error: msg }, { status: 500 })

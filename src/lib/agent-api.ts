@@ -195,11 +195,16 @@ export async function buscarLeadPorTelefono(supabase: AdminClient, clientId: str
 }
 
 export async function buscarLeadPorInstagram(supabase: AdminClient, clientId: string, ig: string): Promise<LeadFila | null> {
+  // ilike trata "_" y "%" como comodines, y los usuarios de Instagram llevan
+  // "_" muy seguido: "ana_perez" también encontraba a "ana.perez" o "anaxperez"
+  // y el POST le copiaba el teléfono y el nombre a la persona equivocada. Se
+  // escapan para que la comparación sea exacta, sin distinguir mayúsculas.
+  const patron = ig.replace(/[\\%_]/g, (c) => `\\${c}`)
   const { data, error } = await supabase
     .from('leads')
     .select(COLUMNAS_LEAD)
     .eq('client_id', clientId)
-    .ilike('ig_username', ig)
+    .ilike('ig_username', patron)
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()

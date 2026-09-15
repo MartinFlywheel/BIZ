@@ -6,7 +6,15 @@
  * CRM. Esta API es lo que permite que el CRM la vaya a buscar.
  *
  * CONFIGURACIÓN
- *   FATHOM_API_KEY  se genera en Fathom → Settings → API Access → Generate Api Key
+ *   FATHOM_API_KEY         se genera en Fathom → Settings → API Access → Generate Api Key
+ *   FATHOM_WEBHOOK_SECRET  opcional: el secreto "whsec_..." del webhook, para
+ *                          verificar la firma de /api/webhooks/fathom
+ *
+ * LIMITACIÓN DE LA KEY
+ * Las keys de Fathom son por usuario: solo ven las reuniones que grabó ese
+ * usuario o que se compartieron con su equipo. Las llamadas que un closer graba
+ * con su propia cuenta no llegan mientras no las comparta con el equipo del
+ * dueño de la key.
  *
  * Docs: https://developers.fathom.ai/api-reference/meetings/list-meetings
  */
@@ -21,28 +29,35 @@ export class FathomError extends Error {
 }
 
 export interface InvitadoFathom {
-  name?: string
-  email?: string
-  email_domain?: string
-  is_external?: boolean
+  name?: string | null
+  email?: string | null
+  email_domain?: string | null
+  is_external?: boolean | null
 }
 
 export interface ReunionFathom {
-  recording_id: string
-  title?: string
-  meeting_title?: string
+  /**
+   * La documentación y la API lo devuelven como número (123456789), aunque la
+   * base lo guarda como texto. Compararlo sin normalizar hacía que ninguna
+   * grabación ya asociada se reconociera. Usar siempre idDeReunion().
+   */
+  recording_id: number | string
+  title?: string | null
+  meeting_title?: string | null
   /** Enlace para ver la grabación. Es lo que termina en link_reporte. */
-  share_url?: string
-  url?: string
-  meeting_url?: string
-  created_at?: string
+  share_url?: string | null
+  url?: string | null
+  meeting_url?: string | null
+  created_at?: string | null
   /** La hora agendada. Es el cruce principal con la agenda del CRM. */
-  scheduled_start_time?: string
-  scheduled_end_time?: string
-  recording_start_time?: string
-  recording_end_time?: string
-  calendar_invitees?: InvitadoFathom[]
-  default_summary?: { template_name?: string; markdown_formatted?: string }
+  scheduled_start_time?: string | null
+  scheduled_end_time?: string | null
+  recording_start_time?: string | null
+  recording_end_time?: string | null
+  calendar_invitees?: InvitadoFathom[] | null
+  /** Quién grabó: la cuenta de Fathom, normalmente el closer. */
+  recorded_by?: { name?: string | null; email?: string | null; team?: string | null } | null
+  default_summary?: { template_name?: string | null; markdown_formatted?: string | null } | null
 }
 
 interface RespuestaLista {
@@ -53,6 +68,13 @@ interface RespuestaLista {
 
 export function credencialesConfiguradas(): boolean {
   return !!process.env.FATHOM_API_KEY
+}
+
+/** El recording_id como texto, que es como lo guarda la base. */
+export function idDeReunion(reunion: Pick<ReunionFathom, 'recording_id'>): string | null {
+  const id = reunion.recording_id
+  if (id === null || id === undefined || id === '') return null
+  return String(id)
 }
 
 async function llamar<T>(ruta: string): Promise<T> {
@@ -74,6 +96,48 @@ async function llamar<T>(ruta: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
+export interface PaginaReuniones {
+  reuniones: ReunionFathom[]
+  /** Cursor para seguir desde donde quedó. Null si ya no hay más páginas. */
+  siguienteCursor: string | null
+  paginas: number
+}
+
+/**
+ * Reuniones desde una fecha, con el cursor para continuar.
+ *
+ * Existe aparte de listarReuniones para el backfill: recorrer dos meses de
+ * grabaciones no cabe en los 60 segundos de una función, así que se trae de a
+ * pocas páginas por invocación y se devuelve el cursor para la siguiente.
+ */
+export async function listarPaginaDeReuniones(opciones: {
+  desde: Date
+  hasta?: Date | null
+  cursor?: string | null
+  maxPaginas?: number
+}): Promise<PaginaReuniones> {
+  const maxPaginas = opciones.maxPaginas ?? 10
+  const reuniones: ReunionFathom[] = []
+  let cursor: string | null = opciones.cursor ?? null
+  let paginas = 0
+
+  do {
+    const params = new URLSearchParams({
+      created_after: opciones.desde.toISOString(),
+      include_summary: 'true',
+    })
+    if (opciones.hasta) params.set('created_before', opciones.hasta.toISOString())
+    if (cursor) params.set('cursor', cursor)
+
+    const data: RespuestaLista = await llamar<RespuestaLista>(`/meetings?${params}`)
+    reuniones.push(...(data.items ?? []))
+    cursor = data.next_cursor ?? null
+    paginas++
+  } while (cursor && paginas < maxPaginas)
+
+  return { reuniones, siguienteCursor: cursor, paginas }
+}
+
 /**
  * Las reuniones grabadas desde una fecha.
  *
@@ -89,29 +153,18 @@ export async function listarReuniones(
   desde: Date,
   maxPaginas = 10
 ): Promise<ReunionFathom[]> {
-  const reuniones: ReunionFathom[] = []
-  let cursor: string | null = null
-  let pagina = 0
-
-  do {
-    const params = new URLSearchParams({
-      created_after: desde.toISOString(),
-      include_summary: 'true',
-    })
-    if (cursor) params.set('cursor', cursor)
-
-    const data: RespuestaLista = await llamar<RespuestaLista>(`/meetings?${params}`)
-    reuniones.push(...(data.items ?? []))
-    cursor = data.next_cursor ?? null
-    pagina++
-  } while (cursor && pagina < maxPaginas)
-
+  const { reuniones } = await listarPaginaDeReuniones({ desde, maxPaginas })
   return reuniones
 }
 
-/** Los correos de los invitados externos: el prospecto, no el equipo del negocio. */
-export function correosExternos(reunion: ReunionFathom): string[] {
-  return (reunion.calendar_invitees ?? [])
-    .filter((i) => i.email && i.is_external !== false)
+/** Los invitados externos: el prospecto, no el equipo del negocio. */
+export function invitadosExternos(invitados: InvitadoFathom[] | null | undefined): InvitadoFathom[] {
+  return (invitados ?? []).filter((i) => i.is_external !== false)
+}
+
+/** Los correos de los invitados externos. */
+export function correosExternos(reunion: Pick<ReunionFathom, 'calendar_invitees'>): string[] {
+  return invitadosExternos(reunion.calendar_invitees)
+    .filter((i) => i.email)
     .map((i) => i.email!.toLowerCase())
 }

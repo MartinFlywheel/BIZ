@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { crearCupo, esPortadaGuardada, esVideo, guardarImagen } from '@/lib/services/portadas'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -21,45 +22,6 @@ interface SyncPayload {
   competitor_id: string
   mode?: 'replace' | 'upsert'
   reels: ReelPayload[]
-}
-
-async function uploadThumbnail(
-  supabase: ReturnType<typeof createAdminClient>,
-  competitorId: string,
-  mediaId: string,
-  thumbnailUrl: string
-): Promise<string | null> {
-  try {
-    const res = await fetch(thumbnailUrl, { redirect: 'follow' })
-    if (!res.ok) return null
-
-    const contentType = res.headers.get('content-type') || 'image/jpeg'
-    const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg'
-    const buffer = await res.arrayBuffer()
-
-    const path = `competitors/${competitorId}/${mediaId}.${ext}`
-
-    const { error } = await supabase.storage
-      .from('thumbnails')
-      .upload(path, buffer, {
-        contentType,
-        upsert: true,
-      })
-
-    if (error) {
-      console.error('[CompetitorSync] Upload error:', error.message)
-      return null
-    }
-
-    const { data: urlData } = supabase.storage
-      .from('thumbnails')
-      .getPublicUrl(path)
-
-    return urlData.publicUrl
-  } catch (err) {
-    console.error('[CompetitorSync] Thumbnail fetch error:', err)
-    return null
-  }
 }
 
 export async function POST(request: Request) {
@@ -92,6 +54,19 @@ export async function POST(request: Request) {
 
     const mode = payload.mode || 'replace'
 
+    // Portadas ya guardadas en Storage para este competidor, leídas antes del
+    // borrado del modo 'replace': así cada llamada no vuelve a descargar y
+    // subir las mismas imágenes, y el tope de subidas alcanza para las nuevas.
+    const { data: previos } = await supabase
+      .from('competitor_reels')
+      .select('ig_media_id, thumbnail_url')
+      .eq('competitor_id', payload.competitor_id)
+    const guardadaPorMedio = new Map(
+      (previos || [])
+        .filter((r) => esPortadaGuardada(r.thumbnail_url))
+        .map((r) => [r.ig_media_id as string, r.thumbnail_url as string])
+    )
+
     if (mode === 'replace') {
       await supabase
         .from('competitor_reels')
@@ -107,14 +82,20 @@ export async function POST(request: Request) {
     const validReels = payload.reels.filter((r) => r.ig_media_id || r.video_url)
     skipped = payload.reels.length - validReels.length
 
+    // Tope de subidas por llamada para no pasar los 60 s; el resto queda con
+    // la URL del CDN y se guarda en la llamada siguiente.
+    const cupo = crearCupo()
     const rows = []
     for (let i = 0; i < validReels.length; i++) {
       const reel = validReels[i]
       const mediaId = reel.ig_media_id || `ext_${Date.now()}_${i}`
+      // Un mp4 no es portada: un <img> no lo puede mostrar.
+      const origen = reel.thumbnail_url && !esVideo(reel.thumbnail_url) ? reel.thumbnail_url : null
 
-      let permanentUrl: string | null = null
-      if (reel.thumbnail_url) {
-        permanentUrl = await uploadThumbnail(supabase, payload.competitor_id, mediaId, reel.thumbnail_url)
+      let permanentUrl: string | null = guardadaPorMedio.get(mediaId) ?? null
+      if (!permanentUrl && origen && cupo.restantes > 0) {
+        cupo.restantes--
+        permanentUrl = await guardarImagen(supabase, `competitors/${payload.competitor_id}/${mediaId}`, origen)
         if (permanentUrl) thumbnailsUploaded++
       }
 
@@ -122,7 +103,7 @@ export async function POST(request: Request) {
         competitor_id: payload.competitor_id,
         ig_media_id: mediaId,
         video_url: reel.video_url || null,
-        thumbnail_url: permanentUrl || reel.thumbnail_url || null,
+        thumbnail_url: permanentUrl || origen,
         caption: reel.caption || null,
         views: reel.views || 0,
         likes: reel.likes || 0,

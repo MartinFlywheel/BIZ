@@ -92,9 +92,12 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
     const prog: Lead[] = []
     const agen: Lead[] = []
 
-    const hoyStr = new Date().toISOString().split('T')[0]
+    // Un solo instante para "hoy" y "ahora": con dos lecturas del reloj, un
+    // cálculo justo a medianoche podía mezclar dos días distintos.
+    const instante = new Date()
+    const hoyStr = instante.toISOString().split('T')[0]
     const startOfToday = new Date(hoyStr + 'T00:00:00.000Z').getTime()
-    const now = Date.now()
+    const now = instante.getTime()
 
     for (const lead of scopedLeads) {
       // leads que agendaron hoy (para la estadística de "agendaron")

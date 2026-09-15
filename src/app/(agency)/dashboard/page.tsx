@@ -112,12 +112,22 @@ async function ClientDetail({
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
-  const [funnel, liveMetrics] = await Promise.all([
+  // Los benchmarks se piden apenas llegan las métricas en vivo, sin esperar al
+  // funnel: antes iban en serie después de las dos cargas, así que la sección
+  // tardaba la más lenta de las dos MÁS la consulta de benchmarks. Son un
+  // adorno de las tarjetas; si fallan, las tarjetas salen sin alerta.
+  const liveMetricsPromise = getDashboardMetrics(clientId)
+  const [funnel, liveMetrics, alerts] = await Promise.all([
     calculateFunnel(clientId, period, undefined, contentType),
-    getDashboardMetrics(clientId),
+    liveMetricsPromise,
+    liveMetricsPromise
+      .then((m) => (m ? getBenchmarkAlerts(clientId, m) : []))
+      .catch((e) => {
+        console.error('[dashboard] benchmarks fallaron:', e instanceof Error ? e.message : e)
+        return []
+      }),
   ])
 
-  const alerts = liveMetrics ? await getBenchmarkAlerts(clientId, liveMetrics) : []
   const alertMap = Object.fromEntries(alerts.map((a) => [a.metric_key, a]))
 
   return (

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { RefreshCw, ArrowUpRight, Bell, CheckCircle2, ChevronDown, AlertTriangle, Plus, Layers } from 'lucide-react'
-import { getTaskBoard, syncNotionTasksAction, type TaskBoardData } from '@/lib/actions/tasks'
+import { getTaskBoard, type TaskBoardData } from '@/lib/actions/tasks'
 import type { TeamTask } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import {
@@ -19,6 +19,29 @@ const STALE_MS = 3 * 60 * 1000
 // este panel —que vive dentro de la pestaña CRM— relanzaría un sync completo
 // contra Notion en cada visita a cualquier cliente.
 const autoSyncFallido = new Set<string>()
+
+type ResultadoSync = { success: true; synced: number } | { success: false; error: string }
+
+/**
+ * La sincronización con Notion va por fetch a un route handler y no como
+ * server action: Next despacha las server actions del navegador de a una, y
+ * mientras Notion respondía (varios segundos) el resto de la pantalla —la
+ * pestaña CRM, el aviso de tareas— quedaba esperando detrás.
+ */
+async function sincronizarNotion(clientId: string): Promise<ResultadoSync> {
+  try {
+    const res = await fetch('/api/tareas/sincronizar-notion', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId }),
+    })
+    const data = (await res.json().catch(() => null)) as ResultadoSync | null
+    if (data && typeof data.success === 'boolean') return data
+    return { success: false, error: `No se pudo sincronizar (HTTP ${res.status})` }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : 'Error inesperado' }
+  }
+}
 
 /**
  * Lo que ve el equipo dentro del CRM, al lado de Equipo: el espejo de lo que
@@ -40,13 +63,16 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
 
   useEffect(() => {
     let cancelled = false
+    // Primero el tablero tal como está en la base, para mostrar algo en el
+    // acto; la sincronización con Notion corre después en segundo plano y, si
+    // trae cambios, se vuelve a pedir el tablero.
     getTaskBoard(clientId)
       .then(async (data) => {
         if (cancelled) return
         setBoard(data)
         const stale = data.config.connected && (!data.config.syncedAt || Date.now() - new Date(data.config.syncedAt).getTime() > STALE_MS)
         if (!stale || autoSyncFallido.has(clientId)) return
-        const result = await syncNotionTasksAction(clientId).catch(() => ({ success: false as const, error: '' }))
+        const result = await sincronizarNotion(clientId)
         if (!result.success) {
           autoSyncFallido.add(clientId)
           return
@@ -63,10 +89,7 @@ export function TasksPanel({ clientId, isAdmin, currentUserId }: { clientId: str
 
   async function resync() {
     setSyncing(true)
-    const result = await syncNotionTasksAction(clientId).catch((e) => ({
-      success: false as const,
-      error: e instanceof Error ? e.message : 'Error inesperado',
-    }))
+    const result = await sincronizarNotion(clientId)
     if (result.success) {
       autoSyncFallido.delete(clientId)
       setBoard(await getTaskBoard(clientId))

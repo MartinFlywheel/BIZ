@@ -2,8 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getSessionProfile } from '@/lib/supabase/session'
 import { getAgencyUsers } from './team'
 import type { LeadStage } from '@/lib/types'
+import {
+  diaDeLaSemana, hoyChile, lunesDe, maxFecha, mesDe, minFecha, primerDiaDelMes, sumarDias, ultimoDiaDe,
+} from '@/lib/fecha-chile'
 
 // Terminal stages excluded from the setter's day-to-day working list — a
 // closed or disqualified lead has nothing left to action on a phone screen.
@@ -36,26 +40,37 @@ export interface SetterContext {
 // page needs. Admins have no client_id of their own; ?client= picks one
 // for them the same way the desktop Dashboard's client selector does.
 export async function getSetterContext(requestedClientId?: string): Promise<SetterContext | null> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const { data: profile } = await supabase
-    .from('users')
-    .select('full_name, role, client_id')
-    .eq('id', user.id)
-    .single()
+  // getSessionProfile se comparte dentro del mismo render (React cache) y
+  // valida el JWT sin ir a Supabase Auth: antes cada pantalla hacía aquí su
+  // propio auth.getUser() además del que ya hizo el layout.
+  const profile = await getSessionProfile()
   if (!profile) return null
 
   const clientId = profile.role === 'admin' ? (requestedClientId ?? null) : profile.client_id
 
   let clientName: string | null = null
   if (clientId) {
+    const supabase = await createClient()
     const { data: client } = await supabase.from('clients').select('name').eq('id', clientId).maybeSingle()
     clientName = client?.name ?? null
   }
 
-  return { userId: user.id, fullName: profile.full_name, clientId, clientName, isAdmin: profile.role === 'admin' }
+  return { userId: profile.id, fullName: profile.full_name, clientId, clientName, isAdmin: profile.role === 'admin' }
+}
+
+/**
+ * Qué puede pedir quien llama. clientId y setterId llegan del navegador en
+ * la búsqueda y la paginación de la lista, y una acción de servidor se puede
+ * invocar con cualquier valor: sin esto, una setter podía pasar setterId null
+ * (la vista de admin) o el id de otro cliente y ver leads que no le tocan.
+ * El admin conserva lo que pidió; el resto queda en su cliente y sus leads.
+ */
+async function acotarAlUsuario(clientId: string, setterId: string | null): Promise<string | null> {
+  const perfil = await getSessionProfile()
+  if (!perfil || perfil.user_type !== 'agency') throw new Error('No autenticado')
+  if (perfil.role === 'admin') return setterId
+  if (perfil.client_id !== clientId) throw new Error('No tienes acceso a este cliente')
+  return perfil.id
 }
 
 const PAGE_SIZE = 30
@@ -80,6 +95,7 @@ export async function getMyActiveLeads(
   page = 0,
   filters?: LeadFilters
 ): Promise<{ leads: SetterLeadCard[]; hasMore: boolean }> {
+  setterId = await acotarAlUsuario(clientId, setterId)
   const supabase = await createClient()
 
   const from = page * PAGE_SIZE
@@ -102,9 +118,11 @@ export async function getMyActiveLeads(
     query = query.not('stage', 'in', `(${TERMINAL_STAGES.join(',')})`)
   }
 
-  const search = filters?.search?.trim()
+  // Coma, paréntesis y comillas son sintaxis del filtro `or` de PostgREST:
+  // buscar "perez, ana" rompía la consulta y la app decía "No se pudo buscar".
+  const search = filters?.search?.replace(/[,()"]/g, ' ').trim()
   if (search) {
-    const escaped = search.replace(/[%_]/g, (c) => `\\${c}`)
+    const escaped = search.replace(/[\\%_]/g, (c) => `\\${c}`)
     query = query.or(`full_name.ilike.%${escaped}%,ig_username.ilike.%${escaped}%`)
   }
 
@@ -168,6 +186,7 @@ export async function getMyAgendas(
   setterFullName: string | null,
   period?: { year: number; month: number }
 ): Promise<SetterAgendaRow[]> {
+  setterId = await acotarAlUsuario(clientId, setterId)
   const supabase = await createClient()
 
   let query = supabase
@@ -482,21 +501,30 @@ export async function getAgendaGoalProgress(
 ): Promise<AgendaGoalProgress> {
   const supabase = await createClient()
 
-  const now = new Date()
-  const today = now.toISOString().split('T')[0]
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-  const day = now.getDay()
+  // "Hoy", la semana y el mes son los de Chile, no los del servidor. Vercel
+  // corre en UTC: desde las 20:00-21:00 de Santiago el servidor ya estaba en
+  // el día siguiente (y el último día del mes, en el mes siguiente), así que
+  // la meta diaria se reiniciaba en plena tarde.
+  //
+  // Cada período tiene tope. Antes semana y mes solo tenían límite inferior:
+  // "Agendas esta semana" sumaba todas las llamadas ya agendadas para las
+  // semanas siguientes, y "este mes" las de los meses siguientes.
+  const today = hoyChile().iso
+  const monthStart = primerDiaDelMes(mesDe(today))
+  const monthEnd = ultimoDiaDe(mesDe(today))
+  const day = diaDeLaSemana(today)
   const isWeekday = day >= 1 && day <= 5
-  const diffToMonday = day === 0 ? -6 : 1 - day
-  const weekStartDate = new Date(now)
-  weekStartDate.setDate(weekStartDate.getDate() + diffToMonday)
-  const weekStart = weekStartDate.toISOString().split('T')[0]
+  const weekStart = lunesDe(today)
+  const weekEnd = sumarDias(weekStart, 6)
+  const desde = minFecha(weekStart, monthStart)
+  const hasta = maxFecha(weekEnd, monthEnd)
 
   const { data, error } = await supabase
     .from('agenda_records')
     .select('fecha_agenda, setter, leads(assigned_to)')
     .eq('client_id', clientId)
-    .gte('fecha_agenda', monthStart)
+    .gte('fecha_agenda', desde)
+    .lte('fecha_agenda', hasta)
 
   if (error) throw error
 
@@ -511,10 +539,15 @@ export async function getAgendaGoalProgress(
       : !!nameLower && !!r.setter && r.setter.toLowerCase().includes(nameLower)
   )
 
+  // La consulta cubre la unión de semana y mes (una semana puede empezar en el
+  // mes anterior o terminar en el siguiente); cada contador filtra lo suyo.
+  const entre = (r: { fecha_agenda: string | null }, a: string, b: string) =>
+    !!r.fecha_agenda && r.fecha_agenda >= a && r.fecha_agenda <= b
+
   return {
     agendasToday: mine.filter((r) => r.fecha_agenda === today).length,
-    agendasThisWeek: mine.filter((r) => r.fecha_agenda && r.fecha_agenda >= weekStart).length,
-    agendasThisMonth: mine.length,
+    agendasThisWeek: mine.filter((r) => entre(r, weekStart, weekEnd)).length,
+    agendasThisMonth: mine.filter((r) => entre(r, monthStart, monthEnd)).length,
     isWeekday,
   }
 }
@@ -526,6 +559,16 @@ export interface SubmitReportInput {
 
 export async function submitDailyReport(userId: string, clientId: string, input: SubmitReportInput): Promise<void> {
   const supabase = await createClient()
+
+  // userId y clientId llegan desde el navegador: una acción de servidor se
+  // puede llamar con cualquier valor. Sin este control, alguien con sesión
+  // podía guardar un reporte a nombre de otra setter, y con eso reiniciarle
+  // el ciclo (getCycleStart toma el último reporte de ese userId).
+  const perfil = await getSessionProfile()
+  if (!perfil) throw new Error('No autenticado')
+  if (perfil.id !== userId) throw new Error('Solo puedes enviar tu propio reporte')
+  if (perfil.client_id !== clientId) throw new Error('Este reporte no corresponde a tu cliente')
+
   const progress = await getCycleProgress(userId, clientId)
   const followupsTotal = progress.followupsByStage.reduce((sum, f) => sum + f.count, 0)
 
@@ -641,13 +684,16 @@ export async function getSettersProgress(clientId: string): Promise<SetterProgre
   const users = await getAgencyUsers(clientId)
   const setters = users.filter((s) => s.role === 'setter')
 
+  // Los dos cálculos de cada setter son independientes: antes el segundo
+  // esperaba al primero dentro de cada fila.
   const rows = await Promise.all(
-    setters.map(async (s) => ({
-      userId: s.id,
-      fullName: s.full_name,
-      cycle: await getCycleProgress(s.id, clientId),
-      agendas: await getAgendaGoalProgress(s.id, clientId, s.full_name),
-    }))
+    setters.map(async (s) => {
+      const [cycle, agendas] = await Promise.all([
+        getCycleProgress(s.id, clientId),
+        getAgendaGoalProgress(s.id, clientId, s.full_name),
+      ])
+      return { userId: s.id, fullName: s.full_name, cycle, agendas }
+    })
   )
 
   return rows
