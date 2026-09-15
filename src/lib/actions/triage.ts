@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizarTelefono } from '@/lib/phone'
 import { normalizarInstagram } from '@/lib/services/calendly-event'
 import { moverLeadAAgendado } from '@/lib/services/agenda-sync'
+import { codigoDeOrigenDelLead } from '@/lib/services/origen-lead'
 import { aplicarResultadoAgenda } from '@/lib/services/resultado-agenda'
 import { pickBalancedSetter } from '@/lib/manychat'
 import {
@@ -637,11 +638,15 @@ export async function asociarLeadAAgenda(agendaId: string, leadId: string): Prom
 
   const { data: agenda, error } = await supabase
     .from('agenda_records')
-    .select('client_id, link_perfil, hora_agenda')
+    .select('client_id, link_perfil, hora_agenda, de_donde_vino')
     .eq('id', agendaId)
     .maybeSingle()
   if (error || !agenda) return { ok: false, error: 'No se encontró la agenda' }
   if (agenda.client_id !== lead.client_id) return { ok: false, error: 'El lead es de otro cliente' }
+
+  // Una agenda del calendario llega sin lead y, por lo tanto, sin CTA: al
+  // asociarla se completa con la pieza de la que vino el lead.
+  const codigo = agenda.de_donde_vino ? null : await codigoDeOrigenDelLead(supabase, leadId)
 
   const { error: errorUpdate } = await supabase
     .from('agenda_records')
@@ -649,6 +654,7 @@ export async function asociarLeadAAgenda(agendaId: string, leadId: string): Prom
       lead_id: leadId,
       match_metodo: 'manual',
       ...(!agenda.link_perfil && lead.ig_username ? { link_perfil: `https://instagram.com/${lead.ig_username}` } : {}),
+      ...(codigo ? { de_donde_vino: codigo } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', agendaId)

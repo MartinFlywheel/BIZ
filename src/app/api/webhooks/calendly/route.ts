@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isoChileDe } from '@/lib/fecha-chile'
 import { buscarAgendaManualEquivalente, moverLeadAAgendado } from '@/lib/services/agenda-sync'
+import { codigoDeOrigenDelLead } from '@/lib/services/origen-lead'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -242,7 +243,8 @@ export async function POST(request: Request) {
             fecha_agenda: fechaAgenda,
             fecha_agendado: isoChileDe(new Date()),
             link_reunion: meetingUrl,
-            de_donde_vino: eventData.name ?? null,
+            // La pieza de la que vino el lead, no el nombre del evento de Calendly.
+            de_donde_vino: await codigoDeOrigenDelLead(supabase, leadId),
             estado: 'Pendiente',
           })
           .select('id')

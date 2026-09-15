@@ -2,6 +2,7 @@ import { normalizarTelefono } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { parsearEventoCalendly, type EventoCalendly } from './calendly-event'
 import { mismoNombre } from './nombres'
+import { codigoDeOrigenDelLead } from './origen-lead'
 import {
   listarCambios,
   invitarAEvento,
@@ -476,7 +477,12 @@ async function procesarEvento(
     if (ctx.emailDisponible && !manual.email_lead && datos.email) cambios.email_lead = datos.email
     if (!manual.link_reunion && enlace) cambios.link_reunion = enlace
     if (!manual.link_perfil && datos.instagram) cambios.link_perfil = `https://instagram.com/${datos.instagram}`
-    if (!manual.de_donde_vino && datos.tipoEvento) cambios.de_donde_vino = datos.tipoEvento
+    // El CTA es la pieza de la que vino el lead, no el nombre del evento de
+    // Calendly ("30 Minute Meeting"), que no dice nada del origen.
+    if (!manual.de_donde_vino) {
+      const codigo = await codigoDeOrigenDelLead(supabase, manual.lead_id ?? leadId)
+      if (codigo) cambios.de_donde_vino = codigo
+    }
     if (!manual.respuestas_formulario || Object.keys(manual.respuestas_formulario).length === 0) {
       cambios.respuestas_formulario = datos.respuestas
     }
@@ -504,7 +510,7 @@ async function procesarEvento(
     fecha_agenda: fechaAgenda,
     fecha_agendado: (evento.created ?? new Date().toISOString()).split('T')[0],
     link_reunion: enlace,
-    de_donde_vino: datos.tipoEvento,
+    de_donde_vino: await codigoDeOrigenDelLead(supabase, leadId),
     respuestas_formulario: datos.respuestas,
     match_metodo: metodo,
     estado: 'Pendiente',
