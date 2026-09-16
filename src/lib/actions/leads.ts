@@ -387,16 +387,18 @@ async function ensureAgendaRecordForLead(
   lead: { id: string; client_id: string; full_name: string | null; ig_username: string | null; content_id: string | null; first_touch_at: string | null; first_touch_type: string | null; lead_avatar: string | null },
   agendaDate: string
 ) {
+  // limit(1) y no maybeSingle(): un lead que reagendó tiene varias agendas, y
+  // maybeSingle() fallaba con "multiple rows" al volver a moverlo de etapa.
   const { data: existing, error: existingError } = await supabase
     .from('agenda_records')
     .select('id')
     .eq('lead_id', lead.id)
-    .maybeSingle()
+    .limit(1)
   if (existingError) {
     console.error('[ensureAgendaRecordForLead] lookup failed:', existingError.message)
     throw existingError
   }
-  if (existing) return
+  if (existing && existing.length > 0) return
 
   let keyword: string | null = null
   if (lead.content_id) {
