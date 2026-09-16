@@ -1,5 +1,6 @@
 import { normalizarTelefono } from '@/lib/phone'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { leadPorInstagram } from '@/lib/lead-por-instagram'
 import { parsearEventoCalendly, type EventoCalendly } from './calendly-event'
 import { mismoNombre } from './nombres'
 import { codigoDeOrigenDelLead } from './origen-lead'
@@ -130,16 +131,9 @@ async function buscarLead(
   clientId: string,
   datos: EventoCalendly
 ): Promise<{ leadId: string | null; metodo: MatchMetodo }> {
-  if (datos.instagram) {
-    const { data } = await supabase
-      .from('leads')
-      .select('id')
-      .eq('client_id', clientId)
-      .ilike('ig_username', datos.instagram)
-      .limit(1)
-      .maybeSingle()
-    if (data) return { leadId: data.id, metodo: 'instagram' }
-  }
+  // Con "_" escapado: sin eso "ana_perez" también cruzaba con "ana.perez".
+  const porInstagram = await leadPorInstagram(supabase, clientId, datos.instagram)
+  if (porInstagram) return { leadId: porInstagram.id, metodo: 'instagram' }
 
   const telefono = normalizarTelefono(datos.telefono)
   if (telefono) {

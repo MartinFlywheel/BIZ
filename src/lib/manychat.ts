@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { exigirTokenManyChat } from '@/lib/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -522,17 +523,21 @@ export async function registrarChat(supabase: AdminClient, d: DatosChat): Promis
   const keyword = esCodigoValido(codigo) ? codigo : null
 
   // Upsert lead
-  const { data: existingLead, error: errorBusqueda } = await supabase
-    .from('leads')
-    .select('id, first_touch_content_id, assigned_to, interaction_id')
-    .eq('client_id', clientId)
-    .eq('ig_username', contacto.igUsername)
-    // Sin índice único por usuario puede haber duplicados: maybeSingle a
-    // secas fallaba con dos filas y el webhook creaba un tercero.
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (errorBusqueda) throw errorBusqueda
+  // Misma normalización que el índice único por Instagram de la 081. Antes se
+  // comparaba exacto y ManyChat creó el mismo contacto tres veces en un
+  // minuto (teru_tessa).
+  const buscarLead = async () => {
+    const encontrado = await leadPorInstagram(supabase, clientId, contacto.igUsername)
+    if (!encontrado) return null
+    const { data, error } = await supabase
+      .from('leads')
+      .select('id, first_touch_content_id, assigned_to, interaction_id')
+      .eq('id', encontrado.id)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }
+  let existingLead = await buscarLead()
 
   let leadId: string
 
@@ -595,8 +600,15 @@ export async function registrarChat(supabase: AdminClient, d: DatosChat): Promis
       .select('id')
       .single()
 
-    if (insertError || !newLead) throw insertError || new Error('No se pudo crear el lead')
-    leadId = newLead.id as string
+    // Otra llamada del mismo contacto lo creó un instante antes (índice 081).
+    const ganador = esDuplicado(insertError) ? await buscarLead() : null
+    if (ganador) {
+      existingLead = ganador
+      leadId = ganador.id as string
+    } else {
+      if (insertError || !newLead) throw insertError || new Error('No se pudo crear el lead')
+      leadId = newLead.id as string
+    }
   }
 
   // Auto-assign a setter the moment a lead reaches conversación real or

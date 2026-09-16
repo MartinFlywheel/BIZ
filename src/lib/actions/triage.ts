@@ -9,6 +9,7 @@ import { moverLeadAAgendado } from '@/lib/services/agenda-sync'
 import { codigoDeOrigenDelLead } from '@/lib/services/origen-lead'
 import { aplicarResultadoAgenda } from '@/lib/services/resultado-agenda'
 import { pickBalancedSetter } from '@/lib/manychat'
+import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
 import {
   POSTERGACIONES_PARA_ESCALAR,
   closerDeLaAgenda,
@@ -692,10 +693,8 @@ async function leadExistente(
     .order('created_at', { ascending: true })
     .limit(1)
 
-  if (datos.ig) {
-    const { data } = await base().ilike('ig_username', literalIlike(datos.ig))
-    if (data?.[0]) return data[0].id as string
-  }
+  const porIg = await leadPorInstagram(supabase, clientId, datos.ig)
+  if (porIg) return porIg.id
   if (datos.telefono) {
     // Sin la migración 059 no hay phone_e164: se ignora el error y se sigue.
     const { data } = await base().eq('phone_e164', datos.telefono)
@@ -757,7 +756,18 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
     })
     .select('id')
     .single()
-  if (error) return { ok: false, error: error.message }
+  if (error) {
+    // Otra persona creó el mismo lead al mismo tiempo: se asocia ese.
+    if (esDuplicado(error)) {
+      const ganador = await leadExistente(supabase, a.client_id, {
+        ig,
+        email: a.email_lead ?? null,
+        telefono: normalizarTelefono(preguntaTel ? respuestas[preguntaTel] : null),
+      })
+      if (ganador) return asociarLeadAAgenda(agendaId, ganador)
+    }
+    return { ok: false, error: error.message }
+  }
 
   const { error: errorUpdate } = await supabase
     .from('agenda_records')

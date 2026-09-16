@@ -94,10 +94,12 @@ export async function POST(request: Request) {
       .single()
 
     if (error) {
-      // Dos llamadas simultáneas con el mismo teléfono: la segunda choca con
-      // el índice único de la 061. Se devuelve la que ganó.
+      // Dos llamadas simultáneas con la misma persona: la segunda choca con
+      // el índice único por teléfono (061) o por Instagram (081). Se devuelve
+      // la que ganó.
       if (error.code === '23505') {
-        const existente = await buscarLeadPorTelefono(supabase, agente.clientId, e164)
+        const existente = (await buscarLeadPorTelefono(supabase, agente.clientId, e164))
+          ?? (instagram ? await buscarLeadPorInstagram(supabase, agente.clientId, instagram) : null)
         if (existente) return NextResponse.json({ created: false, lead: await resumenLead(supabase, existente) })
       }
       throw error

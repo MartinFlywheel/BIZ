@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
 import {
   resolveClassification,
   upsertInteraction,
@@ -131,14 +132,17 @@ export async function POST(request: Request) {
     }
 
     // ── Step 4: Upsert lead ──────────────────────────────────────
-    const { data: existingLead } = await supabase
-      .from('leads')
-      .select('id, stage, first_touch_content_id, assigned_to')
-      .eq('client_id', clientId)
-      .eq('ig_username', igUsername)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle()
+    const buscarLead = async () => {
+      const encontrado = await leadPorInstagram(supabase, clientId, igUsername)
+      if (!encontrado) return null
+      const { data } = await supabase
+        .from('leads')
+        .select('id, stage, first_touch_content_id, assigned_to')
+        .eq('id', encontrado.id)
+        .maybeSingle()
+      return data
+    }
+    let existingLead = await buscarLead()
 
     let leadId: string
 
@@ -187,13 +191,19 @@ export async function POST(request: Request) {
         .select('id')
         .single()
 
-      if (insertError) {
-        console.error('[ManyChat] Lead insert error:', insertError.message)
-        await markLogError(supabase, webhookLogId, `Lead insert failed: ${insertError.message}`)
+      // Dos llamadas del mismo contacto casi juntas: la segunda choca con el
+      // índice único por Instagram (081) y usa el lead que creó la primera.
+      const ganador = esDuplicado(insertError) ? await buscarLead() : null
+      if (ganador) {
+        existingLead = ganador
+        leadId = ganador.id
+      } else if (insertError || !newLead) {
+        console.error('[ManyChat] Lead insert error:', insertError?.message)
+        await markLogError(supabase, webhookLogId, `Lead insert failed: ${insertError?.message}`)
         return NextResponse.json({ error: 'Lead creation failed' }, { status: 500 })
+      } else {
+        leadId = newLead.id
       }
-
-      leadId = newLead.id
     }
 
     // ── Step 5: Register interaction ─────────────────────────────

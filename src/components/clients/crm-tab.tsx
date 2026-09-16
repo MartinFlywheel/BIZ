@@ -556,7 +556,8 @@ function NuevoLeadModal({
     try {
       const fd = new FormData(e.currentTarget)
       fd.set('client_id', clientId)
-      await createLeadAction(fd)
+      const r = await createLeadAction(fd)
+      if (r.error) { setError(r.error); return }
       router.refresh()
       onClose()
     } catch (err) {

@@ -448,7 +448,8 @@ function NuevoLeadForm({
         try {
             const formData = new FormData(e.currentTarget)
             formData.set('client_id', clientId)
-            await createLeadAction(formData)
+            const r = await createLeadAction(formData)
+            if (r.error) { setError(r.error); return }
             router.refresh()
             onClose()
         } catch (err) {

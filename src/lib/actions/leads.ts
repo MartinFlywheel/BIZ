@@ -7,6 +7,8 @@ import { revalidatePath } from 'next/cache'
 import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
 import { fetchAllRows, fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 import { pickBalancedSetter } from '@/lib/manychat'
+import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
+import { normalizarInstagram } from '@/lib/services/calendly-event'
 import { getInteractionsForCrm, type InteraccionCrm } from '@/lib/actions/interactions'
 import { getAgencyUsers } from '@/lib/actions/team'
 
@@ -530,9 +532,36 @@ export async function updateLeadAction(id: string, formData: FormData) {
   revalidatePath('/leads')
 }
 
-export async function createLeadAction(formData: FormData) {
+/**
+ * El mensaje para quien intenta crear un lead que ya existe, con el nombre de
+ * la setter para que sepa a quién preguntarle.
+ */
+async function mensajeLeadRepetido(clientId: string, instagram: string | null): Promise<string | null> {
+  const existente = await leadPorInstagram(createAdminClient(), clientId, instagram)
+  if (!existente) return null
+  let dueno = 'nadie'
+  if (existente.assigned_to) {
+    const { data } = await createAdminClient()
+      .from('users')
+      .select('full_name')
+      .eq('id', existente.assigned_to)
+      .maybeSingle()
+    dueno = (data?.full_name as string | null) ?? 'otra persona'
+  }
+  const ig = normalizarInstagram(instagram)
+  return `Ya existe un lead con @${ig} (asignado a ${dueno}). Búscalo en la tabla en vez de crear otro.`
+}
+
+// Devuelve el error en vez de lanzarlo: en producción Next oculta el mensaje
+// de un throw en una server action, y "ya existe" es algo que la setter tiene
+// que leer.
+export async function createLeadAction(formData: FormData): Promise<{ error?: string }> {
   const supabase = await createClient()
   const clientId = formData.get('client_id') as string
+  const instagram = normalizarInstagram(formData.get('ig_username') as string | null)
+
+  const repetido = await mensajeLeadRepetido(clientId, instagram)
+  if (repetido) return { error: repetido }
 
   // Every lead needs an owner — same balanced pick the ManyChat webhooks
   // use, so a lead added by hand doesn't sit unassigned just because
@@ -542,7 +571,7 @@ export async function createLeadAction(formData: FormData) {
 
   const { error } = await supabase.from('leads').insert({
     client_id: clientId,
-    ig_username: (formData.get('ig_username') as string) || null,
+    ig_username: instagram,
     full_name: (formData.get('full_name') as string) || null,
     phone: (formData.get('phone') as string) || null,
     email: (formData.get('email') as string) || null,
@@ -555,9 +584,15 @@ export async function createLeadAction(formData: FormData) {
       : null,
   })
 
-  if (error) throw error
+  if (error) {
+    if (esDuplicado(error)) {
+      return { error: (await mensajeLeadRepetido(clientId, instagram)) ?? 'Ya existe un lead con ese teléfono o Instagram.' }
+    }
+    throw error
+  }
   revalidatePath('/leads')
   revalidatePath(`/clients/${clientId}`)
+  return {}
 }
 
 export async function updateLeadFieldsAction(id: string, fields: {
@@ -581,7 +616,10 @@ export async function updateLeadFieldsAction(id: string, fields: {
     .from('leads')
     .update({ ...fields, updated_at: new Date().toISOString() })
     .eq('id', id)
-  if (error) throw error
+  if (error) {
+    if (esDuplicado(error)) throw new Error('Ese Instagram o teléfono ya es de otro lead de este cliente.')
+    throw error
+  }
 }
 
 export async function deleteLeadAction(id: string) {

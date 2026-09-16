@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import type { InteractionClassification, InteractionSource, Interaction } from '@/lib/types'
 import { fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 import { pickBalancedSetter } from '@/lib/manychat'
+import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
 
 export async function getInteractions(clientId?: string) {
   const supabase = await createClient()
@@ -107,7 +108,18 @@ export async function promoteToLeadAction(interactionId: string, formData: FormD
   // lead never sits unassigned just because the form didn't pick a setter.
   const assignedTo = (formData.get('assigned_to') as string) || await pickBalancedSetter(createAdminClient(), interaction.client_id)
 
-  const { error: leadError } = await supabase.from('leads').insert({
+  // Si la persona ya es lead (llegó por otra vía), se le enlaza la
+  // interacción en vez de crear un segundo lead con el mismo Instagram.
+  const existente = await leadPorInstagram(supabase, interaction.client_id, interaction.ig_username)
+  if (existente) {
+    await supabase
+      .from('leads')
+      .update({ interaction_id: interactionId, updated_at: new Date().toISOString() })
+      .eq('id', existente.id)
+      .is('interaction_id', null)
+  }
+
+  const { error: leadError } = existente ? { error: null } : await supabase.from('leads').insert({
     client_id: interaction.client_id,
     interaction_id: interactionId,
     ig_username: interaction.ig_username,
@@ -121,7 +133,7 @@ export async function promoteToLeadAction(interactionId: string, formData: FormD
     first_touch_type: 'keyword_dm',
   })
 
-  if (leadError) throw leadError
+  if (leadError && !esDuplicado(leadError)) throw leadError
 
   await supabase
     .from('interactions')

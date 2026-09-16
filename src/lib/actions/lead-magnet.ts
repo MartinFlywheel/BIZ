@@ -292,8 +292,8 @@ async function asegurarLeads(clientId: string, candidatos: CandidatoLead[]): Pro
       first_touch_type: c.origen,
     })
     // 23505 = ya hay un lead de este cliente con ese teléfono
-    // (uq_leads_client_phone_e164): la persona ya está en el CRM con otro
-    // usuario y el cruce por teléfono la une. No es un error.
+    // (uq_leads_client_phone_e164) o con ese Instagram (081): la persona ya
+    // está en el CRM. No es un error.
     if (insertError && insertError.code !== '23505') {
       console.warn('[lead-magnet] no se pudo crear el lead', c.ig_username, insertError.message)
     }
