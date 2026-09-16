@@ -666,11 +666,57 @@ export async function asociarLeadAAgenda(agendaId: string, leadId: string): Prom
   return { ok: true }
 }
 
+/** Un valor para ilike que coincide solo consigo mismo: `_` y `%` son comodines. */
+function literalIlike(valor: string): string {
+  return valor.replace(/[\\%_]/g, (c) => `\\${c}`)
+}
+
+/**
+ * El lead que ya existe con ese Instagram, correo o teléfono, si hay uno.
+ *
+ * El formulario de Calendly no pregunta el Instagram, así que los candidatos
+ * del modal suelen salir vacíos y el setter escribe el @ a mano en "Crear".
+ * Sin este chequeo se creaba un segundo lead con el mismo @, asignado por
+ * reparto a otra setter: la agenda que consiguió Magui aparecía como de Luli
+ * en la app y el lead salía duplicado en el CRM.
+ */
+async function leadExistente(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  clientId: string,
+  datos: { ig: string | null; email: string | null; telefono: string | null }
+): Promise<string | null> {
+  const base = () => supabase
+    .from('leads')
+    .select('id')
+    .eq('client_id', clientId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+
+  if (datos.ig) {
+    const { data } = await base().ilike('ig_username', literalIlike(datos.ig))
+    if (data?.[0]) return data[0].id as string
+  }
+  if (datos.telefono) {
+    // Sin la migración 059 no hay phone_e164: se ignora el error y se sigue.
+    const { data } = await base().eq('phone_e164', datos.telefono)
+    if (data?.[0]) return data[0].id as string
+  }
+  if (datos.email) {
+    const { data } = await base().ilike('email', literalIlike(datos.email))
+    if (data?.[0]) return data[0].id as string
+  }
+  return null
+}
+
 /**
  * Ninguno coincide: se crea el lead con los datos del formulario.
  *
- * El setter asignado sale del mismo reparto balanceado que usan los webhooks de
- * ManyChat, para que el lead nuevo no quede sin dueño.
+ * Si el Instagram, el correo o el teléfono ya son de un lead, no se crea otro:
+ * se asocia ese, que conserva su setter.
+ *
+ * El lead nuevo queda con el setter escrito en la agenda y, si no hay, con el
+ * mismo reparto balanceado que usan los webhooks de ManyChat, para que no
+ * quede sin dueño.
  */
 export async function crearLeadDesdeAgenda(agendaId: string, instagram: string | null): Promise<{ ok: boolean; error?: string }> {
   const yo = await perfilDeAgencia()
@@ -679,7 +725,7 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
 
   const { data: a } = await supabase
     .from('agenda_records')
-    .select('client_id, nombre_lead, email_lead, link_perfil, respuestas_formulario, hora_agenda')
+    .select('client_id, nombre_lead, email_lead, link_perfil, respuestas_formulario, hora_agenda, setter')
     .eq('id', agendaId)
     .maybeSingle()
   if (!a) return { ok: false, error: 'No se encontró la agenda' }
@@ -687,6 +733,15 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
   const ig = normalizarInstagram(instagram) ?? normalizarInstagram(a.link_perfil)
   const respuestas = (a.respuestas_formulario ?? {}) as Record<string, string>
   const preguntaTel = Object.keys(respuestas).find((k) => /tel[eé]fono|celular|whatsapp|phone|m[oó]vil/i.test(k))
+
+  const existente = await leadExistente(supabase, a.client_id, {
+    ig,
+    email: a.email_lead ?? null,
+    telefono: normalizarTelefono(preguntaTel ? respuestas[preguntaTel] : null),
+  })
+  if (existente) return asociarLeadAAgenda(agendaId, existente)
+
+  const setter = (await usuarioPorNombre(admin, a.client_id, a.setter)) ?? (await pickBalancedSetter(admin, a.client_id))
 
   const { data: lead, error } = await supabase
     .from('leads')
@@ -698,7 +753,7 @@ export async function crearLeadDesdeAgenda(agendaId: string, instagram: string |
       phone: preguntaTel ? respuestas[preguntaTel] : null,
       stage: 'agendado',
       agenda_at: a.hora_agenda ?? new Date().toISOString(),
-      assigned_to: await pickBalancedSetter(admin, a.client_id),
+      assigned_to: setter,
     })
     .select('id')
     .single()
