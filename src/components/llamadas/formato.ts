@@ -1,4 +1,5 @@
 import type { Llamada, ResultadoLlamada } from '@/lib/actions/llamadas'
+import { isoChileDe } from '@/lib/fecha-chile'
 
 /**
  * Formato compartido de la pestaña Llamadas y la página /calls.
@@ -29,7 +30,18 @@ export function fechaCorta(fecha: string | null | undefined): string {
   })
 }
 
-export type FiltroLlamadas = ResultadoLlamada | 'sin_agenda' | 'todas'
+/** Mes 'YYYY-MM' de la llamada en hora de Chile, o null si no tiene fecha. */
+export function mesLlamada(l: Pick<Llamada, 'cuando' | 'conHora'>): string | null {
+  if (!l.cuando) return null
+  return l.conHora ? isoChileDe(l.cuando).slice(0, 7) : l.cuando.slice(0, 7)
+}
+
+/** 'YYYY-MM' → "septiembre 2026". */
+export function nombreMes(mes: string): string {
+  return new Date(`${mes}-15T12:00:00Z`).toLocaleDateString('es-CL', { timeZone: 'UTC', month: 'long', year: 'numeric' })
+}
+
+export type FiltroLlamadas =ResultadoLlamada | 'sin_agenda' | 'todas'
 
 export const RESULTADO_BADGE: Record<ResultadoLlamada, { etiqueta: string; variante: 'default' | 'success' | 'warning' | 'danger' | 'info' }> = {
   cerrada: { etiqueta: 'Cerrada', variante: 'success' },

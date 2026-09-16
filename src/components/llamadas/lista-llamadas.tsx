@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Hourglass, Mic, Plus, UserX, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { DatosLlamadas, Llamada } from '@/lib/actions/llamadas'
-import { coincideFiltro, type FiltroLlamadas } from './formato'
+import { coincideFiltro, mesLlamada, nombreMes, type FiltroLlamadas } from './formato'
 import { LlamadaFila } from './llamada-fila'
 import { RegistrarLlamadaModal } from './registrar-llamada-modal'
 
@@ -43,26 +43,42 @@ export function ListaLlamadas({
   onCambio: () => void
 }) {
   const [filtro, setFiltro] = useState<FiltroLlamadas>('todas')
+  const [mes, setMes] = useState('')
   const [registrando, setRegistrando] = useState(false)
 
-  const { conteo, agendasSinGrabacion, closers } = useMemo(() => {
-    const conteo: Record<FiltroLlamadas, number> = { todas: datos.llamadas.length, cerrada: 0, no_cerrada: 0, no_show: 0, pendiente: 0, otro: 0, sin_agenda: 0 }
+  // La asociación de grabaciones y los closers usan todo el historial: una
+  // grabación puede caer en un mes distinto al de su agenda.
+  const { meses, agendasSinGrabacion, closers } = useMemo(() => {
+    const meses = new Set<string>()
     const sinGrabacion: Llamada[] = []
     const nombresCloser = new Set<string>()
     for (const l of datos.llamadas) {
-      if (l.origen === 'grabacion_suelta') conteo.sin_agenda++
-      else conteo[l.resultado]++
+      const m = mesLlamada(l)
+      if (m) meses.add(m)
       if (l.origen === 'agenda' && !l.recordingId) sinGrabacion.push(l)
       if (l.closer?.trim()) nombresCloser.add(l.closer.trim())
     }
     return {
-      conteo,
+      meses: [...meses].sort().reverse(),
       agendasSinGrabacion: sinGrabacion,
       closers: [...nombresCloser].sort((a, b) => a.localeCompare(b, 'es')),
     }
   }, [datos.llamadas])
 
-  const visibles = datos.llamadas.filter((l) => coincideFiltro(l, filtro))
+  // Las tarjetas y la lista, en cambio, cuentan solo el mes elegido. Si ese
+  // mes ya no está en los datos (otro cliente en /calls), se ven todos.
+  const mesActivo = meses.includes(mes) ? mes : ''
+  const { delMes, conteo } = useMemo(() => {
+    const delMes = mesActivo ? datos.llamadas.filter((l) => mesLlamada(l) === mesActivo) : datos.llamadas
+    const conteo: Record<FiltroLlamadas, number> = { todas: delMes.length, cerrada: 0, no_cerrada: 0, no_show: 0, pendiente: 0, otro: 0, sin_agenda: 0 }
+    for (const l of delMes) {
+      if (l.origen === 'grabacion_suelta') conteo.sin_agenda++
+      else conteo[l.resultado]++
+    }
+    return { delMes, conteo }
+  }, [datos.llamadas, mesActivo])
+
+  const visibles = delMes.filter((l) => coincideFiltro(l, filtro))
 
   return (
     <div className="space-y-4">
@@ -107,11 +123,22 @@ export function ListaLlamadas({
             </button>
           )}
         </div>
-        {clientId && (
-          <Button size="sm" onClick={() => setRegistrando(true)}>
-            <Plus className="h-3.5 w-3.5" /> Registrar llamada
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={mesActivo}
+            onChange={(e) => setMes(e.target.value)}
+            className="h-8 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm capitalize text-zinc-100 focus:outline-none"
+            aria-label="Filtrar por mes"
+          >
+            <option value="">Todos los meses</option>
+            {meses.map((m) => <option key={m} value={m}>{nombreMes(m)}</option>)}
+          </select>
+          {clientId && (
+            <Button size="sm" onClick={() => setRegistrando(true)}>
+              <Plus className="h-3.5 w-3.5" /> Registrar llamada
+            </Button>
+          )}
+        </div>
       </div>
 
       {visibles.length === 0 ? (

@@ -8,5 +8,5 @@ const DIAS = 60
 
 export default async function CallsPage() {
   const datos = await getLlamadasGlobal(DIAS)
-  return <LlamadasGlobal datos={datos} dias={DIAS} />
+  return <LlamadasGlobal datos={datos} desde={datos.desde} />
 }

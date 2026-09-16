@@ -347,12 +347,15 @@ export async function getLlamadasCliente(clientId: string): Promise<DatosLlamada
 
 /**
  * La página global /calls: la misma fuente, de todos los clientes, acotada a
- * los últimos días para no bajar el historial completo en cada visita.
+ * los últimos días para no bajar el historial completo en cada visita. El
+ * corte se lleva al día 1 de ese mes para que el filtro por mes nunca muestre
+ * un mes a medias.
  */
-export async function getLlamadasGlobal(dias = 60): Promise<DatosLlamadas> {
+export async function getLlamadasGlobal(dias = 60): Promise<DatosLlamadas & { desde: string }> {
   const supabase = await exigirAgencia()
-  const desde = sumarDias(hoyChile().iso, -Math.min(Math.max(dias, 1), 365))
-  return cargarLlamadas(supabase, { desde })
+  const corte = sumarDias(hoyChile().iso, -Math.min(Math.max(dias, 1), 365))
+  const desde = `${corte.slice(0, 7)}-01`
+  return { ...(await cargarLlamadas(supabase, { desde })), desde }
 }
 
 function revalidar(clientId: string | null | undefined) {

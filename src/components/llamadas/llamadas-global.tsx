@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { DatosLlamadas } from '@/lib/actions/llamadas'
+import { fechaCorta } from './formato'
 import { ListaLlamadas } from './lista-llamadas'
 
 /**
@@ -10,7 +11,7 @@ import { ListaLlamadas } from './lista-llamadas'
  * pestaña del cliente. Registrar una llamada se hace desde la pestaña del
  * cliente, que es donde se sabe a qué cliente pertenece el lead.
  */
-export function LlamadasGlobal({ datos, dias }: { datos: DatosLlamadas; dias: number }) {
+export function LlamadasGlobal({ datos, desde }: { datos: DatosLlamadas; desde: string }) {
   const router = useRouter()
   const [cliente, setCliente] = useState('')
 
@@ -38,7 +39,7 @@ export function LlamadasGlobal({ datos, dias }: { datos: DatosLlamadas; dias: nu
         <div>
           <h1 className="text-2xl font-semibold text-zinc-50">Llamadas de ventas</h1>
           <p className="mt-1 text-sm text-zinc-400">
-            Últimos {dias} días de todos los clientes. Para registrar una llamada, entra a la pestaña Llamadas del cliente.
+            Todos los clientes, desde el {fechaCorta(desde)}. Para registrar una llamada, entra a la pestaña Llamadas del cliente.
           </p>
         </div>
         <select
