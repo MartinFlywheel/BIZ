@@ -80,7 +80,7 @@ function NuevoCompetidorForm({
                     <h2 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
                         <Users className="h-4 w-4" /> Nuevo Competidor
                     </h2>
-                    <p className="text-xs text-zinc-500 mt-0.5">Registrá un competidor para este cliente</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Registra un competidor para este cliente</p>
                 </div>
                 <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200 transition-colors">
                     <X className="h-5 w-5" />
