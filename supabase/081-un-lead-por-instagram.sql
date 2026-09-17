@@ -39,7 +39,8 @@
 --     del más antiguo al más nuevo. Las notas se juntan y las etiquetas
 --     (events) se unen.
 --   - Todo lo que apunta a los otros leads (agendas, actividad, mensajes,
---     llamadas, historial) pasa al que queda, y los otros se borran.
+--     llamadas, historial) pasa al que queda, y los otros se borran. Antes se
+--     copian completos a leads_fusionados_081.
 -- Después se quita el "@" de los pocos usuarios guardados con él y se crea
 -- el índice único uq_leads_client_ig.
 --
@@ -82,7 +83,22 @@ $$;
 
 GRANT EXECUTE ON FUNCTION ig_normalizado(TEXT) TO authenticated;
 
--- ── 2. Fusión ─────────────────────────────────────────────────────────────
+-- ── 2. Respaldo ───────────────────────────────────────────────────────────
+-- Copia completa de cada lead que se borra y del lead en que quedó fusionado,
+-- para poder revisarlo o recuperarlo. Con RLS y sin políticas: solo se lee
+-- desde el editor SQL (misma regla que la 077 para tablas internas).
+
+CREATE TABLE IF NOT EXISTS leads_fusionados_081 AS
+SELECT l.*, NULL::uuid AS fusionado_en, now() AS fusionado_at
+FROM leads l
+WHERE false;
+
+ALTER TABLE leads_fusionados_081 ENABLE ROW LEVEL SECURITY;
+
+COMMENT ON TABLE leads_fusionados_081 IS
+  'Leads borrados por la migración 081 al fusionar Instagram repetidos. fusionado_en = el lead que quedó.';
+
+-- ── 3. Fusión ─────────────────────────────────────────────────────────────
 
 DO $$
 DECLARE
@@ -186,6 +202,9 @@ BEGIN
     INSERT INTO _leads_a_fusionar
     SELECT l.* FROM leads l JOIN _grupo x ON x.id = l.id WHERE l.id <> keep_id;
 
+    INSERT INTO leads_fusionados_081
+    SELECT d.*, keep_id, now() FROM _leads_a_fusionar d;
+
     -- Todo lo que apunta a ellos pasa al que queda.
     FOR dup_id IN SELECT id FROM _leads_a_fusionar LOOP
       FOR fk IN
@@ -263,14 +282,14 @@ BEGIN
   RAISE NOTICE '081: % grupos fusionados, % leads repetidos borrados', grupos, borrados;
 END $$;
 
--- ── 3. Usuarios guardados con "@" o con mayúsculas ────────────────────────
+-- ── 4. Usuarios guardados con "@" o con mayúsculas ────────────────────────
 
 UPDATE leads
 SET ig_username = ig_normalizado(ig_username)
 WHERE ig_username IS NOT NULL
   AND ig_username IS DISTINCT FROM ig_normalizado(ig_username);
 
--- ── 4. Índice único ───────────────────────────────────────────────────────
+-- ── 5. Índice único ───────────────────────────────────────────────────────
 
 DO $$
 DECLARE
