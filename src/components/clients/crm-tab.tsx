@@ -576,7 +576,7 @@ function NuevoLeadModal({
   }))
 
   return (
-    <Dialog open onClose={onClose} title="Nuevo Lead" description="Registrá un lead manualmente">
+    <Dialog open onClose={onClose} title="Nuevo Lead" description="Registra un lead manualmente">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
           <Input id="ig_username" name="ig_username" label="Usuario IG" placeholder="@usuario" />

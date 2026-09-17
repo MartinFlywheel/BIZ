@@ -476,7 +476,7 @@ function NuevoLeadForm({
                     <h2 className="text-lg font-semibold text-zinc-50 flex items-center gap-2">
                         <Plus className="h-4 w-4" /> Nuevo Lead
                     </h2>
-                    <p className="text-xs text-zinc-500 mt-0.5">Registrá un nuevo lead manualmente</p>
+                    <p className="text-xs text-zinc-500 mt-0.5">Registra un nuevo lead manualmente</p>
                 </div>
                 <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200">
                     <X className="h-5 w-5" />
