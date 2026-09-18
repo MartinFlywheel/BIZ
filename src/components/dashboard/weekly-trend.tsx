@@ -6,6 +6,8 @@ import type { ComputedMetricsRow } from '@/lib/actions/funnel'
 interface Props {
   // Most-recent-first, as returned by getComputedClientMetrics.
   weeks: ComputedMetricsRow[]
+  /** "Reels" o "Historias" cuando el Dashboard está filtrado. */
+  contentTypeLabel?: string
 }
 
 function pctChange(current: number, previous: number): number | null {
@@ -13,12 +15,15 @@ function pctChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100
 }
 
-export function WeeklyTrend({ weeks }: Props) {
+export function WeeklyTrend({ weeks, contentTypeLabel }: Props) {
   if (weeks.length === 0) return null
 
   return (
     <div className="space-y-3">
-      <CardTitle className="text-sm font-medium text-white/90">Tendencia Semanal</CardTitle>
+      <CardTitle className="text-sm font-medium text-white/90">
+        Tendencia Semanal
+        {contentTypeLabel && <span className="ml-2 font-normal text-zinc-500">· {contentTypeLabel}</span>}
+      </CardTitle>
       <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

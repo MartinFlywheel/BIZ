@@ -5,6 +5,8 @@ import type { MonthComparison, MonthComparisonMetric, RateComparisonMetric } fro
 
 interface Props {
   comparison: MonthComparison
+  /** "Reels" o "Historias" cuando el Dashboard está filtrado; sin filtro, nada. */
+  contentTypeLabel?: string
 }
 
 export function DeltaBadge({ deltaPct }: { deltaPct: number | null }) {
@@ -106,11 +108,14 @@ function RateTile({ title, metric }: { title: string; metric: RateComparisonMetr
   )
 }
 
-export function MonthComparisonCards({ comparison }: Props) {
+export function MonthComparisonCards({ comparison, contentTypeLabel }: Props) {
   return (
     <div className="space-y-5">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-medium text-white/90">Comparativa Mensual</h2>
+        <h2 className="text-sm font-medium text-white/90">
+          Comparativa Mensual
+          {contentTypeLabel && <span className="ml-2 font-normal text-zinc-500">· {contentTypeLabel}</span>}
+        </h2>
         <p className="text-xs text-zinc-500">
           {formatDate(comparison.currentRange.start)} – {formatDate(comparison.currentRange.end)}
           {' '}vs.{' '}
@@ -119,7 +124,7 @@ export function MonthComparisonCards({ comparison }: Props) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        <ComparisonTile title="Views" metric={comparison.views} format={formatNumber} />
+        <ComparisonTile title="Vistas" metric={comparison.views} format={formatNumber} />
         <ComparisonTile title="Chats" metric={comparison.chats} format={formatNumber} />
         <ComparisonTile title="Conversaciones" metric={comparison.conversaciones} format={formatNumber} />
         <ComparisonTile title="Agendas" metric={comparison.agendas} format={formatNumber} />
@@ -127,11 +132,13 @@ export function MonthComparisonCards({ comparison }: Props) {
         <ComparisonTile title="Facturación" metric={comparison.facturacion} format={formatCurrency} />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <RateTile title="Tasa de Respuesta" metric={comparison.tasaRespuesta} />
-        <RateTile title="Tasa de Agendamiento" metric={comparison.tasaAgendamiento} />
-        <RateTile title="Tasa de Show-up" metric={comparison.tasaShowUp} />
-        <RateTile title="Tasa de Cierre" metric={comparison.tasaCierre} />
+      {/* Mismas tasas, nombres y denominadores que el panel del embudo. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <RateTile title="Tasa de chats" metric={comparison.tasaChats} />
+        <RateTile title="Tasa de conversaciones" metric={comparison.tasaRespuesta} />
+        <RateTile title="Tasa de agendas" metric={comparison.tasaAgendamiento} />
+        <RateTile title="Tasa de shows" metric={comparison.tasaShowUp} />
+        <RateTile title="Tasa de cierres" metric={comparison.tasaCierre} />
       </div>
     </div>
   )

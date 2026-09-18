@@ -2,132 +2,50 @@
 
 import { createClient } from '@/lib/supabase/server'
 import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
-import { getEffectiveMetricsForRange } from './live-metrics'
+import { getEffectiveMetricsForRange, type ContentTypeFilter } from './live-metrics'
 import { fetchAllRows } from '@/lib/supabase/paginate'
-import { ESTADOS_ASISTIO, ESTADOS_CON_DESENLACE, ESTADO_CERRADO } from '@/lib/metrics-types'
 import { hoyChile, primerDiaDelMes, sumarMeses, ultimoDiaDe } from '@/lib/fecha-chile'
 
+/**
+ * Totales y tasas de un rango, con el mismo cálculo que el embudo del
+ * Dashboard (getEffectiveMetricsForRange): vistas de reels, carruseles e
+ * historias (con los insights de Meta cuando existen), chats y conversaciones
+ * por día, agendas por fecha de llamada sin contar días futuros, y las
+ * correcciones del Diario.
+ *
+ * Antes contaba por su cuenta: sin correcciones, sin carruseles ni insights
+ * de historias y, sin fechas, sobre toda la historia del cliente. En el
+ * Dashboard, las tarjetas "Métricas en Vivo" mostraban el total histórico
+ * (17.9K chats) al lado de un embudo de 15 días (748 chats), y la Comparativa
+ * Mensual no cuadraba con el embudo en "Mes".
+ */
 export async function getDashboardMetrics(
   clientId: string,
-  dateFrom?: string,
-  dateTo?: string
+  dateFrom: string,
+  dateTo: string,
+  contentType?: ContentTypeFilter
 ): Promise<DashboardMetrics> {
-  const supabase = await createClient()
+  const m = await getEffectiveMetricsForRange(clientId, dateFrom, dateTo, contentType)
 
-  let interactionsQuery = supabase
-    .from('interactions')
-    .select('classification', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-
-  // Real conversation OR qualified — not an exact match on 'conversacion_real'
-  // alone. Classification is promoted in place as a lead progresses, so a
-  // lead that reached 'lead_calificado' no longer carries the
-  // 'conversacion_real' value at all, even though it obviously did have a
-  // real conversation on the way there. An exact match undercounts older
-  // cohorts (which had time to get promoted forward) relative to this
-  // month's (which mostly haven't yet), making a month-over-month
-  // comparison of this number swing wildly for reasons that have nothing to
-  // do with actual conversation volume. Matches calculateFunnel's own
-  // "conversaciones" definition.
-  let convRealQuery = supabase
-    .from('interactions')
-    .select('classification', { count: 'exact', head: true })
-    .eq('client_id', clientId)
-    .in('classification', ['conversacion_real', 'lead_calificado'])
-
-  // bot_triggered_at/published_at are timestamptz columns — a bare date
-  // string like '2026-08-22' casts to midnight UTC on both .gte and .lte,
-  // so an unsuffixed .lte(dateTo) silently excludes the entire last day of
-  // the range (everything after 00:00:00). Same explicit day-boundary
-  // convention getLiveMetricsBuckets already uses. fecha_agenda below is a
-  // plain date column, not timestamptz, so it doesn't need this.
-  if (dateFrom) {
-    interactionsQuery = interactionsQuery.gte('bot_triggered_at', `${dateFrom}T00:00:00Z`)
-    convRealQuery = convRealQuery.gte('bot_triggered_at', `${dateFrom}T00:00:00Z`)
-  }
-  if (dateTo) {
-    interactionsQuery = interactionsQuery.lte('bot_triggered_at', `${dateTo}T23:59:59Z`)
-    convRealQuery = convRealQuery.lte('bot_triggered_at', `${dateTo}T23:59:59Z`)
-  }
-
-  // These fetch actual rows (not just a count) to filter/sum client-side,
-  // so — unlike the count-only queries above — they need to page past
-  // Supabase's 1000-row cap explicitly.
-  //
-  // Agendas/shows/cierres come from agenda_records.estado — the same
-  // source calculateFunnel/getLiveMetricsBuckets already use. This used
-  // to filter leads.stage against 'agenda_set'/'showed_up'/'closed_won'/
-  // 'closed_lost', values from an old English stage taxonomy that no
-  // longer exists (LEAD_STAGES today is 'agendado'/'cierre'/etc, in
-  // Spanish) — so this always matched zero rows and Tasa de Show-up /
-  // Tasa de Cierre showed 0.0% regardless of real activity.
-  const [interactionsRes, convRealRes, agendaRecords, views] = await Promise.all([
-    interactionsQuery,
-    convRealQuery,
-    fetchAllRows((from, to) => {
-      let q = supabase.from('agenda_records').select('estado, monto_facturacion, monto_upfront').eq('client_id', clientId).range(from, to)
-      if (dateFrom) q = q.gte('fecha_agenda', dateFrom)
-      if (dateTo) q = q.lte('fecha_agenda', dateTo)
-      return q
-    }),
-    fetchAllRows((from, to) => {
-      let q = supabase.from('content_pieces').select('views').eq('client_id', clientId).range(from, to)
-      if (dateFrom) q = q.gte('published_at', `${dateFrom}T00:00:00Z`)
-      if (dateTo) q = q.lte('published_at', `${dateTo}T23:59:59Z`)
-      return q
-    }),
-  ])
-
-  const chats_abiertos = interactionsRes.count || 0
-  const conversaciones_reales = convRealRes.count || 0
-
-  const agendas = agendaRecords.length
-  // "Llamadas" = agendas cuya llamada ya tuvo desenlace. Excluye 'Pendiente' y
-  // 'Reagendado' (todavia no ocurrieron) y 'No Calificado' (se descarto antes
-  // de la llamada). Este ultimo entraba al denominador y hundia el show-up
-  // reportado; ahora usa la misma definicion que la tabla de Equipo.
-  const llamadas = agendaRecords.filter((a) =>
-    a.estado && (ESTADOS_CON_DESENLACE as readonly string[]).includes(a.estado)
-  ).length
-  const show_ups = agendaRecords.filter((a) =>
-    a.estado && (ESTADOS_ASISTIO as readonly string[]).includes(a.estado)
-  ).length
-  const cierresRows = agendaRecords.filter((a) => a.estado === ESTADO_CERRADO)
-  const cierres = cierresRows.length
-  // Si la agenda no tiene monto_facturacion se usa el upfront, igual que
-  // getLiveMetricsBuckets y content-analytics.ts: el equipo casi siempre llena
-  // solo Upfront, y sin este respaldo la Facturación salía en 0.
-  const facturacion = cierresRows.reduce((sum, a) => {
-    const tieneFacturacion = a.monto_facturacion !== null && a.monto_facturacion !== undefined && a.monto_facturacion !== ''
-    return sum + (tieneFacturacion ? Number(a.monto_facturacion) || 0 : Number(a.monto_upfront) || 0)
-  }, 0)
-  const cash_collected = cierresRows.reduce((sum, a) => sum + (Number(a.monto_upfront) || 0), 0)
-
-  const total_views = views.reduce((sum, c) => sum + (c.views || 0), 0)
-
-  const tasa_respuesta = chats_abiertos > 0
-    ? (conversaciones_reales / chats_abiertos) * 100
-    : 0
-  // Against conversaciones reales (real conversations), not raw chats —
-  // matches calculateFunnel's own agendamiento rate.
-  const tasa_agendamiento = conversaciones_reales > 0 ? (agendas / conversaciones_reales) * 100 : 0
-  const tasa_show_up = llamadas > 0 ? (show_ups / llamadas) * 100 : 0
-  const tasa_cierre = show_ups > 0 ? (cierres / show_ups) * 100 : 0
+  const total_views = m.views_reels + m.views_carruseles + m.views_historias
+  const tasa = (parte: number, total: number) => (total > 0 ? (parte / total) * 100 : 0)
 
   return {
-    chats_abiertos,
-    conversaciones_reales,
-    agendas,
-    llamadas,
-    show_ups,
-    cierres,
-    facturacion,
-    cash_collected,
+    chats_abiertos: m.chats_abiertos,
+    conversaciones_reales: m.conversaciones,
+    agendas: m.agendas,
+    llamadas: m.llamadas,
+    show_ups: m.shows,
+    cierres: m.cierres,
+    facturacion: m.facturacion,
+    cash_collected: m.cash_collected,
     total_views,
-    tasa_respuesta,
-    tasa_agendamiento,
-    tasa_show_up,
-    tasa_cierre,
+    // Las mismas cinco tasas del embudo, con los mismos denominadores.
+    tasa_chats: tasa(m.chats_abiertos, total_views),
+    tasa_respuesta: tasa(m.conversaciones, m.chats_abiertos),
+    tasa_agendamiento: tasa(m.agendas, m.conversaciones),
+    tasa_show_up: tasa(m.shows, m.llamadas),
+    tasa_cierre: tasa(m.cierres, m.shows),
   }
 }
 
@@ -199,6 +117,7 @@ export interface MonthComparison {
   agendas: MonthComparisonMetric
   cierres: MonthComparisonMetric
   facturacion: MonthComparisonMetric
+  tasaChats: RateComparisonMetric
   tasaRespuesta: RateComparisonMetric
   tasaAgendamiento: RateComparisonMetric
   tasaShowUp: RateComparisonMetric
@@ -219,11 +138,10 @@ function pctChange(current: number, previous: number): number | null {
 // the current month isn't over — what they actually want is last month's
 // real total as the reference point, not a fairness-adjusted one.
 //
-// Built on getDashboardMetrics (dateFrom/dateTo scoped) rather than a
-// separate computation, so every number here is guaranteed consistent with
-// what "Métricas en Vivo (CRM)" shows for the same client — same source
-// tables, same classification/estado rules, just date-scoped twice.
-export async function getMonthOverMonthComparison(clientId: string): Promise<MonthComparison> {
+// Built on getDashboardMetrics, que usa el mismo cálculo que el embudo: con el
+// período "Mes" y el mismo filtro de contenido, los números del mes en curso
+// son los del embudo.
+export async function getMonthOverMonthComparison(clientId: string, contentType?: ContentTypeFilter): Promise<MonthComparison> {
   // Mes y día en hora de Chile, no del servidor (UTC): desde las 21:00 del
   // último día del mes, el "mes actual" pasaba a ser el siguiente.
   const hoy = hoyChile()
@@ -234,8 +152,8 @@ export async function getMonthOverMonthComparison(clientId: string): Promise<Mon
   const previousRange = { start: primerDiaDelMes(mesAnterior), end: ultimoDiaDe(mesAnterior) }
 
   const [current, previous] = await Promise.all([
-    getDashboardMetrics(clientId, currentRange.start, currentRange.end),
-    getDashboardMetrics(clientId, previousRange.start, previousRange.end),
+    getDashboardMetrics(clientId, currentRange.start, currentRange.end, contentType),
+    getDashboardMetrics(clientId, previousRange.start, previousRange.end, contentType),
   ])
 
   function count(currentValue: number, previousValue: number): MonthComparisonMetric {
@@ -255,6 +173,7 @@ export async function getMonthOverMonthComparison(clientId: string): Promise<Mon
     agendas: count(current.agendas, previous.agendas),
     cierres: count(current.cierres, previous.cierres),
     facturacion: count(current.facturacion, previous.facturacion),
+    tasaChats: rate(current.tasa_chats, previous.tasa_chats),
     tasaRespuesta: rate(current.tasa_respuesta, previous.tasa_respuesta),
     tasaAgendamiento: rate(current.tasa_agendamiento, previous.tasa_agendamiento),
     tasaShowUp: rate(current.tasa_show_up, previous.tasa_show_up),

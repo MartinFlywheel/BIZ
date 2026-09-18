@@ -350,7 +350,12 @@ function camposCorregibles(m: PeriodMetrics): Record<OverridableField, number> {
 export async function getComputedClientMetrics(
   clientId: string,
   periodType: 'daily' | 'weekly' | 'monthly' = 'weekly',
-  count = 12
+  count = 12,
+  // Solo para semanal/mensual (la Tendencia Semanal del Dashboard). Con filtro
+  // no se aplican las correcciones del Diario, que no distinguen reel de
+  // historia: es la misma regla de getEffectiveMetricsForRange, así que la
+  // tendencia filtrada cuadra con el embudo filtrado.
+  contentType?: ContentTypeFilter
 ): Promise<ComputedMetricsRow[]> {
   const hoy = hoyChile().iso
   const inicio = await getInicioDelCliente(clientId)
@@ -419,7 +424,7 @@ export async function getComputedClientMetrics(
   const dayBuckets = await dailyBucketsFor(rangeStart, rangeEnd)
 
   const [detalle, dailyOverridesRes, manualRes] = await Promise.all([
-    getLiveMetricsDetalle(clientId, dayBuckets),
+    getLiveMetricsDetalle(clientId, dayBuckets, contentType),
     supabase
       .from('client_metrics')
       .select(COLUMNAS_CORRECCIONES)
@@ -435,7 +440,7 @@ export async function getComputedClientMetrics(
   }
 
   const dailyOverridesByDay = new Map(
-    ((dailyOverridesRes.data || []) as unknown as Record<string, unknown>[]).map((r) => [
+    (contentType ? [] : (dailyOverridesRes.data || []) as unknown as Record<string, unknown>[]).map((r) => [
       r.period_start as string,
       leerCorrecciones(r, detalle.insightsDisponibles),
     ])

@@ -67,7 +67,7 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight text-white/90">
-            Funnel — {clientName}
+            Embudo — {clientName}
             {contentType && (
               <span className="ml-2 text-sm font-normal text-zinc-500">
                 · {CONTENT_TYPE_LABEL[contentType] || contentType}
@@ -260,15 +260,13 @@ export function FunnelView({ funnel, clientName, contentType }: Props) {
                           {stage.rate.toFixed(1)}%
                         </span>
                       </div>
-                      <p className="font-mono text-[10px] text-zinc-600">
-                        {(-(100 - stage.rate)).toFixed(0)}% drop
-                      </p>
-                      <p className="text-[10px] text-zinc-700">
-                        bench {stage.benchmark_min}–{stage.benchmark_max}%
+                      {/* La meta: sobre ella la tasa sale en verde, bajo ella en rojo. */}
+                      <p className="text-[10px] text-zinc-600">
+                        meta {stage.benchmark_min}–{stage.benchmark_max}%
                       </p>
                     </div>
                   ) : i === 0 ? (
-                    <p className="text-[10px] italic text-zinc-700">Entrada del funnel</p>
+                    <p className="text-[10px] italic text-zinc-700">Entrada del embudo</p>
                   ) : null}
                 </div>
               ))}

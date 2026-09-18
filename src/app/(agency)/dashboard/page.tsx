@@ -1,9 +1,8 @@
 import { Suspense } from 'react'
 import { getClientOptions } from '@/lib/actions/clients'
 import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType, type RangoPersonalizado } from '@/lib/actions/funnel'
-import { getDashboardMetrics, getBenchmarkAlerts, getMonthOverMonthComparison } from '@/lib/actions/metrics'
+import { getMonthOverMonthComparison } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
-import { MetricCard } from '@/components/dashboard/metric-card'
 import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
 import { MonthComparisonCards } from '@/components/dashboard/month-comparison'
@@ -12,7 +11,6 @@ import { ClientSelector } from '@/components/dashboard/client-selector'
 import { ContentTypeToggle } from '@/components/dashboard/content-type-toggle'
 import { PeriodToggle } from '@/components/dashboard/period-toggle'
 import { Card } from '@/components/ui/card'
-import { formatNumber, formatPercent } from '@/lib/utils'
 
 const VALID_PERIODS: FunnelPeriodType[] = ['weekly', '15d', '30d', 'monthly']
 
@@ -124,23 +122,13 @@ async function ClientDetail({
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
 
-  // Los benchmarks se piden apenas llegan las métricas en vivo, sin esperar al
-  // funnel: antes iban en serie después de las dos cargas, así que la sección
-  // tardaba la más lenta de las dos MÁS la consulta de benchmarks. Son un
-  // adorno de las tarjetas; si fallan, las tarjetas salen sin alerta.
-  const liveMetricsPromise = getDashboardMetrics(clientId)
-  const [funnel, liveMetrics, alerts] = await Promise.all([
-    calculateFunnel(clientId, period, undefined, contentType, rango ?? undefined),
-    liveMetricsPromise,
-    liveMetricsPromise
-      .then((m) => (m ? getBenchmarkAlerts(clientId, m) : []))
-      .catch((e) => {
-        console.error('[dashboard] benchmarks fallaron:', e instanceof Error ? e.message : e)
-        return []
-      }),
-  ])
-
-  const alertMap = Object.fromEntries(alerts.map((a) => [a.metric_key, a]))
+  // Solo el embudo. Aquí había además "Métricas en Vivo (CRM)": cinco
+  // tarjetas y tres tasas calculadas sobre TODA la historia del cliente,
+  // ignorando el período y el filtro, al lado de un embudo que sí los respeta
+  // (17.9K chats contra 748). Mostraban los mismos conceptos que el embudo con
+  // otros números y otras metas, así que se quitaron: el embudo ya tiene cada
+  // total, cada tasa con su meta, la facturación y el cash collected.
+  const funnel = await calculateFunnel(clientId, period, undefined, contentType, rango ?? undefined)
 
   return (
     // fade-rise is defined in globals.css
@@ -154,45 +142,13 @@ async function ClientDetail({
             {!contentType && (
               <>
                 <br />
-                Cárgalas desde la ficha del cliente → pestaña Métricas.
+                Cárgalas desde la ficha del cliente → pestaña Analítica → registro de métricas.
               </>
             )}
           </div>
         </Card>
       )}
 
-      {liveMetrics && (
-        <div className="space-y-4">
-          <h2 className="text-sm font-medium text-white/90">Métricas en Vivo (CRM)</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5 2xl:gap-6">
-            <MetricCard title="Views"        value={formatNumber(liveMetrics.total_views)} />
-            <MetricCard title="Chats Nuevos" value={formatNumber(liveMetrics.chats_abiertos)} />
-            <MetricCard title="Conv. Reales" value={formatNumber(liveMetrics.conversaciones_reales)} />
-            <MetricCard title="Agendas"      value={formatNumber(liveMetrics.agendas)} />
-            <MetricCard title="Cierres"      value={formatNumber(liveMetrics.cierres)} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 2xl:gap-6">
-            <MetricCard
-              title="Tasa de Respuesta"
-              value={formatPercent(liveMetrics.tasa_respuesta)}
-              subtitle="Conv. Reales / Chats Nuevos"
-              alert={alertMap['tasa_respuesta']}
-            />
-            <MetricCard
-              title="Tasa de Show-up"
-              value={formatPercent(liveMetrics.tasa_show_up)}
-              subtitle="Show-ups / Llamadas"
-              alert={alertMap['tasa_show_up']}
-            />
-            <MetricCard
-              title="Tasa de Cierre"
-              value={formatPercent(liveMetrics.tasa_cierre)}
-              subtitle="Cierres / Show-ups"
-              alert={alertMap['tasa_cierre']}
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -239,16 +195,17 @@ function ComparisonSkeleton() {
   )
 }
 
-async function ComparisonSection({ clientId }: { clientId: string }) {
+async function ComparisonSection({ clientId, contentType }: { clientId: string; contentType?: ContentTypeFilter }) {
   const [monthComparison, weeklyTrend] = await Promise.all([
-    getMonthOverMonthComparison(clientId),
-    getComputedClientMetrics(clientId, 'weekly', 8),
+    getMonthOverMonthComparison(clientId, contentType),
+    getComputedClientMetrics(clientId, 'weekly', 8, contentType),
   ])
+  const etiqueta = contentType === 'reel' ? 'Reels' : contentType === 'story' ? 'Historias' : undefined
 
   return (
     <div className="space-y-8">
-      <MonthComparisonCards comparison={monthComparison} />
-      <WeeklyTrend weeks={weeklyTrend} />
+      <MonthComparisonCards comparison={monthComparison} contentTypeLabel={etiqueta} />
+      <WeeklyTrend weeks={weeklyTrend} contentTypeLabel={etiqueta} />
     </div>
   )
 }
@@ -305,8 +262,8 @@ export default async function DashboardPage({
           <Suspense key={`${clientId}-${type || 'all'}-${period}-${rango ? `${rango.start}_${rango.end}` : ''}`} fallback={<FunnelSkeleton />}>
             <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} rango={rango} />
           </Suspense>
-          <Suspense key={clientId} fallback={<ComparisonSkeleton />}>
-            <ComparisonSection clientId={clientId} />
+          <Suspense key={`${clientId}-${type || 'all'}`} fallback={<ComparisonSkeleton />}>
+            <ComparisonSection clientId={clientId} contentType={contentType} />
           </Suspense>
         </>
       )}

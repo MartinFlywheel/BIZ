@@ -375,6 +375,9 @@ export interface DashboardMetrics {
   facturacion: number
   cash_collected: number
   total_views: number
+  /** Chats / vistas: la primera tasa del embudo. */
+  tasa_chats: number
+  /** Conversaciones / chats (en el embudo, "Tasa de conversaciones"). */
   tasa_respuesta: number
   tasa_agendamiento: number
   tasa_show_up: number
