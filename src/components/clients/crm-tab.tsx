@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { SystemTasksPanel } from '@/components/pipeline/system-tasks-panel'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
+import { ETIQUETA_ORGANICO, FIRST_TOUCH_ORGANICO, OPCION_ORGANICO } from '@/lib/origen-organico'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import { SeguimientosTab } from './seguimientos-tab'
 import type { Lead, ContentPiece, Interaction, PipelineStageConfig } from '@/lib/types'
@@ -15,6 +16,7 @@ import {
   updateLeadFieldsAction,
   deleteLeadAction,
   createLeadAction,
+  marcarLeadOrganicoAction,
   getCrmTabData,
 } from '@/lib/actions/leads'
 import { getAgendaTeamStats, updateAgencyUserAction, createAgencyUserAction, deleteAgencyUserAction, type TeamMemberStats } from '@/lib/actions/team'
@@ -74,6 +76,7 @@ const STAGE_TEXT: Record<string, string> = {
 const SOURCE_LABEL: Record<string, string> = {
   manychat_keyword: 'Instagram', manychat_direct: 'Instagram', instagram: 'Instagram',
   whatsapp: 'WhatsApp', youtube: 'YouTube', formulario: 'Formulario', manual: 'Manual',
+  organico: 'DM directo / orgánico',
 }
 
 // Los leads que entran por la API del agente guardan el origen con el prefijo
@@ -413,12 +416,28 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
           {/* Fuente */}
           <div>
             <SectionHead>Fuente</SectionHead>
-            {contentPieces.length > 0 && (
-              <div className="mb-3">
+            <div className="mb-3">
                 <FieldLabel>CTA (Pieza de Contenido)</FieldLabel>
-                <select className={selectFieldCls} value={local.content_id ?? ''}
-                  onChange={e => set('content_id', e.target.value || null)}>
+                <select className={selectFieldCls}
+                  value={local.content_id ?? (local.first_touch_type === FIRST_TOUCH_ORGANICO ? OPCION_ORGANICO : '')}
+                  onChange={e => {
+                    // DM directo no es una pieza: va a first_touch_type, y
+                    // solo si el lead no trae ya un origen de ManyChat.
+                    if (e.target.value === OPCION_ORGANICO) {
+                      set('content_id', null)
+                      if (!local.first_touch_type) {
+                        setLocal(prev => ({ ...prev, first_touch_type: FIRST_TOUCH_ORGANICO }))
+                        onUpdated({ ...local, content_id: null, first_touch_type: FIRST_TOUCH_ORGANICO })
+                        void flush().then(() => marcarLeadOrganicoAction(lead.id))
+                      }
+                      return
+                    }
+                    set('content_id', e.target.value || null)
+                  }}>
                   <option value="">Sin CTA</option>
+                  {(!local.first_touch_type || local.first_touch_type === FIRST_TOUCH_ORGANICO) && (
+                    <option value={OPCION_ORGANICO}>{ETIQUETA_ORGANICO}</option>
+                  )}
                   {contentPieces.map(cp => (
                     <option key={cp.id} value={cp.id}>
                       {cp.keyword_trigger || cp.caption?.slice(0, 50) || cp.content_type}
@@ -426,7 +445,6 @@ function LeadDrawer({ lead, agencyUsers, contentPieces, avatarList, stages, qual
                   ))}
                 </select>
               </div>
-            )}
             <div className="grid grid-cols-2 gap-3 text-xs text-zinc-600">
               {local.first_touch_type && (
                 <div>
@@ -570,10 +588,10 @@ function NuevoLeadModal({
   const stageOpts = stages.map(s => ({ value: s.id, label: s.label }))
   const avatarOpts = Array.from(avatarList).map(a => ({ value: a, label: a }))
   const userOpts = agencyUsers.map(u => ({ value: u.id, label: u.full_name }))
-  const contentOpts = contentPieces.map(cp => ({
+  const contentOpts = [{ value: OPCION_ORGANICO, label: ETIQUETA_ORGANICO }, ...contentPieces.map(cp => ({
     value: cp.id,
     label: cp.keyword_trigger || cp.caption?.slice(0, 50) || cp.content_type,
-  }))
+  }))]
 
   return (
     <Dialog open onClose={onClose} title="Nuevo Lead" description="Registra un lead manualmente">
@@ -593,9 +611,8 @@ function NuevoLeadModal({
         {userOpts.length > 0 && (
           <Select id="assigned_to" name="assigned_to" label="Responsable (Setter)" placeholder="— Sin asignar —" options={userOpts} />
         )}
-        {contentOpts.length > 0 && (
-          <Select id="content_id" name="content_id" label="CTA (Pieza de Contenido)" placeholder="— Sin CTA —" options={contentOpts} />
-        )}
+        <Select id="content_id" name="content_id" label="De dónde vino *" placeholder="— Elige una pieza o DM directo —"
+          options={contentOpts} required />
         {error && (
           <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">{error}</p>
         )}

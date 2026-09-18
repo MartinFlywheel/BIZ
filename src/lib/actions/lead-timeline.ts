@@ -175,6 +175,7 @@ const FUENTE_LABEL: Record<string, string> = {
   manychat_keyword: 'Instagram', manychat_direct: 'Instagram', instagram: 'Instagram',
   whatsapp: 'WhatsApp', youtube: 'YouTube', formulario: 'Formulario', manual: 'Manual',
   keyword_dm: 'DM por palabra clave', lead_magnet: 'Lead magnet', lead_magnet_incompleto: 'Lead magnet (incompleto)',
+  organico: 'DM directo / orgánico',
 }
 
 function etiquetaOrigen(tipo: string | null): string | null {

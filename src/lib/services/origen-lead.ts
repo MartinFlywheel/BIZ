@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { CODIGO_ORGANICO, FIRST_TOUCH_ORGANICO } from '@/lib/origen-organico'
 
 /**
  * Código de la pieza de contenido de la que vino un lead (H_15_07, R_23_07...),
@@ -6,7 +7,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
  *
  * Orden: la pieza del lead (content_id), la del primer contacto
  * (first_touch_content_id) y, para leads antiguos sin pieza resuelta, el
- * "manychat:{código}" de first_touch_type. null si no hay ninguna.
+ * "manychat:{código}" de first_touch_type. Un lead marcado como DM directo
+ * da "Orgánico". null si no hay ninguna. La misma regla vive en SQL como
+ * origen_del_lead (supabase/082 y 083).
  *
  * El sync de calendario guardaba aquí el nombre del evento de Calendly
  * ("30 Minute Meeting"), que no es un origen, y el panel de marketing lo
@@ -32,5 +35,7 @@ export async function codigoDeOrigenDelLead(supabase: SupabaseClient, leadId: st
     if (pieza?.keyword_trigger) return pieza.keyword_trigger as string
   }
 
-  return (lead.first_touch_type as string | null)?.match(/^manychat:(.+)$/)?.[1] || null
+  const tipo = lead.first_touch_type as string | null
+  if (tipo === FIRST_TOUCH_ORGANICO) return CODIGO_ORGANICO
+  return tipo?.match(/^manychat:(.+)$/)?.[1] || null
 }

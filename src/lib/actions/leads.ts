@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import type { LeadStage, Lead, ContentPiece } from '@/lib/types'
 import { fetchAllRows, fetchAllRowsByCursor } from '@/lib/supabase/paginate'
 import { pickBalancedSetter } from '@/lib/manychat'
+import { CODIGO_ORGANICO, FIRST_TOUCH_ORGANICO, OPCION_ORGANICO } from '@/lib/origen-organico'
 import { esDuplicado, leadPorInstagram } from '@/lib/lead-por-instagram'
 import { normalizarInstagram } from '@/lib/services/calendly-event'
 import { getInteractionsForCrm, type InteraccionCrm } from '@/lib/actions/interactions'
@@ -415,7 +416,9 @@ async function ensureAgendaRecordForLead(
   // "manychat:{pieceId}" — pull the keyword out of that if content_id
   // itself never resolved (older leads, or the lookup above came up empty).
   if (!keyword && lead.first_touch_type) {
-    keyword = lead.first_touch_type.match(/^manychat:(.+)$/)?.[1] || null
+    keyword = lead.first_touch_type === FIRST_TOUCH_ORGANICO
+      ? CODIGO_ORGANICO
+      : lead.first_touch_type.match(/^manychat:(.+)$/)?.[1] || null
   }
 
   const { error: insertError } = await supabase.from('agenda_records').insert({
@@ -567,6 +570,13 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
   // use, so a lead added by hand doesn't sit unassigned just because
   // nobody checked a box. Falls back to null only if the client genuinely
   // has no active setter on the team.
+  // El origen es obligatorio: una pieza de contenido o "DM directo". Sin esto
+  // la setter lo dejaba vacío y la agenda salía "Sin origen" en el panel de
+  // marketing (ver src/lib/origen-organico.ts).
+  const cta = (formData.get('content_id') as string | null) || ''
+  if (!cta) return { error: 'Elige de dónde vino el lead: una pieza de contenido o DM directo.' }
+  const organico = cta === OPCION_ORGANICO
+
   const assignedTo = (formData.get('assigned_to') as string) || await pickBalancedSetter(createAdminClient(), clientId)
 
   const { error } = await supabase.from('leads').insert({
@@ -576,7 +586,8 @@ export async function createLeadAction(formData: FormData): Promise<{ error?: st
     phone: (formData.get('phone') as string) || null,
     email: (formData.get('email') as string) || null,
     stage: (formData.get('stage') as LeadStage) || 'nuevo_contacto',
-    content_id: (formData.get('content_id') as string) || null,
+    content_id: organico ? null : cta,
+    first_touch_type: organico ? FIRST_TOUCH_ORGANICO : null,
     lead_avatar: (formData.get('lead_avatar') as string) || null,
     assigned_to: assignedTo,
     close_value: formData.get('close_value')
@@ -620,6 +631,21 @@ export async function updateLeadFieldsAction(id: string, fields: {
     if (esDuplicado(error)) throw new Error('Ese Instagram o teléfono ya es de otro lead de este cliente.')
     throw error
   }
+}
+
+/**
+ * Marca como DM directo un lead que no tiene origen. Solo toca leads con
+ * first_touch_type vacío: el de ManyChat o el del agente es la atribución
+ * de primer contacto y no se reemplaza desde la ficha.
+ */
+export async function marcarLeadOrganicoAction(id: string) {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('leads')
+    .update({ content_id: null, first_touch_type: FIRST_TOUCH_ORGANICO, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('first_touch_type', null)
+  if (error) throw error
 }
 
 export async function deleteLeadAction(id: string) {

@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select'
 import { Modal } from '@/components/ui/modal'
 import { formatDate, formatDateCompact } from '@/lib/utils'
 import { Search, Filter, User, Calendar, Phone, ExternalLink, Loader2, Plus, X, TrendingUp, Settings } from 'lucide-react'
+import { ETIQUETA_ORGANICO, OPCION_ORGANICO } from '@/lib/origen-organico'
 import {
     updateLeadStageAction,
     updateLeadAvatarAction,
@@ -462,12 +463,12 @@ function NuevoLeadForm({
     const stageOptions = LEAD_STAGES.map((s) => ({ value: s.id, label: s.label }))
     const avatarOptions = avatarList.map((a) => ({ value: a, label: a }))
     const userOptions = agencyUsers.map((u) => ({ value: u.id, label: u.full_name }))
-    const contentOptions = contentPieces.map((cp) => ({
+    const contentOptions = [{ value: OPCION_ORGANICO, label: ETIQUETA_ORGANICO }, ...contentPieces.map((cp) => ({
         value: cp.id,
         label: cp.keyword_trigger
             ? `${cp.keyword_trigger}${cp.caption ? ` — ${cp.caption.slice(0, 40)}` : ''}`
             : cp.caption?.slice(0, 60) || cp.content_type,
-    }))
+    }))]
 
     return (
         <Modal onClose={onClose} size="md">
@@ -542,15 +543,14 @@ function NuevoLeadForm({
                     />
                 )}
 
-                {contentPieces.length > 0 && (
-                    <Select
-                        id="content_id"
-                        name="content_id"
-                        label="Fuente (Pieza de Contenido)"
-                        placeholder="— Sin fuente —"
-                        options={contentOptions}
-                    />
-                )}
+                <Select
+                    id="content_id"
+                    name="content_id"
+                    label="De dónde vino *"
+                    placeholder="— Elige una pieza o DM directo —"
+                    options={contentOptions}
+                    required
+                />
 
                 {error && (
                     <p className="text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded-lg px-3 py-2">
