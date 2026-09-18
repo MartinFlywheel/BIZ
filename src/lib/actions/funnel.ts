@@ -2,7 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import type { FunnelStage, FunnelResult, ClientHealthAlert } from '@/lib/types'
+import type { FunnelResult, ClientHealthAlert } from '@/lib/types'
+import { evaluarEmbudo } from '@/lib/embudo'
 import {
   getLiveMetricsDetalle,
   getEffectiveMetricsForRange,
@@ -16,16 +17,8 @@ import { COLUMNAS_CORRECCIONES, OVERRIDABLE_FIELDS, leerCorrecciones, type Overr
 import { hoyChile, lunesDe, minFecha, sumarDias, ultimoDiaDe } from '@/lib/fecha-chile'
 
 
-// =====================================================
-// Funnel stage definition — order matters
-// Types live in lib/types.ts ('use server' files can only export async fns)
-// =====================================================
-
-function safeRate(numerator: number, denominator: number): number {
-  if (denominator <= 0) return 0
-
-  return (numerator / denominator) * 100
-}
+// Las etapas, sus metas y la evaluación viven en src/lib/embudo.ts; los tipos,
+// en lib/types.ts ('use server' files can only export async fns).
 
 export type FunnelPeriodType = 'daily' | 'weekly' | 'monthly' | '15d' | '30d'
 
@@ -117,76 +110,22 @@ export async function calculateFunnel(
   // failing funnel (avoids flagging brand-new/inactive clients as critical).
   if (totalViews + chats_abiertos + agendas === 0) return null
 
-  const rates = {
-    respuesta: safeRate(chats_abiertos, totalViews),
-    conversion: safeRate(conversaciones, chats_abiertos),
-    agendamiento: safeRate(agendas, conversaciones),
-    // Against llamadas (agendas whose call already happened), not raw
-    // agendas — a "Pendiente" booking hasn't had the chance to show yet,
-    // it isn't a no-show.
-    show_up: safeRate(shows, llamadas),
-    cierre: safeRate(cierres, shows),
-  }
-
-  // Each stage shows the OUTPUT count at that level (how many reached here),
-  // and the rate is the conversion FROM the previous stage TO this one.
-  // `denominator` is that previous stage's count — when it's 0, nobody has
-  // reached this stage yet, so its rate is meaningless (not a real deficit).
-  const stagesDef: Array<{
-    id: string
-    label: string
-    value: number
-    rate: number
-    min: number
-    max: number
-    denominator: number
-  }> = [
-    // ── Marketing ──────────────────────────────────────────────────────────
-    // La etapa muestra el mismo total que divide a Chats; antes decía "Vistas
-    // Reels" y mostraba solo los reels aunque la tasa usaba reels + historias.
-    { id: 'vistas',        label: 'Vistas',          value: totalViews,      rate: 0,                 min: 0,  max: 0,   denominator: 1 },
-    { id: 'chats',         label: 'Chats',           value: chats_abiertos,  rate: rates.respuesta,   min: 1,  max: 3,   denominator: totalViews },
-    { id: 'conversaciones',label: 'Conversaciones',  value: conversaciones,  rate: rates.conversion,  min: 70, max: 100, denominator: chats_abiertos },
-    // ── Ventas ─────────────────────────────────────────────────────────────
-    { id: 'agendas',       label: 'Agendas',         value: agendas,         rate: rates.agendamiento,min: 8,  max: 12,  denominator: conversaciones },
-    { id: 'shows',         label: 'Shows',           value: shows,           rate: rates.show_up,     min: 70, max: 100, denominator: llamadas },
-    { id: 'cierres',       label: 'Cierres',         value: cierres,         rate: rates.cierre,      min: 30, max: 60,  denominator: shows },
-  ]
-
-  // Find bottleneck: stage with the biggest shortfall below benchmark —
-  // only among stages that actually received traffic (denominator > 0).
-  // A stage nobody has reached yet (e.g. Shows when Agendas is 0) can't be
-  // diagnosed as "underperforming"; the real problem is further upstream.
-  let worstDrop = 0
-  let bottleneckId: string | null = null
-
-  for (const s of stagesDef) {
-    if (s.min === 0) continue        // skip entry stage
-    if (s.denominator === 0) continue // no traffic reached this stage — nothing to diagnose
-    if (s.rate < s.min) {
-      const drop = s.min - s.rate
-      if (drop > worstDrop) {
-        worstDrop = drop
-        bottleneckId = s.id
-      }
-    }
-  }
-
-  const stages: FunnelStage[] = stagesDef.map((s) => ({
-    id: s.id,
-    label: s.label,
-    value: s.value,
-    rate: Math.round(s.rate * 100) / 100,
-    benchmark_min: s.min,
-    benchmark_max: s.max,
-    status: s.min === 0 || s.denominator === 0 ? 'healthy' : s.rate >= s.min ? 'healthy' : 'critical',
-    is_bottleneck: s.id === bottleneckId,
-  }))
+  // Tasas, metas y cuello de botella salen de src/lib/embudo.ts: la misma
+  // evaluación que usa el aviso diario de metas.
+  const { stages, bottleneck: bottleneckId, bottleneck_drop } = evaluarEmbudo({
+    vistas: totalViews,
+    chats: chats_abiertos,
+    conversaciones,
+    agendas,
+    llamadas,
+    shows,
+    cierres,
+  })
 
   return {
     stages,
     bottleneck: bottleneckId,
-    bottleneck_drop: Math.round(worstDrop * 100) / 100,
+    bottleneck_drop,
     period: {
       start,
       end,

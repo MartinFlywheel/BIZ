@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import type { DashboardMetrics, BenchmarkAlert } from '@/lib/types'
+import type { DashboardMetrics } from '@/lib/types'
 import { getEffectiveMetricsForRange, type ContentTypeFilter } from './live-metrics'
 import { fetchAllRows } from '@/lib/supabase/paginate'
 import { hoyChile, primerDiaDelMes, sumarMeses, ultimoDiaDe } from '@/lib/fecha-chile'
@@ -179,64 +179,4 @@ export async function getMonthOverMonthComparison(clientId: string, contentType?
     tasaShowUp: rate(current.tasa_show_up, previous.tasa_show_up),
     tasaCierre: rate(current.tasa_cierre, previous.tasa_cierre),
   }
-}
-
-export async function getBenchmarkAlerts(
-  clientId: string,
-  metrics: DashboardMetrics
-): Promise<BenchmarkAlert[]> {
-  const supabase = await createClient()
-
-  const { data: benchmarks } = await supabase
-    .from('benchmarks')
-    .select('*')
-    .or(`client_id.eq.${clientId},client_id.is.null`)
-    .order('client_id', { ascending: false, nullsFirst: false })
-
-  if (!benchmarks) return []
-
-  const seen = new Set<string>()
-  const alerts: BenchmarkAlert[] = []
-
-  for (const b of benchmarks) {
-    if (seen.has(b.metric_key)) continue
-    seen.add(b.metric_key)
-
-    const metricMap: Record<string, number> = {
-      tasa_respuesta: metrics.tasa_respuesta,
-      tasa_show_up: metrics.tasa_show_up,
-      tasa_cierre: metrics.tasa_cierre,
-    }
-
-    // Sin denominador no hay nada que diagnosticar. getDashboardMetrics
-    // devuelve 0 cuando nadie llego a esa etapa todavia (0 llamadas => 0% de
-    // show-up), y comparar ese 0 contra el benchmark marcaba como "critico" a
-    // cualquier cliente recien creado o sin actividad en el periodo. Es la
-    // misma distincion que ya hacen calculateFunnel (denominator === 0 =>
-    // 'healthy') y la tabla de Equipo (null => "—" en vez de 0.00%).
-    const denominadorPorMetrica: Record<string, number> = {
-      tasa_respuesta: metrics.chats_abiertos,
-      tasa_show_up: metrics.llamadas,
-      tasa_cierre: metrics.show_ups,
-    }
-
-    const current = metricMap[b.metric_key]
-    if (current === undefined) continue
-    if ((denominadorPorMetrica[b.metric_key] ?? 0) <= 0) continue
-
-    const is_failing =
-      b.comparison === 'gte' ? current < b.threshold_value : current > b.threshold_value
-
-    alerts.push({
-      metric_key: b.metric_key,
-      current_value: current,
-      threshold_value: b.threshold_value,
-      comparison: b.comparison,
-      is_failing,
-      diagnosis_message: b.diagnosis_message,
-      responsible_area: b.responsible_area,
-    })
-  }
-
-  return alerts
 }

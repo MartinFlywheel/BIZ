@@ -366,9 +366,8 @@ export interface DashboardMetrics {
   chats_abiertos: number
   conversaciones_reales: number
   agendas: number
-  // Agendas cuya llamada ya ocurrio — el denominador del show-up. Se expone
-  // para que getBenchmarkAlerts pueda distinguir "0% real" de "todavia no hay
-  // ninguna llamada", que no es un deficit sino ausencia de datos.
+  // Agendas cuya llamada ya ocurrió: el denominador del show-up. Con 0, la
+  // tasa no es un déficit sino ausencia de datos.
   llamadas: number
   show_ups: number
   cierres: number

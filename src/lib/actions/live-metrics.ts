@@ -1,5 +1,6 @@
 'use server'
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import {
   COLUMNAS_CORRECCIONES,
@@ -126,8 +127,9 @@ async function interactionCountsByDay(
   clientId: string,
   rangeStart: string,
   rangeEnd: string,
+  db?: SupabaseClient,
 ): Promise<InteractionDayCount[]> {
-  const supabase = await createClient()
+  const supabase = db ?? await createClient()
   const startIso = `${rangeStart}T00:00:00Z`
   const endIso = `${rangeEnd}T23:59:59Z`
 
@@ -201,8 +203,9 @@ async function leerInsightsDiarios(
   clientId: string,
   rangeStart: string,
   rangeEnd: string,
+  db?: SupabaseClient,
 ): Promise<{ disponible: boolean; filas: InsightDiario[] }> {
-  const supabase = await createClient()
+  const supabase = db ?? await createClient()
   try {
     const filas = await fetchAllRows<InsightDiario>((from, to) =>
       supabase
@@ -243,6 +246,9 @@ export async function getLiveMetricsDetalle(
   clientId: string,
   buckets: DateBucket[],
   contentType?: ContentTypeFilter,
+  // Solo para tareas programadas (sin sesión): el cliente admin. Desde la app
+  // se omite y se usa el de la sesión, con su RLS.
+  db?: SupabaseClient,
 ): Promise<LiveMetricsDetalle> {
   const result: Record<string, PeriodMetrics> = {}
   for (const b of buckets) result[b.key] = emptyMetrics()
@@ -258,7 +264,7 @@ export async function getLiveMetricsDetalle(
   const hoy = hoyChile().iso
   const agendasHasta = minFecha(rangeEnd, hoy)
 
-  const supabase = await createClient()
+  const supabase = db ?? await createClient()
 
   // None of these can rely on Supabase's default query behavior — each one
   // routinely exceeds the 1000-row cap (see paginate.ts) for active clients,
@@ -281,7 +287,7 @@ export async function getLiveMetricsDetalle(
         .lte('published_at', `${rangeEnd}T23:59:59Z`)
         .range(from, to)
     ),
-    interactionCountsByDay(clientId, rangeStart, rangeEnd),
+    interactionCountsByDay(clientId, rangeStart, rangeEnd, db),
     rangeStart <= agendasHasta
       ? fetchAllRows<AgendaFila>((from, to) =>
           supabase
@@ -298,7 +304,7 @@ export async function getLiveMetricsDetalle(
     // aportan algo a la vista.
     contentType === 'reel'
       ? Promise.resolve({ disponible: false, filas: [] as InsightDiario[] })
-      : leerInsightsDiarios(clientId, rangeStart, rangeEnd),
+      : leerInsightsDiarios(clientId, rangeStart, rangeEnd, db),
   ])
 
   // Casi todas las llamadas usan buckets de un día: buscar por mapa evita un
@@ -516,6 +522,8 @@ export async function getEffectiveMetricsForRange(
   start: string,
   end: string,
   contentType?: ContentTypeFilter,
+  // Ver getLiveMetricsDetalle: el cliente admin para el cron de alertas.
+  db?: SupabaseClient,
 ): Promise<PeriodMetrics> {
   // Días que todavía no pasan no se cuentan: el período en curso termina hoy.
   const dayBuckets = await dailyBucketsFor(start, minFecha(end, hoyChile().iso))
@@ -523,7 +531,7 @@ export async function getEffectiveMetricsForRange(
   if (dayBuckets.length === 0) return total
 
   if (contentType) {
-    const liveByDay = await getLiveMetricsBuckets(clientId, dayBuckets, contentType)
+    const liveByDay = (await getLiveMetricsDetalle(clientId, dayBuckets, contentType, db)).metricas
     for (const day of dayBuckets) {
       const live = liveByDay[day.key]
       for (const key of Object.keys(total) as (keyof PeriodMetrics)[]) {
@@ -533,10 +541,10 @@ export async function getEffectiveMetricsForRange(
     return total
   }
 
-  const supabase = await createClient()
+  const supabase = db ?? await createClient()
 
   const [detalle, overridesRes] = await Promise.all([
-    getLiveMetricsDetalle(clientId, dayBuckets),
+    getLiveMetricsDetalle(clientId, dayBuckets, undefined, db),
     supabase
       .from('client_metrics')
       .select(COLUMNAS_CORRECCIONES)
