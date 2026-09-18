@@ -15,56 +15,16 @@ import {
 } from './live-metrics'
 import { COLUMNAS_CORRECCIONES, OVERRIDABLE_FIELDS, leerCorrecciones, type OverridableField } from '@/lib/metrics-types'
 import { hoyChile, lunesDe, minFecha, sumarDias, ultimoDiaDe } from '@/lib/fecha-chile'
+import { limitesDelPeriodo, periodBounds, type FunnelPeriodType } from '@/lib/periodos'
 
 
 // Las etapas, sus metas y la evaluación viven en src/lib/embudo.ts; los tipos,
 // en lib/types.ts ('use server' files can only export async fns).
 
-export type FunnelPeriodType = 'daily' | 'weekly' | 'monthly' | '15d' | '30d'
-
-// Límites completos de un período ([start, end], ambos incluidos), anclado en
-// periodStart si viene, o en hoy de Chile si no.
-//
-// "Hoy" se calcula en hora de Chile y no con new Date(): Vercel corre en UTC,
-// y desde las 21:00 del último día del mes el servidor ya tomaba el mes
-// siguiente como el actual. Las cuentas se hacen sobre strings de fecha, sin
-// depender de la zona del proceso.
-function limitesDelPeriodo(
-  periodType: FunnelPeriodType,
-  periodStart?: string
-): { start: string; end: string } {
-  const anchor = periodStart || hoyChile().iso
-
-  if (periodType === 'daily') {
-    return { start: anchor, end: anchor }
-  }
-
-  if (periodType === 'monthly') {
-    const mes = anchor.slice(0, 7)
-    return { start: `${mes}-01`, end: ultimoDiaDe(mes) }
-  }
-
-  // Rolling trailing window ending on the anchor date (today, unless a
-  // specific end was given) — not calendar-aligned like week/month.
-  if (periodType === '15d' || periodType === '30d') {
-    const days = periodType === '15d' ? 15 : 30
-    return { start: sumarDias(anchor, -(days - 1)), end: anchor }
-  }
-
-  const monday = lunesDe(anchor)
-  return { start: monday, end: sumarDias(monday, 6) }
-}
-
-// Igual que limitesDelPeriodo, pero el período en curso termina hoy: los días
-// que todavía no pasan no se cuentan (incluidas las agendas ya puestas para
-// esos días). Un período futuro queda con end < start, o sea, vacío.
-function periodBounds(
-  periodType: FunnelPeriodType,
-  periodStart?: string
-): { start: string; end: string } {
-  const { start, end } = limitesDelPeriodo(periodType, periodStart)
-  return { start, end: minFecha(end, hoyChile().iso) }
-}
+// Los límites de cada período (y el tipo FunnelPeriodType) viven en
+// src/lib/periodos.ts: los comparten el embudo y la comparativa con el período
+// anterior. No se re-exporta el tipo desde aquí: el compilador de server
+// actions lo trata como un valor y el build falla.
 
 /** Un rango elegido a mano en el Dashboard ('YYYY-MM-DD', ambos incluidos). */
 export interface RangoPersonalizado {

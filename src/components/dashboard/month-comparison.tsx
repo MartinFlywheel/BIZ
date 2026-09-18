@@ -113,7 +113,7 @@ export function MonthComparisonCards({ comparison, contentTypeLabel }: Props) {
     <div className="space-y-5">
       <div className="flex items-baseline justify-between">
         <h2 className="text-sm font-medium text-white/90">
-          Comparativa Mensual
+          Comparación con el período anterior
           {contentTypeLabel && <span className="ml-2 font-normal text-zinc-500">· {contentTypeLabel}</span>}
         </h2>
         <p className="text-xs text-zinc-500">

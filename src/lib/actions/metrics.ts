@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import type { DashboardMetrics } from '@/lib/types'
 import { getEffectiveMetricsForRange, type ContentTypeFilter } from './live-metrics'
 import { fetchAllRows } from '@/lib/supabase/paginate'
-import { hoyChile, primerDiaDelMes, sumarMeses, ultimoDiaDe } from '@/lib/fecha-chile'
+import { hoyChile } from '@/lib/fecha-chile'
 
 /**
  * Totales y tasas de un rango, con el mismo cálculo que el embudo del
@@ -86,7 +86,7 @@ export async function getClientFunnelTotals(clientId: string) {
 
 export type ClientFunnelTotals = Awaited<ReturnType<typeof getClientFunnelTotals>>
 
-// ── Month-over-month comparison ──────────────────────────────────────────────
+// ── Comparación con el período anterior ──────────────────────────────────────
 
 export interface MonthComparisonMetric {
   current: number
@@ -129,28 +129,20 @@ function pctChange(current: number, previous: number): number | null {
   return ((current - previous) / previous) * 100
 }
 
-// Current month-to-date vs the FULL previous calendar month — not the same
-// number of days last month. Was originally day-matched (Jul 1-22 vs Aug
-// 1-22) to avoid a partial month always reading as a decline, but that
-// truncation hid real closed deals that landed in the back half of last
-// month (a client closed 5 sales in July; the day-matched window only
-// covered Jul 1-22 and showed 0). The person reading this already knows
-// the current month isn't over — what they actually want is last month's
-// real total as the reference point, not a fairness-adjusted one.
+// El período elegido en el Dashboard contra el anterior del mismo largo
+// (src/lib/periodos.ts, periodoAnterior). Antes era siempre el mes en curso
+// contra el mes anterior completo: 18 días de septiembre contra 31 de agosto,
+// y todo salía a la baja solo por tener menos días. Además ignoraba el período
+// elegido arriba, así que no hablaba de lo mismo que el embudo.
 //
-// Built on getDashboardMetrics, que usa el mismo cálculo que el embudo: con el
-// período "Mes" y el mismo filtro de contenido, los números del mes en curso
-// son los del embudo.
-export async function getMonthOverMonthComparison(clientId: string, contentType?: ContentTypeFilter): Promise<MonthComparison> {
-  // Mes y día en hora de Chile, no del servidor (UTC): desde las 21:00 del
-  // último día del mes, el "mes actual" pasaba a ser el siguiente.
-  const hoy = hoyChile()
-  const mesActual = hoy.iso.slice(0, 7)
-  const mesAnterior = sumarMeses(mesActual, -1)
-
-  const currentRange = { start: primerDiaDelMes(mesActual), end: hoy.iso }
-  const previousRange = { start: primerDiaDelMes(mesAnterior), end: ultimoDiaDe(mesAnterior) }
-
+// Built on getDashboardMetrics, el mismo cálculo que el embudo: los números
+// del período actual son los del embudo.
+export async function getComparacionDePeriodos(
+  clientId: string,
+  currentRange: { start: string; end: string },
+  previousRange: { start: string; end: string },
+  contentType?: ContentTypeFilter
+): Promise<MonthComparison> {
   const [current, previous] = await Promise.all([
     getDashboardMetrics(clientId, currentRange.start, currentRange.end, contentType),
     getDashboardMetrics(clientId, previousRange.start, previousRange.end, contentType),

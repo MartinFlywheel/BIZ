@@ -1,7 +1,9 @@
 import { Suspense } from 'react'
 import { getClientOptions } from '@/lib/actions/clients'
-import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType, type RangoPersonalizado } from '@/lib/actions/funnel'
-import { getMonthOverMonthComparison } from '@/lib/actions/metrics'
+import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type RangoPersonalizado } from '@/lib/actions/funnel'
+import { getComparacionDePeriodos } from '@/lib/actions/metrics'
+import { periodBounds, periodoAnterior, type FunnelPeriodType, type Rango } from '@/lib/periodos'
+import { hoyChile } from '@/lib/fecha-chile'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { HealthAlerts } from '@/components/dashboard/health-alerts'
 import { FunnelView } from '@/components/dashboard/funnel-view'
@@ -178,9 +180,9 @@ async function HealthAlertsSection({ selectedId }: { selectedId?: string }) {
   return <HealthAlerts alerts={alerts} selectedId={selectedId} />
 }
 
-// ── Comparison section — independent of the period/type toggle, so switching
-// those doesn't wait on this section's own (heavier) queries. Keyed only by
-// clientId: this data doesn't change when the funnel's period does. ─────────
+// ── Comparación con el período anterior y tendencia semanal. Su propio
+// Suspense: el embudo se muestra sin esperar estas consultas. Sigue el período
+// y el filtro elegidos arriba, así que su key los incluye. ──────────────────
 
 function ComparisonSkeleton() {
   return (
@@ -195,9 +197,14 @@ function ComparisonSkeleton() {
   )
 }
 
-async function ComparisonSection({ clientId, contentType }: { clientId: string; contentType?: ContentTypeFilter }) {
+async function ComparisonSection({ clientId, contentType, actual, anterior }: {
+  clientId: string
+  contentType?: ContentTypeFilter
+  actual: Rango
+  anterior: Rango
+}) {
   const [monthComparison, weeklyTrend] = await Promise.all([
-    getMonthOverMonthComparison(clientId, contentType),
+    getComparacionDePeriodos(clientId, actual, anterior, contentType),
     getComputedClientMetrics(clientId, 'weekly', 8, contentType),
   ])
   const etiqueta = contentType === 'reel' ? 'Reels' : contentType === 'story' ? 'Historias' : undefined
@@ -223,6 +230,12 @@ export default async function DashboardPage({
   const period: FunnelPeriodType = VALID_PERIODS.includes(periodParam as FunnelPeriodType)
     ? (periodParam as FunnelPeriodType)
     : 'weekly'
+  // Los mismos días que mira el embudo, y el período anterior del mismo largo
+  // para la comparativa.
+  const actual: Rango = rango
+    ? { start: rango.start, end: rango.end < hoyChile().iso ? rango.end : hoyChile().iso }
+    : periodBounds(period)
+  const anterior = periodoAnterior(rango ? 'custom' : period, actual)
 
   // Only clients is fast — health alerts run one funnel calculation per
   // active client and stream in behind their own Suspense below instead.
@@ -262,8 +275,8 @@ export default async function DashboardPage({
           <Suspense key={`${clientId}-${type || 'all'}-${period}-${rango ? `${rango.start}_${rango.end}` : ''}`} fallback={<FunnelSkeleton />}>
             <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} rango={rango} />
           </Suspense>
-          <Suspense key={`${clientId}-${type || 'all'}`} fallback={<ComparisonSkeleton />}>
-            <ComparisonSection clientId={clientId} contentType={contentType} />
+          <Suspense key={`${clientId}-${type || 'all'}-${actual.start}_${actual.end}`} fallback={<ComparisonSkeleton />}>
+            <ComparisonSection clientId={clientId} contentType={contentType} actual={actual} anterior={anterior} />
           </Suspense>
         </>
       )}
