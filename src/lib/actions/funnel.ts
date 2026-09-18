@@ -266,6 +266,18 @@ function semanasDelMes(mes: string, hoy: string): { start: string; end: string }
   return semanas.reverse()
 }
 
+/**
+ * Los días de un mes hasta hoy, el más reciente primero. La vista Diario
+ * mostraba los últimos 12 días, que a principio de mes eran casi todos del
+ * mes anterior; ahora va por mes, igual que Semanal.
+ */
+function diasDelMes(mes: string, hoy: string): { start: string; end: string }[] {
+  const fin = minFecha(ultimoDiaDe(mes), hoy)
+  const dias: { start: string; end: string }[] = []
+  for (let dia = `${mes}-01`; dia <= fin; dia = sumarDias(dia, 1)) dias.push({ start: dia, end: dia })
+  return dias.reverse()
+}
+
 export interface ComputedMetricsRow {
   period_start: string
   period_end: string
@@ -316,15 +328,17 @@ export async function getComputedClientMetrics(
   // historia: es la misma regla de getEffectiveMetricsForRange, así que la
   // tendencia filtrada cuadra con el embudo filtrado.
   contentType?: ContentTypeFilter,
-  // Solo semanal: las semanas de ese mes ('YYYY-MM') en vez de las últimas
-  // `count`. Ver semanasDelMes.
+  // Semanal y diario: los períodos de ese mes ('YYYY-MM') en vez de los
+  // últimos `count`. Ver semanasDelMes y diasDelMes.
   mes?: string
 ): Promise<ComputedMetricsRow[]> {
   const hoy = hoyChile().iso
   const inicio = await getInicioDelCliente(clientId)
-  const periods = periodType === 'weekly' && mes
+  const periods = mes && periodType === 'weekly'
     ? semanasDelMes(mes, hoy)
-    : recentPeriods(periodType, count, inicio)
+    : mes && periodType === 'daily'
+      ? diasDelMes(mes, hoy)
+      : recentPeriods(periodType, count, inicio)
   if (periods.length === 0) return []
 
   const supabase = await createClient()

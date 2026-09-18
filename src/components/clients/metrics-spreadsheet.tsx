@@ -288,9 +288,8 @@ const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
 
 // Cuántos períodos pedir como máximo. La tabla nunca arranca antes del inicio
 // del cliente en el CRM (getComputedClientMetrics lo recorta), así que Mensual
-// muestra desde ahí hasta hoy con un tope de 24 meses. Semanal no usa este
-// número: muestra las semanas del mes elegido. Diario se queda en los últimos
-// 12 días, que es donde se hacen las correcciones.
+// muestra desde ahí hasta hoy con un tope de 24 meses. Semanal y Diario no
+// usan este número: muestran las semanas o los días del mes elegido.
 const PERIODOS_A_MOSTRAR: Record<PeriodType, number> = {
   monthly: 24,
   weekly: 104,
@@ -325,9 +324,10 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
   const [periodType, setPeriodType] = useState<PeriodType>('weekly')
   const [rows, setRows] = useState<ComputedMetricsRow[]>([])
   const [loading, setLoading] = useState(true)
-  // Semanal muestra las semanas de un mes a la vez (cortadas en sus bordes):
-  // la lista de 104 semanas mezclaba meses y la semana que cruzaba el cambio
-  // de mes contaba días de los dos.
+  // Semanal y Diario muestran un mes a la vez. Semanal listaba 104 semanas
+  // mezclando meses (y la que cruzaba el cambio de mes contaba días de los
+  // dos); Diario, los últimos 12 días, que a principio de mes eran casi todos
+  // del mes anterior. Las semanas se cortan en los bordes del mes.
   const [year, setYear] = useState(() => hoyChile().year)
   const [month, setMonth] = useState(() => hoyChile().month)
   const [rangoMeses, setRangoMeses] = useState<RangoDeMeses | null>(null)
@@ -345,7 +345,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
       setLoading(true)
       const data = await getComputedClientMetrics(
         clientId, periodType, PERIODOS_A_MOSTRAR[periodType], undefined,
-        periodType === 'weekly' ? mes : undefined,
+        periodType === 'monthly' ? undefined : mes,
       )
       if (!cancelled) { setRows(data); setLoading(false) }
     }
@@ -377,7 +377,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
-        {periodType === 'weekly' && (
+        {periodType !== 'monthly' && (
           <MonthSelector
             year={year}
             month={month}
@@ -419,7 +419,7 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
                 <tr>
                   <td colSpan={HEADERS.length} className="py-12 text-center">
                     <p className="text-zinc-600 text-xs">
-                      {periodType === 'weekly' ? 'Sin actividad en este mes' : 'Sin actividad desde el inicio del cliente'}
+                      {periodType === 'monthly' ? 'Sin actividad desde el inicio del cliente' : 'Sin actividad en este mes'}
                     </p>
                   </td>
                 </tr>
