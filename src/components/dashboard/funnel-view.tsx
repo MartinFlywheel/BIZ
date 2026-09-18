@@ -53,6 +53,7 @@ const PERIOD_TYPE_LABEL: Record<string, string> = {
   monthly: 'Mensual',
   '15d': 'Últimos 15 días',
   '30d': 'Últimos 30 días',
+  custom: 'Personalizado',
 }
 
 export function FunnelView({ funnel, clientName, contentType }: Props) {

@@ -73,13 +73,24 @@ function periodBounds(
   return { start, end: minFecha(end, hoyChile().iso) }
 }
 
+/** Un rango elegido a mano en el Dashboard ('YYYY-MM-DD', ambos incluidos). */
+export interface RangoPersonalizado {
+  start: string
+  end: string
+}
+
 export async function calculateFunnel(
   clientId: string,
   periodType: FunnelPeriodType = 'weekly',
   periodStart?: string,
-  contentType?: ContentTypeFilter
+  contentType?: ContentTypeFilter,
+  rango?: RangoPersonalizado
 ): Promise<FunnelResult | null> {
-  const { start, end } = periodBounds(periodType, periodStart)
+  // Con rango, se usa tal cual (los días que aún no pasan no cuentan, igual
+  // que en los períodos fijos); period.type queda como 'custom' para la vista.
+  const { start, end } = rango
+    ? { start: rango.start, end: minFecha(rango.end, hoyChile().iso) }
+    : periodBounds(periodType, periodStart)
   const data = await getEffectiveMetricsForRange(clientId, start, end, contentType)
 
   const {
@@ -179,7 +190,7 @@ export async function calculateFunnel(
     period: {
       start,
       end,
-      type: periodType,
+      type: rango ? 'custom' : periodType,
     },
     raw: {
       views_reels,

@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { getClientOptions } from '@/lib/actions/clients'
-import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType } from '@/lib/actions/funnel'
+import { checkHealthAlerts, calculateFunnel, getComputedClientMetrics, type FunnelPeriodType, type RangoPersonalizado } from '@/lib/actions/funnel'
 import { getDashboardMetrics, getBenchmarkAlerts, getMonthOverMonthComparison } from '@/lib/actions/metrics'
 import type { ContentTypeFilter } from '@/lib/actions/live-metrics'
 import { MetricCard } from '@/components/dashboard/metric-card'
@@ -15,6 +15,16 @@ import { Card } from '@/components/ui/card'
 import { formatNumber, formatPercent } from '@/lib/utils'
 
 const VALID_PERIODS: FunnelPeriodType[] = ['weekly', '15d', '30d', 'monthly']
+
+const FECHA = /^\d{4}-\d{2}-\d{2}$/
+
+/** ?period=custom&desde=&hasta= válido, o null (y se cae a la semana). */
+function leerRango(period?: string, desde?: string, hasta?: string): RangoPersonalizado | null {
+  if (period !== 'custom' || !desde || !hasta) return null
+  if (!FECHA.test(desde) || !FECHA.test(hasta) || desde > hasta) return null
+  if (Number.isNaN(Date.parse(desde)) || Number.isNaN(Date.parse(hasta))) return null
+  return { start: desde, end: hasta }
+}
 
 // ── Skeleton — shown instantly while ClientDetail streams ─────────────────────
 
@@ -103,11 +113,13 @@ async function ClientDetail({
   clients,
   contentType,
   period,
+  rango,
 }: {
   clientId: string
   clients: Awaited<ReturnType<typeof getClientOptions>>
   contentType?: ContentTypeFilter
   period: FunnelPeriodType
+  rango: RangoPersonalizado | null
 }) {
   const selectedClient = clients.find((c) => c.id === clientId)
   if (!selectedClient) return null
@@ -118,7 +130,7 @@ async function ClientDetail({
   // adorno de las tarjetas; si fallan, las tarjetas salen sin alerta.
   const liveMetricsPromise = getDashboardMetrics(clientId)
   const [funnel, liveMetrics, alerts] = await Promise.all([
-    calculateFunnel(clientId, period, undefined, contentType),
+    calculateFunnel(clientId, period, undefined, contentType, rango ?? undefined),
     liveMetricsPromise,
     liveMetricsPromise
       .then((m) => (m ? getBenchmarkAlerts(clientId, m) : []))
@@ -246,9 +258,10 @@ async function ComparisonSection({ clientId }: { clientId: string }) {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ client?: string; type?: string; period?: string }>
+  searchParams: Promise<{ client?: string; type?: string; period?: string; desde?: string; hasta?: string }>
 }) {
-  const { client: clientId, type, period: periodParam } = await searchParams
+  const { client: clientId, type, period: periodParam, desde, hasta } = await searchParams
+  const rango = leerRango(periodParam, desde, hasta)
   const contentType: ContentTypeFilter | undefined = type === 'reel' || type === 'story' ? type : undefined
   const period: FunnelPeriodType = VALID_PERIODS.includes(periodParam as FunnelPeriodType)
     ? (periodParam as FunnelPeriodType)
@@ -266,7 +279,7 @@ export default async function DashboardPage({
           <p className="mt-1 text-sm text-zinc-400">Salud del funnel y métricas de conversión</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodToggle selected={periodParam} />
+          <PeriodToggle selected={rango ? 'custom' : periodParam} desde={rango?.start} hasta={rango?.end} />
           <ContentTypeToggle selected={type} />
           <ClientSelector clients={clients} selectedId={clientId} />
         </div>
@@ -289,8 +302,8 @@ export default async function DashboardPage({
           period-irrelevant queries (a 56-day live-metrics scan). */}
       {clientId && (
         <>
-          <Suspense key={`${clientId}-${type || 'all'}-${period}`} fallback={<FunnelSkeleton />}>
-            <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} />
+          <Suspense key={`${clientId}-${type || 'all'}-${period}-${rango ? `${rango.start}_${rango.end}` : ''}`} fallback={<FunnelSkeleton />}>
+            <ClientDetail clientId={clientId} clients={clients} contentType={contentType} period={period} rango={rango} />
           </Suspense>
           <Suspense key={clientId} fallback={<ComparisonSkeleton />}>
             <ComparisonSection clientId={clientId} />
