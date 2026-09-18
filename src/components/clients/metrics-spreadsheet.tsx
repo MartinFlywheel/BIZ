@@ -5,6 +5,9 @@ import { AlertTriangle, Check, Loader2 } from 'lucide-react'
 import { getComputedClientMetrics, saveMetricsOverrides, type ComputedMetricsRow } from '@/lib/actions/funnel'
 import type { OverridableField } from '@/lib/metrics-types'
 import { formatCurrency } from '@/lib/utils'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { getRangoDeMeses, type RangoDeMeses } from '@/lib/actions/chat-metrics'
+import { hoyChile, mesActualChile } from '@/lib/fecha-chile'
 
 type PeriodType = 'weekly' | 'monthly' | 'daily'
 
@@ -284,9 +287,10 @@ const PERIOD_OPTIONS: { value: PeriodType; label: string }[] = [
 ]
 
 // Cuántos períodos pedir como máximo. La tabla nunca arranca antes del inicio
-// del cliente en el CRM (getComputedClientMetrics lo recorta), así que Semanal
-// y Mensual muestran desde ahí hasta hoy con un tope de 24 meses. Diario se
-// queda en los últimos 12 días, que es donde se hacen las correcciones.
+// del cliente en el CRM (getComputedClientMetrics lo recorta), así que Mensual
+// muestra desde ahí hasta hoy con un tope de 24 meses. Semanal no usa este
+// número: muestra las semanas del mes elegido. Diario se queda en los últimos
+// 12 días, que es donde se hacen las correcciones.
 const PERIODOS_A_MOSTRAR: Record<PeriodType, number> = {
   monthly: 24,
   weekly: 104,
@@ -321,17 +325,33 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
   const [periodType, setPeriodType] = useState<PeriodType>('weekly')
   const [rows, setRows] = useState<ComputedMetricsRow[]>([])
   const [loading, setLoading] = useState(true)
+  // Semanal muestra las semanas de un mes a la vez (cortadas en sus bordes):
+  // la lista de 104 semanas mezclaba meses y la semana que cruzaba el cambio
+  // de mes contaba días de los dos.
+  const [year, setYear] = useState(() => hoyChile().year)
+  const [month, setMonth] = useState(() => hoyChile().month)
+  const [rangoMeses, setRangoMeses] = useState<RangoDeMeses | null>(null)
+  const mes = `${year}-${String(month).padStart(2, '0')}`
+
+  useEffect(() => {
+    let cancelado = false
+    getRangoDeMeses(clientId, 'chat').then(r => { if (!cancelado) setRangoMeses(r) }).catch(() => {})
+    return () => { cancelado = true }
+  }, [clientId])
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       setLoading(true)
-      const data = await getComputedClientMetrics(clientId, periodType, PERIODOS_A_MOSTRAR[periodType])
+      const data = await getComputedClientMetrics(
+        clientId, periodType, PERIODOS_A_MOSTRAR[periodType], undefined,
+        periodType === 'weekly' ? mes : undefined,
+      )
       if (!cancelled) { setRows(data); setLoading(false) }
     }
     load()
     return () => { cancelled = true }
-  }, [clientId, periodType])
+  }, [clientId, periodType, mes])
 
   // Only show periods with some activity — a wall of empty rows is just noise
   const activeRows = rows.filter((r) =>
@@ -357,6 +377,15 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
             </button>
           ))}
         </div>
+        {periodType === 'weekly' && (
+          <MonthSelector
+            year={year}
+            month={month}
+            onChange={(y, m) => { setYear(y); setMonth(m) }}
+            min={rangoMeses?.min}
+            max={rangoMeses?.max ?? mesActualChile()}
+          />
+        )}
       </div>
 
       {/* Grid */}
@@ -389,7 +418,9 @@ export function MetricsSpreadsheet({ clientId }: { clientId: string }) {
               ) : activeRows.length === 0 ? (
                 <tr>
                   <td colSpan={HEADERS.length} className="py-12 text-center">
-                    <p className="text-zinc-600 text-xs">Sin actividad desde el inicio del cliente</p>
+                    <p className="text-zinc-600 text-xs">
+                      {periodType === 'weekly' ? 'Sin actividad en este mes' : 'Sin actividad desde el inicio del cliente'}
+                    </p>
                   </td>
                 </tr>
               ) : (

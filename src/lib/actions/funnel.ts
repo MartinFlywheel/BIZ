@@ -245,6 +245,27 @@ function recentPeriods(
   return periods
 }
 
+/**
+ * Las semanas (lunes a domingo) de un mes, cortadas en sus bordes: en
+ * septiembre de 2026, la primera es 1–6 sept y no 31 ago – 6 sept. En el
+ * Registro de métricas aparecían semanas de otros meses, y la que cruzaba el
+ * cambio de mes contaba días de los dos; así, las semanas del mes suman
+ * exactamente lo que muestra Mensual. Las que todavía no empiezan no se
+ * incluyen; la semana en curso conserva su fin real para la etiqueta y suma
+ * solo hasta hoy, como el resto de la planilla. La más reciente va primero,
+ * como en recentPeriods.
+ */
+function semanasDelMes(mes: string, hoy: string): { start: string; end: string }[] {
+  const fin = ultimoDiaDe(mes)
+  const semanas: { start: string; end: string }[] = []
+  for (let start = `${mes}-01`; start <= fin && start <= hoy; ) {
+    const end = minFecha(sumarDias(lunesDe(start), 6), fin)
+    semanas.push({ start, end })
+    start = sumarDias(end, 1)
+  }
+  return semanas.reverse()
+}
+
 export interface ComputedMetricsRow {
   period_start: string
   period_end: string
@@ -294,11 +315,17 @@ export async function getComputedClientMetrics(
   // no se aplican las correcciones del Diario, que no distinguen reel de
   // historia: es la misma regla de getEffectiveMetricsForRange, así que la
   // tendencia filtrada cuadra con el embudo filtrado.
-  contentType?: ContentTypeFilter
+  contentType?: ContentTypeFilter,
+  // Solo semanal: las semanas de ese mes ('YYYY-MM') en vez de las últimas
+  // `count`. Ver semanasDelMes.
+  mes?: string
 ): Promise<ComputedMetricsRow[]> {
   const hoy = hoyChile().iso
   const inicio = await getInicioDelCliente(clientId)
-  const periods = recentPeriods(periodType, count, inicio)
+  const periods = periodType === 'weekly' && mes
+    ? semanasDelMes(mes, hoy)
+    : recentPeriods(periodType, count, inicio)
+  if (periods.length === 0) return []
 
   const supabase = await createClient()
 
