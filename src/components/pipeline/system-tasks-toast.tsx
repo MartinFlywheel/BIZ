@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Bell, Calendar, Clock, FileText, Lock, UserSearch } from 'lucide-react'
+import { Bell, Calendar, Clock, FileText, Lock, Minus, UserSearch } from 'lucide-react'
 import {
   getResponsables,
   posponerTarea,
@@ -39,6 +39,12 @@ const TITULOS: Record<TareaSistema['tipo'], { titulo: string; boton: string }> =
  * estado vive en la base (visible_desde), no en el navegador, así que cambiar
  * de equipo no reinicia nada.
  *
+ * Sí se puede minimizar a una píldora con el contador. En el celular la
+ * tarjeta completa tapaba media pantalla de la app de setters y no dejaba
+ * seguir trabajando; la píldora sigue a la vista y se abre de un toque. En
+ * pantallas angostas parte minimizado. Se arrastra desde el encabezado o
+ * desde la píldora.
+ *
  * Refresca cada 45 segundos y al volver a la ventana. Si el navegador lo
  * permite, lo vencido y lo nuevo también llegan como notificación del sistema
  * operativo, para cuando el CRM está en otra pestaña.
@@ -58,6 +64,20 @@ export function SystemTasksToast() {
   const cajaRef = useRef<HTMLDivElement>(null)
   const arrastre = useRef<{ px: number; py: number; x: number; y: number; rect: DOMRect } | null>(null)
   const [desplazamiento, setDesplazamiento] = useState({ x: 0, y: 0 })
+  const [minimizado, setMinimizado] = useState(false)
+  // Un arrastre que termina sobre la píldora no debe abrirla.
+  const movido = useRef(false)
+
+  const cambiarMinimizado = useCallback((valor: boolean) => {
+    setMinimizado(valor)
+    try { sessionStorage.setItem(CLAVE_MINIMIZADO, valor ? '1' : '0') } catch { /* sin storage */ }
+    // La caja cambia de tamaño: se vuelve a encajar en la pantalla una vez
+    // pintada con el tamaño nuevo.
+    requestAnimationFrame(() => {
+      const caja = cajaRef.current
+      if (caja) setDesplazamiento((d) => acotar(d.x, d.y, caja.getBoundingClientRect(), d))
+    })
+  }, [])
 
   // El aviso no se puede cerrar: si al achicar la ventana queda fuera de la
   // pantalla, se vuelve a meter dentro.
@@ -118,6 +138,9 @@ export function SystemTasksToast() {
     const inicial = setTimeout(() => {
       void cargar()
       if (typeof Notification !== 'undefined') setPermiso(Notification.permission)
+      let guardado: string | null = null
+      try { guardado = sessionStorage.getItem(CLAVE_MINIMIZADO) } catch { /* sin storage */ }
+      setMinimizado(guardado === null ? window.innerWidth < 640 : guardado === '1')
     }, 0)
     const cada = setInterval(() => { if (vale()) void cargar() }, 45_000)
     const reloj = setInterval(() => setAhora(Date.now()), 30_000)
@@ -242,6 +265,32 @@ export function SystemTasksToast() {
     }
   }
 
+  const arrastrable = {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      if (e.button !== 0 || !cajaRef.current) return
+      // El botón de minimizar del encabezado no inicia arrastre.
+      if (e.target !== e.currentTarget && (e.target as HTMLElement).closest('button')) return
+      e.currentTarget.setPointerCapture(e.pointerId)
+      movido.current = false
+      arrastre.current = {
+        px: e.clientX,
+        py: e.clientY,
+        ...desplazamiento,
+        rect: cajaRef.current.getBoundingClientRect(),
+      }
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
+      const a = arrastre.current
+      if (!a) return
+      const dx = e.clientX - a.px
+      const dy = e.clientY - a.py
+      if (Math.abs(dx) + Math.abs(dy) > 6) movido.current = true
+      setDesplazamiento(acotar(a.x + dx, a.y + dy, a.rect, a))
+    },
+    onPointerUp: () => { arrastre.current = null },
+    onPointerCancel: () => { arrastre.current = null },
+  }
+
   const borde = tono === 'vencido'
     ? 'border-red-400/45 shadow-[0_0_0_1px_rgba(248,113,113,0.14)]'
     : tono === 'urgente' ? 'border-amber-400/40' : 'border-white/[0.11]'
@@ -253,29 +302,39 @@ export function SystemTasksToast() {
     <>
       <div
         ref={cajaRef}
-        className="fixed right-4 top-4 z-[90] w-[min(360px,calc(100vw-2rem))] sm:right-6 sm:top-6"
-        style={{ transform: `translate(${desplazamiento.x}px, ${desplazamiento.y}px)` }}
+        className={`fixed right-3 z-[90] sm:right-6 ${minimizado ? '' : 'w-[min(360px,calc(100vw-1.5rem))]'}`}
+        style={{
+          // Bajo la barra de estado del celular y el botón de salir de la app de setters.
+          top: 'calc(env(safe-area-inset-top) + 3.75rem)',
+          transform: `translate(${desplazamiento.x}px, ${desplazamiento.y}px)`,
+        }}
       >
+        {minimizado ? (
+          <button
+            type="button"
+            {...arrastrable}
+            onClick={() => { if (!movido.current) cambiarMinimizado(false) }}
+            title="Abrir tareas pendientes (arrastra para mover)"
+            className={`flex cursor-grab touch-none select-none items-center gap-2 rounded-full border bg-[#141415]/95 py-1.5 pl-1.5 pr-3 shadow-2xl backdrop-blur-xl ${borde}`}
+          >
+            <span className={`flex h-6 w-6 items-center justify-center rounded-full border ${colorIcono}`}>
+              <Icono className="h-3 w-3" />
+            </span>
+            <span className="text-xs font-semibold text-zinc-100">
+              {tareas.length} {tareas.length === 1 ? 'tarea' : 'tareas'}
+            </span>
+            {tono !== 'normal' && (
+              <span className={`text-[11px] ${tono === 'vencido' ? 'text-red-400' : 'text-amber-400'}`}>
+                {tono === 'vencido' ? 'vencida' : 'vence pronto'}
+              </span>
+            )}
+          </button>
+        ) : (
         <div className={`rounded-2xl border bg-[#141415]/95 p-4 shadow-2xl backdrop-blur-xl ${borde}`}>
           <div
             title="Arrastra para mover"
             className="mb-3 flex cursor-grab touch-none select-none items-center gap-2.5 active:cursor-grabbing"
-            onPointerDown={(e) => {
-              if (e.button !== 0 || !cajaRef.current) return
-              e.currentTarget.setPointerCapture(e.pointerId)
-              arrastre.current = {
-                px: e.clientX,
-                py: e.clientY,
-                ...desplazamiento,
-                rect: cajaRef.current.getBoundingClientRect(),
-              }
-            }}
-            onPointerMove={(e) => {
-              const a = arrastre.current
-              if (a) setDesplazamiento(acotar(a.x + e.clientX - a.px, a.y + e.clientY - a.py, a.rect, a))
-            }}
-            onPointerUp={() => { arrastre.current = null }}
-            onPointerCancel={() => { arrastre.current = null }}
+            {...arrastrable}
           >
             <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${colorIcono}`}>
               <Icono className="h-3.5 w-3.5" />
@@ -292,6 +351,15 @@ export function SystemTasksToast() {
             <span className="ml-auto rounded-md border border-white/[0.11] px-1.5 py-0.5 font-mono text-[10px] text-zinc-500">
               1 de {tareas.length}
             </span>
+            <button
+              type="button"
+              onClick={() => cambiarMinimizado(true)}
+              title="Minimizar"
+              aria-label="Minimizar"
+              className="-mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-zinc-500 hover:bg-white/[0.06] hover:text-zinc-200"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
           </div>
 
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.035] p-3">
@@ -390,11 +458,14 @@ export function SystemTasksToast() {
             </button>
           )}
         </div>
+        )}
       </div>
       {modal}
     </>
   )
 }
+
+const CLAVE_MINIMIZADO = 'tareas-sistema:minimizado'
 
 /** Deja la caja completa dentro de la ventana; `rect` se midió con el desplazamiento `base` aplicado. */
 function acotar(x: number, y: number, rect: DOMRect, base: { x: number; y: number }) {

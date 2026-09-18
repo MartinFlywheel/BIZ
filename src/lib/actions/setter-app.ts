@@ -668,6 +668,42 @@ export async function getDailySetterReports(clientId?: string): Promise<DailyRep
   })
 }
 
+// Los reportes que envió la setter con sesión, para que los pueda releer desde
+// la app. El userId sale de la sesión y no de un parámetro: esta acción se
+// puede llamar desde el navegador con cualquier valor.
+export async function getMisReportes(clientId: string): Promise<DailyReportRow[]> {
+  const perfil = await getSessionProfile()
+  if (!perfil) return []
+  const supabase = await createClient()
+
+  const { data, error } = await supabase
+    .from('daily_setter_reports')
+    .select('id, user_id, client_id, leads_touched, agendas_set, followups_total, common_objections, marketing_feedback, submitted_at')
+    .eq('user_id', perfil.id)
+    .eq('client_id', clientId)
+    .order('submitted_at', { ascending: false })
+    .limit(30)
+
+  if (error) {
+    if ((error as { code?: string }).code === '42P01') return []
+    throw error
+  }
+
+  return (data || []).map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    setterName: null,
+    clientId: r.client_id,
+    clientName: null,
+    leadsTouched: r.leads_touched,
+    agendasSet: r.agendas_set,
+    followupsTotal: r.followups_total,
+    commonObjections: r.common_objections,
+    marketingFeedback: r.marketing_feedback,
+    submittedAt: r.submitted_at,
+  }))
+}
+
 export interface SetterProgressRow {
   userId: string
   fullName: string | null

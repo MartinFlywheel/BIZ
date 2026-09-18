@@ -1,7 +1,8 @@
 import {
   getSetterContext, getCycleProgress, getAgendaGoalProgress,
-  getSettersProgress, getMyClientOptions,
+  getSettersProgress, getMyClientOptions, getMisReportes, getDailySetterReports,
 } from '@/lib/actions/setter-app'
+import { ReportHistory } from '@/components/setter-app/report-history'
 
 function ProgressBar({ current, goal }: { current: number; goal: number }) {
   const pct = goal > 0 ? Math.min(100, Math.round((current / goal) * 100)) : 0
@@ -78,7 +79,10 @@ export default async function SetterProgressPage({
       )
     }
 
-    const equipo = await getSettersProgress(context.clientId)
+    const [equipo, reportesEquipo] = await Promise.all([
+      getSettersProgress(context.clientId),
+      getDailySetterReports(context.clientId),
+    ])
 
     // Los que van más atrasados en el mes van arriba: esta pantalla se abre
     // para detectar quién necesita atención, no para leer una lista completa.
@@ -153,6 +157,8 @@ export default async function SetterProgressPage({
               </div>
             )
           })}
+
+          <ReportHistory titulo="Reportes enviados" reportes={reportesEquipo.slice(0, 30)} mostrarNombre />
         </div>
       </div>
     )
@@ -167,9 +173,10 @@ export default async function SetterProgressPage({
     )
   }
 
-  const [progress, agendaGoals] = await Promise.all([
+  const [progress, agendaGoals, misReportes] = await Promise.all([
     getCycleProgress(context.userId, context.clientId),
     getAgendaGoalProgress(context.userId, context.clientId, context.fullName),
+    getMisReportes(context.clientId),
   ])
 
   return (
@@ -223,6 +230,8 @@ export default async function SetterProgressPage({
         <p className="text-center text-xs text-zinc-600">
           Al llegar a {progress.goals.minLeadsTouched} leads tocados se abre el reporte de cierre de ciclo.
         </p>
+
+        <ReportHistory titulo="Tus reportes enviados" reportes={misReportes} />
       </div>
     </div>
   )
