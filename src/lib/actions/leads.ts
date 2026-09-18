@@ -669,10 +669,12 @@ export async function assignLeadContentAction(leadId: string, contentId: string 
   revalidatePath('/leads')
 }
 
+const DIAS_ENTRE_SEGUIMIENTOS = 2
+
 // "Hice seguimiento" en la pestaña Seguimientos, cuando el setter confirma
 // que el lead sigue en la misma etapa (la conversación no avanzó todavía).
 // A diferencia de updateLeadStageAction, la etapa no se toca — solo se saca
-// al lead de la cola de "para hacer ahora" hasta mañana. follow_up_count no
+// al lead de la cola de "para hacer ahora" por DIAS_ENTRE_SEGUIMIENTOS. follow_up_count no
 // se resetea: es el historial de cuántas veces se lo reintentó vía
 // "Perdido", y un touch exitoso no debería borrar ese historial. Igual que
 // un re-marcado de la misma etapa desde el Kanban, esto loguea
@@ -689,10 +691,14 @@ export async function markFollowUpDoneAction(id: string) {
     .single()
   if (lookupError) throw lookupError
 
+  // Vuelve a la cola en 2 días. Antes quedaba sin fecha y reaparecía al día
+  // siguiente: con cientos de conversaciones abiertas, la cola diaria no
+  // bajaba nunca aunque la setter trabajara bien.
+  const proximo = new Date(Date.now() + DIAS_ENTRE_SEGUIMIENTOS * 86_400_000)
   const { error } = await supabase
     .from('leads')
     .update({
-      next_follow_up_date: null,
+      next_follow_up_date: proximo.toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)

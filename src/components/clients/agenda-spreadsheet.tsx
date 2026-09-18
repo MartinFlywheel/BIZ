@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2, Check, Clock, Link2, Sparkles, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, X, ExternalLink, Loader2, Maximize2, Check, Clock, Link2, Sparkles, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react'
 import {
   getAgendaRecords, createAgendaRecord, updateAgendaRecord, deleteAgendaRecord, getAgendaPeople,
   type AgendaRecord, type AgendaRecordFields,
@@ -53,6 +53,27 @@ const estadoBg: Record<string, string> = {
 function weekOfMonth(dateStr: string): number {
   const d = new Date(dateStr + 'T12:00:00Z').getDate()
   if (d <= 7) return 1; if (d <= 14) return 2; if (d <= 21) return 3; if (d <= 28) return 4; return 5
+}
+
+/** Semanas del mes con el mismo corte de weekOfMonth: la 5 solo existe si el mes pasa del 28. */
+function semanasDelMes(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate() > 28 ? 5 : 4
+}
+
+/** La semana que se abre al entrar a un mes: la de hoy si es el mes en curso, si no la primera. */
+function semanaInicial(year: number, month: number): number {
+  const hoy = hoyChile()
+  return hoy.year === year && hoy.month === month ? weekOfMonth(hoy.iso) : 1
+}
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic']
+
+/** "15–21 sept": los días que cubre la semana, para ubicarse sin contar. */
+function rangoDeSemana(year: number, month: number, semana: number): string {
+  const ultimo = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const desde = (semana - 1) * 7 + 1
+  const hasta = semana === 5 ? ultimo : Math.min(semana * 7, ultimo)
+  return `${desde}–${hasta} ${MESES_CORTOS[month - 1]}`
 }
 
 function tiempoDeCompra(a: string | null, b: string | null): string {
@@ -580,7 +601,14 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
     getRangoDeMeses(clientId, 'agendas').then(r => { if (!cancelado) setRangoMeses(r) }).catch(() => {})
     return () => { cancelado = true }
   }, [clientId])
-  const cambiarMes = useCallback((y: number, m: number) => { setYear(y); setMonth(m) }, [])
+  // Se ve una semana a la vez: con el mes completo la planilla era una lista
+  // larguísima donde costaba encontrar las llamadas de estos días. null = mes
+  // completo, para cuando se quiere revisar todo.
+  const [semana, setSemana] = useState<number | null>(() => semanaInicial(hoyChile().year, hoyChile().month))
+  const cambiarMes = useCallback((y: number, m: number) => {
+    setYear(y); setMonth(m)
+    setSemana(s => (s === null ? null : semanaInicial(y, m)))
+  }, [])
   const [people, setPeople] = useState<{ setters: string[]; closers: string[] }>({ setters: [], closers: [] })
   const [records, setRecords] = useState<AgendaRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -717,6 +745,8 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
       : `${year}-${String(month).padStart(2, '0')}-01`
     const created = await createAgendaRecord(clientId, { fecha_agenda: fecha, fecha_agendado: todayStr })
     setRecords(prev => sortRecords([...prev, created]))
+    // La fila nueva tiene que quedar a la vista aunque se esté mirando otra semana.
+    if (semana !== null) setSemana(weekOfMonth(fecha))
     setNewRowId(created.id)
     setEditingCell({ id: created.id, field: 'nombre_lead' })
     setEditValue('')
@@ -742,8 +772,31 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
   const weeks = new Map<number, AgendaRecord[]>()
   for (const r of records) {
     const w = r.fecha_agenda ? weekOfMonth(r.fecha_agenda) : 1
+    if (semana !== null && w !== semana) continue
     if (!weeks.has(w)) weeks.set(w, [])
     weeks.get(w)!.push(r)
+  }
+
+  // Moverse de semana; en los bordes se cruza al mes vecino, dentro del rango
+  // de meses que ofrece el selector.
+  const claveMes = (y: number, m: number) => `${y}-${String(m).padStart(2, '0')}`
+  const mesMin = rangoMeses?.min
+  const mesMax = rangoMeses?.max ?? sumarMeses(mesActualChile(), 1)
+  const [anioPrevio, mesPrevio] = month === 1 ? [year - 1, 12] : [year, month - 1]
+  const [anioSiguiente, mesSiguiente] = month === 12 ? [year + 1, 1] : [year, month + 1]
+  const hayAnterior = semana !== null && (semana > 1 || !mesMin || claveMes(anioPrevio, mesPrevio) >= mesMin)
+  const haySiguiente = semana !== null && (semana < semanasDelMes(year, month) || claveMes(anioSiguiente, mesSiguiente) <= mesMax)
+
+  function irASemana(delta: -1 | 1) {
+    if (semana === null) return
+    const nueva = semana + delta
+    if (nueva < 1) {
+      setYear(anioPrevio); setMonth(mesPrevio); setSemana(semanasDelMes(anioPrevio, mesPrevio))
+    } else if (nueva > semanasDelMes(year, month)) {
+      setYear(anioSiguiente); setMonth(mesSiguiente); setSemana(1)
+    } else {
+      setSemana(nueva)
+    }
   }
 
   const grandFact    = records.reduce((s, r) => s + (r.monto_facturacion ?? 0), 0)
@@ -1091,6 +1144,29 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
           min={rangoMeses?.min}
           max={rangoMeses?.max ?? sumarMeses(mesActualChile(), 1)}
         />
+        <div className="ml-3 flex items-center gap-1">
+          {semana !== null && (
+            <>
+              <button onClick={() => irASemana(-1)} disabled={!hayAnterior} title="Semana anterior"
+                className="rounded-lg border border-white/[0.08] p-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-30">
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+              <span className="min-w-[128px] text-center text-xs text-zinc-300">
+                Semana {semana} <span className="text-zinc-500">· {rangoDeSemana(year, month, semana)}</span>
+              </span>
+              <button onClick={() => irASemana(1)} disabled={!haySiguiente} title="Semana siguiente"
+                className="rounded-lg border border-white/[0.08] p-1.5 text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100 disabled:opacity-30">
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => setSemana(s => (s === null ? semanaInicial(year, month) : null))}
+            className="ml-1 rounded-lg border border-white/[0.08] px-2.5 py-1 text-[11px] text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100"
+          >
+            {semana === null ? 'Ver por semana' : 'Mes completo'}
+          </button>
+        </div>
         {/* Lo que hoy es invisible —el olvido— pasa a ser un aviso a la vista. */}
         <div className="ml-3 mr-auto flex flex-wrap items-center gap-1.5">
           {totalSinLead > 0 && (
@@ -1148,6 +1224,10 @@ export function AgendaSpreadsheet({ clientId, customAvatars, agencyUsers = [] }:
               ) : records.length === 0 ? (
                 <tr><td colSpan={HEADERS.length} className="py-12 text-center text-zinc-600 text-xs">
                   Sin registros — agrega el primer lead agendado
+                </td></tr>
+              ) : weeks.size === 0 ? (
+                <tr><td colSpan={HEADERS.length} className="py-12 text-center text-zinc-600 text-xs">
+                  Sin agendas esta semana
                 </td></tr>
               ) : (
                 Array.from(weeks.entries()).sort(([a], [b]) => a - b).flatMap(([week, recs]) => {

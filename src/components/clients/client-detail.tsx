@@ -97,17 +97,19 @@ export function ClientDetail({ client, allClients = [], contentPiecesCount, lead
     router.refresh()
   }
 
-  const tabs = isSetter ? [
-    { id: 'crm', label: 'CRM', count: leadsCount },
-  ] : [
-    { id: 'analytics', label: 'Analítica' },
-    { id: 'content_metrics', label: 'Contenido', count: contentPiecesCount },
-    { id: 'pipeline', label: 'Script' },
-    { id: 'crm', label: 'CRM', count: leadsCount },
-    { id: 'calls', label: 'Llamadas', count: callsCount },
-    { id: 'competencia', label: 'Competencia', count: competitorsCount },
-    { id: 'producto', label: 'Producto' },
-    ...(hasLeadMagnet ? [{ id: 'research', label: 'Research lead magnet' }] : []),
+  const tabCrm = {
+    id: 'crm', label: 'CRM', count: leadsCount,
+    descripcion: 'Leads del cliente, cola diaria de seguimientos, planilla de agendas, tareas y equipo de setters.',
+  }
+  const tabs = isSetter ? [tabCrm] : [
+    { id: 'analytics', label: 'Analítica', descripcion: 'Rendimiento de la cuenta de Instagram: alcance, impresiones, interacción y el embudo agregado del cliente.' },
+    { id: 'content_metrics', label: 'Contenido', count: contentPiecesCount, descripcion: 'Cada pieza publicada con sus métricas y cuántos leads, agendas y ventas trajo.' },
+    { id: 'pipeline', label: 'Script', descripcion: 'Tablero de producción de contenido: de la idea al guion, grabación, edición y publicación.' },
+    tabCrm,
+    { id: 'calls', label: 'Llamadas', count: callsCount, descripcion: 'Llamadas de venta con su grabación de Fathom, resultado y reporte del closer.' },
+    { id: 'competencia', label: 'Competencia', count: competitorsCount, descripcion: 'Cuentas competidoras y sus reels, para ver qué contenido les está funcionando.' },
+    { id: 'producto', label: 'Producto', descripcion: 'Roadmap del programa del cliente: onboarding de alumnas, fotos de diagnóstico y conversaciones.' },
+    ...(hasLeadMagnet ? [{ id: 'research', label: 'Research lead magnet', descripcion: 'Respuestas del diagnóstico del lead magnet: qué escribió cada persona, qué está haciendo mal y el gancho para el equipo.' }] : []),
   ]
 
   // Every tab here lazy-fetches its own data on mount. Tabs used to fully

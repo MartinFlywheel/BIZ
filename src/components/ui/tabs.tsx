@@ -2,11 +2,14 @@
 
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import { usePistaFlotante } from './pista-flotante'
 
 interface Tab {
   id: string
   label: string
   count?: number
+  /** Resumen de la pestaña, visible al dejar el mouse encima. */
+  descripcion?: string
 }
 
 interface TabsProps {
@@ -21,6 +24,7 @@ interface TabsProps {
 
 export function Tabs({ tabs, defaultTab, onTabChange, children }: TabsProps) {
   const [active, setActive] = useState(defaultTab || tabs[0]?.id)
+  const { props: pistaDe, pista } = usePistaFlotante()
 
   function handleTabChange(id: string) {
     if (id === active) return
@@ -35,6 +39,7 @@ export function Tabs({ tabs, defaultTab, onTabChange, children }: TabsProps) {
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            {...pistaDe(tab.descripcion)}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
               'relative shrink-0 px-4 py-2.5 text-sm font-medium transition-all duration-200 border-b-2 -mb-px',
@@ -57,6 +62,8 @@ export function Tabs({ tabs, defaultTab, onTabChange, children }: TabsProps) {
           </button>
         ))}
       </div>
+
+      {pista}
 
       <div className="tab-enter">
         {children(active)}

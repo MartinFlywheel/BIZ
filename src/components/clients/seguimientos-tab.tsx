@@ -28,6 +28,31 @@ const prettifyKey = (key: string) => {
 // etapa de cierre/agenda, que tienen sus propias vistas.
 const FOLLOWUP_ELIGIBLE_STAGES = new Set<string>(['conversando', 'micro_vsl_enviado', 'vsl_chat', 'calendly_enviado'])
 
+// Un lead sin ningún movimiento en este plazo sale de la cola diaria y pasa a
+// "Fríos". Antes todo lead abierto volvía cada día hasta que alguien lo
+// agendara o lo marcara perdido tres veces: la cola de una setter llegó a más
+// de 600, con 420 conversaciones muertas hace semanas, y así no se podía
+// trabajar. No se cambia nada en la base: si alguien le hace seguimiento a un
+// frío (o el lead avanza), su updated_at se renueva y vuelve a la cola.
+const DIAS_PARA_FRIO = 14
+
+/**
+ * Inicio del día de hoy en Chile, en milisegundos. Antes se usaba medianoche
+ * UTC, que en Chile son las 20:00 o 21:00: un lead trabajado en la noche
+ * volvía a aparecer como pendiente minutos después.
+ */
+function inicioDelDiaEnChile(instante: Date): number {
+  const partes = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Santiago', hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(instante).map(p => [p.type, p.value])
+  )
+  const horaLocalComoUTC = Date.UTC(+partes.year, +partes.month - 1, +partes.day, +partes.hour, +partes.minute, +partes.second)
+  const desfase = horaLocalComoUTC - Math.floor(instante.getTime() / 1000) * 1000
+  return Date.UTC(+partes.year, +partes.month - 1, +partes.day) - desfase
+}
+
 interface Props {
   leads: Lead[]
   contentPieces: ContentPiece[]
@@ -46,6 +71,7 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
   const [stageModalLead, setStageModalLead] = useState<Lead | null>(null)
   const [selectedNewStage, setSelectedNewStage] = useState<string>('')
   const [setterFilter, setSetterFilter] = useState('all')
+  const [verFrios, setVerFrios] = useState(false)
 
   // Admin puede elegir a quién mirar (o "todos"); un setter viendo su propia
   // cola queda acotado automáticamente a lo suyo, sin selector.
@@ -87,22 +113,23 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
   }
 
   // Filtrar leads para hacer ahora y programados
-  const { paraHacerAhora, programados, agendaronHoy } = useMemo(() => {
+  const { paraHacerAhora, programados, agendaronHoy, frios } = useMemo(() => {
     const ahora: Lead[] = []
     const prog: Lead[] = []
     const agen: Lead[] = []
+    const frio: Lead[] = []
 
     // Un solo instante para "hoy" y "ahora": con dos lecturas del reloj, un
     // cálculo justo a medianoche podía mezclar dos días distintos.
     const instante = new Date()
-    const hoyStr = instante.toISOString().split('T')[0]
-    const startOfToday = new Date(hoyStr + 'T00:00:00.000Z').getTime()
+    const startOfToday = inicioDelDiaEnChile(instante)
     const now = instante.getTime()
+    const limiteFrio = now - DIAS_PARA_FRIO * 86_400_000
 
     for (const lead of scopedLeads) {
       // leads que agendaron hoy (para la estadística de "agendaron")
       // Esto asume que agenda_at o updated_at es hoy y están en etapa agendado
-      if ((lead.stage === 'agendado' || lead.stage === 'agenda_set') && lead.updated_at.startsWith(hoyStr)) {
+      if ((lead.stage === 'agendado' || lead.stage === 'agenda_set') && new Date(lead.updated_at).getTime() >= startOfToday) {
         agen.push(lead)
         continue
       }
@@ -121,7 +148,9 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
         }
       } else {
         // Si no tiene fecha programada, entra a "Para hacer ahora" solo si su última actualización fue antes de HOY (es de ayer o más viejo)
-        if (updatedAt < startOfToday) {
+        if (updatedAt < limiteFrio) {
+          frio.push(lead)
+        } else if (updatedAt < startOfToday) {
           ahora.push(lead)
         }
       }
@@ -139,17 +168,22 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
       return timeA - timeB
     })
 
-    return { paraHacerAhora: ahora, programados: prog, agendaronHoy: agen }
+    // Los fríos, del más reciente al más viejo: los primeros son los que
+    // todavía vale la pena reintentar.
+    frio.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+
+    return { paraHacerAhora: ahora, programados: prog, agendaronHoy: agen, frios: frio }
   }, [scopedLeads])
 
   const filteredAhora = useMemo(() => {
-    if (!search) return paraHacerAhora
+    const lista = verFrios ? frios : paraHacerAhora
+    if (!search) return lista
     const s = search.toLowerCase()
-    return paraHacerAhora.filter(l => 
-      l.full_name?.toLowerCase().includes(s) || 
+    return lista.filter(l =>
+      l.full_name?.toLowerCase().includes(s) ||
       l.ig_username?.toLowerCase().includes(s)
     )
-  }, [paraHacerAhora, search])
+  }, [paraHacerAhora, frios, verFrios, search])
 
   const handleAction = (leadId: string, action: 'agendo' | 'perdido') => {
     setPendingId(leadId)
@@ -202,6 +236,18 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
         <h2 className="text-lg font-semibold text-white">
           Seguimiento <span className="text-zinc-500 font-normal text-sm ml-2">{paraHacerAhora.length} para hacer ahora - {programados.length} programados - {agendaronHoy.length} agendaron</span>
         </h2>
+        {frios.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setVerFrios(v => !v)}
+            title={`Leads sin movimiento hace más de ${DIAS_PARA_FRIO} días. Hacerles seguimiento los devuelve a la cola.`}
+            className={`ml-auto rounded-full border px-3 py-1 text-xs ${
+              verFrios ? 'border-sky-700/60 bg-sky-950/40 text-sky-200' : 'border-white/[0.08] text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {verFrios ? '← Volver a la cola' : `Ver fríos (${frios.length})`}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -231,7 +277,7 @@ export function SeguimientosTab({ leads, contentPieces, interactions, clientId, 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filteredAhora.length === 0 ? (
           <div className="col-span-full py-16 text-center text-sm text-zinc-500">
-            Todo al día 🎉 No hay seguimientos pendientes por ahora.
+            {verFrios ? 'No hay leads fríos.' : 'Todo al día 🎉 No hay seguimientos pendientes por ahora.'}
           </div>
         ) : (
           filteredAhora.map(lead => {

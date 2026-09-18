@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { AgendaSpreadsheet } from './agenda-spreadsheet'
 import { SystemTasksPanel } from '@/components/pipeline/system-tasks-panel'
 import { Plus, ExternalLink, Loader2, Search, X, ChevronDown, Trash2, Settings, Filter, UserPlus, Copy, Check, MessageCircle } from 'lucide-react'
+import { usePistaFlotante } from '@/components/ui/pista-flotante'
 import { ETIQUETA_ORGANICO, FIRST_TOUCH_ORGANICO, OPCION_ORGANICO } from '@/lib/origen-organico'
 import { LEAD_STAGES, LEAD_AVATARS } from '@/lib/types'
 import { SeguimientosTab } from './seguimientos-tab'
@@ -1794,26 +1795,29 @@ export function CrmTab({ leads, agencyUsers, allClients = [], contentPieces, int
     return counts
   }, [leads])
 
-  const subTabs: { id: SubTab; label: string; count?: number }[] = [
-    { id: 'leads', label: 'Leads', count: leads.length },
-    { id: 'seguimientos', label: 'Seguimientos' },
-    { id: 'agendas', label: 'Agendas' },
+  const subTabs: { id: SubTab; label: string; count?: number; descripcion: string }[] = [
+    { id: 'leads', label: 'Leads', count: leads.length, descripcion: 'Todos los leads del cliente con su etapa, setter y origen. Clic en uno para ver y editar su ficha.' },
+    { id: 'seguimientos', label: 'Seguimientos', descripcion: 'Cola diaria de conversaciones abiertas por retomar. "Hice seg." la saca por 2 días; los leads sin movimiento hace más de 14 días pasan a Fríos.' },
+    { id: 'agendas', label: 'Agendas', descripcion: 'Planilla de llamadas agendadas por semana: triaje, closer, grabación de Fathom, reporte y montos de venta.' },
     // Visible para todos los roles a propósito: es la pestaña donde cada
     // miembro ve lo que tiene que hacer (Equipo, en cambio, es sólo de admin).
-    { id: 'tareas', label: 'Tareas', count: pendingTaskCount },
+    { id: 'tareas', label: 'Tareas', count: pendingTaskCount, descripcion: 'Lo que cada persona tiene pendiente: triajes, leads por asociar a agendas, reportes por aprobar y las tareas del tablero de Notion.' },
   ]
   if (isAdmin) {
-    subTabs.push({ id: 'equipo', label: 'Equipo', count: agencyUsers.length })
+    subTabs.push({ id: 'equipo', label: 'Equipo', count: agencyUsers.length, descripcion: 'Setters y closers del cliente, su rol y el peso con que se les reparten los leads nuevos.' })
   }
+  const { props: pistaDe, pista } = usePistaFlotante()
 
   return (
     <div className="space-y-0">
+      {pista}
       {/* Sub-tab navigation + avatar config button */}
       <div className="flex items-center border-b border-zinc-800 mb-5">
         <div className="flex items-center gap-0 flex-1">
           {subTabs.map(tab => (
             <button
               key={tab.id}
+              {...pistaDe(tab.descripcion)}
               onClick={() => setActiveSubTab(tab.id)}
               className={`relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors -mb-px border-b-2 ${
                 activeSubTab === tab.id
